@@ -1,4 +1,4 @@
-apiVersion: iterate.ibm.com/v1alpha1
+apiVersion: iter8.ibm.com/v1alpha1
 kind: Canary
 metadata:
   labels:

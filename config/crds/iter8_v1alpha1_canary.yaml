@@ -4,9 +4,9 @@ metadata:
   creationTimestamp: null
   labels:
     controller-tools.k8s.io: "1.0"
-  name: canaries.iterate.ibm.com
+  name: canaries.iter8.ibm.com
 spec:
-  group: iterate.ibm.com
+  group: iter8.ibm.com
   names:
     kind: Canary
     plural: canaries

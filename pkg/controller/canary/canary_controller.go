@@ -19,7 +19,6 @@ import (
 	"context"
 	"reflect"
 
-	iteratev1alpha1 "github.ibm.com/istio-research/iter8-controller/pkg/apis/iterate/v1alpha1"
 	appsv1 "k8s.io/api/apps/v1"
 	corev1 "k8s.io/api/core/v1"
 	"k8s.io/apimachinery/pkg/api/errors"
@@ -34,6 +33,8 @@ import (
 	"sigs.k8s.io/controller-runtime/pkg/reconcile"
 	logf "sigs.k8s.io/controller-runtime/pkg/runtime/log"
 	"sigs.k8s.io/controller-runtime/pkg/source"
+
+	iter8v1alpha1 "github.ibm.com/istio-research/iter8-controller/pkg/apis/iter8/v1alpha1"
 )
 
 var log = logf.Log.WithName("controller")
@@ -63,7 +64,7 @@ func add(mgr manager.Manager, r reconcile.Reconciler) error {
 	}
 
 	// Watch for changes to Canary
-	err = c.Watch(&source.Kind{Type: &iteratev1alpha1.Canary{}}, &handler.EnqueueRequestForObject{})
+	err = c.Watch(&source.Kind{Type: &iter8v1alpha1.Canary{}}, &handler.EnqueueRequestForObject{})
 	if err != nil {
 		return err
 	}
@@ -72,7 +73,7 @@ func add(mgr manager.Manager, r reconcile.Reconciler) error {
 	// Uncomment watch a Deployment created by Canary - change this for objects you create
 	err = c.Watch(&source.Kind{Type: &appsv1.Deployment{}}, &handler.EnqueueRequestForOwner{
 		IsController: true,
-		OwnerType:    &iteratev1alpha1.Canary{},
+		OwnerType:    &iter8v1alpha1.Canary{},
 	})
 	if err != nil {
 		return err
@@ -94,13 +95,11 @@ type ReconcileCanary struct {
 // TODO(user): Modify this Reconcile function to implement your Controller logic.  The scaffolding writes
 // a Deployment as an example
 // Automatically generate RBAC rules to allow the Controller to read and write Deployments
-// +kubebuilder:rbac:groups=apps,resources=deployments,verbs=get;list;watch;create;update;patch;delete
-// +kubebuilder:rbac:groups=apps,resources=deployments/status,verbs=get;update;patch
-// +kubebuilder:rbac:groups=iterate.ibm.com,resources=canaries,verbs=get;list;watch;create;update;patch;delete
-// +kubebuilder:rbac:groups=iterate.ibm.com,resources=canaries/status,verbs=get;update;patch
+// +kubebuilder:rbac:groups=iter8.ibm.com,resources=canaries,verbs=get;list;watch;create;update;patch;delete
+// +kubebuilder:rbac:groups=iter8.ibm.com,resources=canaries/status,verbs=get;update;patch
 func (r *ReconcileCanary) Reconcile(request reconcile.Request) (reconcile.Result, error) {
 	// Fetch the Canary instance
-	instance := &iteratev1alpha1.Canary{}
+	instance := &iter8v1alpha1.Canary{}
 	err := r.Get(context.TODO(), request.NamespacedName, instance)
 	if err != nil {
 		if errors.IsNotFound(err) {

@@ -13,5 +13,5 @@ See the License for the specific language governing permissions and
 limitations under the License.
 */
 
-// Package iterate contains iterate API versions
-package iterate
+// Package iter8 contains iter8 API versions
+package iter8

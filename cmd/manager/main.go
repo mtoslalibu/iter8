@@ -22,7 +22,7 @@ import (
 	"github.ibm.com/istio-research/iter8-controller/pkg/apis"
 	"github.ibm.com/istio-research/iter8-controller/pkg/controller"
 	"github.ibm.com/istio-research/iter8-controller/pkg/webhook"
-	_ "k8s.io/client-go/plugin/pkg/client/auth/gcp"
+	_ "k8s.io/client-go/plugin/pkg/client/auth/oidc"
 	"sigs.k8s.io/controller-runtime/pkg/client/config"
 	"sigs.k8s.io/controller-runtime/pkg/manager"
 	logf "sigs.k8s.io/controller-runtime/pkg/runtime/log"

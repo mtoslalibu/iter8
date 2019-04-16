@@ -13,10 +13,10 @@ See the License for the specific language governing permissions and
 limitations under the License.
 */
 
-// Package v1alpha1 contains API Schema definitions for the iterate v1alpha1 API group
+// Package v1alpha1 contains API Schema definitions for the iter8 v1alpha1 API group
 // +k8s:openapi-gen=true
 // +k8s:deepcopy-gen=package,register
-// +k8s:conversion-gen=github.ibm.com/istio-research/iter8-controller/pkg/apis/iterate
+// +k8s:conversion-gen=github.ibm.com/istio-research/iter8-controller/pkg/apis/iter8
 // +k8s:defaulter-gen=TypeMeta
-// +groupName=iterate.ibm.com
+// +groupName=iter8.ibm.com
 package v1alpha1

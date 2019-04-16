@@ -20,7 +20,7 @@ import (
 	"time"
 
 	"github.com/onsi/gomega"
-	iteratev1alpha1 "github.ibm.com/istio-research/iter8-controller/pkg/apis/iterate/v1alpha1"
+	iter8v1alpha1 "github.ibm.com/istio-research/iter8-controller/pkg/apis/iter8/v1alpha1"
 	"golang.org/x/net/context"
 	appsv1 "k8s.io/api/apps/v1"
 	apierrors "k8s.io/apimachinery/pkg/api/errors"
@@ -40,7 +40,7 @@ const timeout = time.Second * 5
 
 func TestReconcile(t *testing.T) {
 	g := gomega.NewGomegaWithT(t)
-	instance := &iteratev1alpha1.Canary{ObjectMeta: metav1.ObjectMeta{Name: "foo", Namespace: "default"}}
+	instance := &iter8v1alpha1.Canary{ObjectMeta: metav1.ObjectMeta{Name: "foo", Namespace: "default"}}
 
 	// Setup the Manager and Controller.  Wrap the Controller Reconcile function so it writes each request to a
 	// channel when it is finished.

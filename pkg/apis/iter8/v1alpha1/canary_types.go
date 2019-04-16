@@ -19,21 +19,6 @@ import (
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 )
 
-// EDIT THIS FILE!  THIS IS SCAFFOLDING FOR YOU TO OWN!
-// NOTE: json tags are required.  Any new fields you add must have json tags for the fields to be serialized.
-
-// CanarySpec defines the desired state of Canary
-type CanarySpec struct {
-	// INSERT ADDITIONAL SPEC FIELDS - desired state of cluster
-	// Important: Run "make" to regenerate code after modifying this file
-}
-
-// CanaryStatus defines the observed state of Canary
-type CanaryStatus struct {
-	// INSERT ADDITIONAL STATUS FIELD - define observed state of cluster
-	// Important: Run "make" to regenerate code after modifying this file
-}
-
 // +genclient
 // +k8s:deepcopy-gen:interfaces=k8s.io/apimachinery/pkg/runtime.Object
 
@@ -48,12 +33,19 @@ type Canary struct {
 }
 
 // +k8s:deepcopy-gen:interfaces=k8s.io/apimachinery/pkg/runtime.Object
-
 // CanaryList contains a list of Canary
 type CanaryList struct {
 	metav1.TypeMeta `json:",inline"`
 	metav1.ListMeta `json:"metadata,omitempty"`
 	Items           []Canary `json:"items"`
+}
+
+// CanarySpec defines the desired state of Canary
+type CanarySpec struct {
+}
+
+// CanaryStatus defines the observed state of Canary
+type CanaryStatus struct {
 }
 
 func init() {
