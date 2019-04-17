@@ -116,8 +116,6 @@ func (r *ReconcileCanary) Reconcile(request reconcile.Request) (reconcile.Result
 	kservice := &servingv1alpha1.Service{}
 	err = r.Get(context, types.NamespacedName{Name: serviceName, Namespace: serviceNamespace}, kservice)
 	if err != nil {
-		log.Info("not found", "namespace", instance.Namespace, "name", instance.Name)
-
 		instance.Status.MarkHasNotService("NotFound", "")
 		err = r.Status().Update(context, instance)
 		if err != nil {
@@ -126,6 +124,31 @@ func (r *ReconcileCanary) Reconcile(request reconcile.Request) (reconcile.Result
 		return reconcile.Result{Requeue: true}, nil
 	}
 
+	if kservice.Spec.DeprecatedPinned != nil {
+		instance.Status.MarkHasNotService("DeprecatedPinnedNotSupported", "")
+		err = r.Status().Update(context, instance)
+		return reconcile.Result{}, err
+	}
+
+	// Check mode is set to 'release'. If not, change it
+	if kservice.Spec.Release == nil {
+		// TODO: maybe should check if equal to LastedCreatedRevisionName?
+		kservice.Spec.Release = &servingv1alpha1.ReleaseType{
+			Revisions: []string{
+				kservice.Status.LatestReadyRevisionName,
+			},
+			RolloutPercent: 0,
+			Configuration:  kservice.Spec.RunLatest.Configuration,
+		}
+		kservice.Spec.RunLatest = nil
+		err := r.Update(context, kservice)
+		if err != nil {
+			return reconcile.Result{}, err
+		}
+	}
+
 	instance.Status.MarkHasService()
-	return reconcile.Result{}, nil
+	instance.Status.ObservedGeneration = instance.Generation
+	err = r.Status().Update(context, instance)
+	return reconcile.Result{}, err
 }
