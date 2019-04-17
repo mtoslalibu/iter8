@@ -16,7 +16,7 @@ content of the module zip file.  The path@vers prefix required of files in the
 zip file is added automatically by the proxy: the files in the archive have
 names without the prefix, like plain "go.mod", "x.go", and so on.
 
-See ../cmd/txtar-addmod and ../cmd/txtar-c for tools generate txtar
+See ../cmd/txtar-addmod and ../cmd/txtar-savedir for tools generate txtar
 files, although it's fine to write them by hand.
 */
 package goproxytest
@@ -41,9 +41,9 @@ import (
 )
 
 type Server struct {
-	server       *http.Server
 	URL          string
 	dir          string
+	listener     net.Listener
 	modList      []module.Version
 	zipCache     par.Cache
 	archiveCache par.Cache
@@ -71,22 +71,17 @@ func NewServer(dir, addr string) (*Server, error) {
 	if err != nil {
 		return nil, fmt.Errorf("cannot listen on %q: %v", addr, err)
 	}
-	srv.server = &http.Server{
-		Handler: http.HandlerFunc(srv.handler),
-	}
 	addr = l.Addr().String()
 	srv.URL = "http://" + addr + "/mod"
 	go func() {
-		if err := srv.server.Serve(l); err != nil && err != http.ErrServerClosed {
-			log.Printf("go proxy: http.Serve: %v", err)
-		}
+		log.Printf("go proxy: http.Serve: %v", http.Serve(l, http.HandlerFunc(srv.handler)))
 	}()
 	return &srv, nil
 }
 
 // Close shuts down the proxy.
 func (srv *Server) Close() {
-	srv.server.Close()
+	srv.listener.Close()
 }
 
 func (srv *Server) readModList() error {

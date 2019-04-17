@@ -1,9 +1,9 @@
 apiVersion: iter8.ibm.com/v1alpha1
 kind: Canary
 metadata:
-  labels:
-    controller-tools.k8s.io: "1.0"
   name: canary-sample
 spec:
-  # Add fields here
-  foo: bar
+  targetService:
+    name: notexist
+  trafficControl:
+    strategy: manual
