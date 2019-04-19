@@ -2,6 +2,8 @@ apiVersion: iter8.ibm.com/v1alpha1
 kind: Canary
 metadata:
   name: stock-canary-example
+  labels:
+    app.kubernetes.io/name: stock-canary-example
 spec:
   targetService:
     name: stock-service-example

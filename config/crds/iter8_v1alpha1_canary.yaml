@@ -8,6 +8,9 @@ metadata:
 spec:
   group: iter8.ibm.com
   names:
+    categories:
+    - all
+    - iter8
     kind: Canary
     plural: canaries
   scope: Namespaced
@@ -28,12 +31,15 @@ spec:
               type: object
             trafficControl:
               properties:
+                interval:
+                  format: int64
+                  type: integer
                 maxTrafficPercent:
-                  format: float
-                  type: number
+                  format: int64
+                  type: integer
                 stepSize:
-                  format: float
-                  type: number
+                  format: int64
+                  type: integer
                 strategy:
                   type: string
               required:
@@ -65,9 +71,17 @@ spec:
                 - status
                 type: object
               type: array
+            lastIncrementTime:
+              format: date-time
+              type: string
             observedGeneration:
               format: int64
               type: integer
+            progressing:
+              type: boolean
+          required:
+          - lastIncrementTime
+          - progressing
           type: object
   version: v1alpha1
 status:

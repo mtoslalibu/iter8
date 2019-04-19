@@ -19,6 +19,8 @@ limitations under the License.
 package v1alpha1
 
 import (
+	time "time"
+
 	v1 "k8s.io/api/core/v1"
 	runtime "k8s.io/apimachinery/pkg/runtime"
 )
@@ -110,6 +112,7 @@ func (in *CanarySpec) DeepCopy() *CanarySpec {
 func (in *CanaryStatus) DeepCopyInto(out *CanaryStatus) {
 	*out = *in
 	in.Status.DeepCopyInto(&out.Status)
+	in.LastIncrementTime.DeepCopyInto(&out.LastIncrementTime)
 	return
 }
 
@@ -128,17 +131,17 @@ func (in *TrafficControl) DeepCopyInto(out *TrafficControl) {
 	*out = *in
 	if in.MaxTrafficPercent != nil {
 		in, out := &in.MaxTrafficPercent, &out.MaxTrafficPercent
-		*out = new(float32)
+		*out = new(int)
 		**out = **in
 	}
 	if in.StepSize != nil {
 		in, out := &in.StepSize, &out.StepSize
-		*out = new(float32)
+		*out = new(int)
 		**out = **in
 	}
 	if in.Interval != nil {
 		in, out := &in.Interval, &out.Interval
-		*out = new(int32)
+		*out = new(time.Duration)
 		**out = **in
 	}
 	return

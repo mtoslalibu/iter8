@@ -8,10 +8,10 @@ kubectl apply -f - << EOF
 apiVersion: extensions/v1beta1
 kind: Ingress
 metadata:
-  name: stock-service-example
+  name: stock-canary-example
   namespace: istio-system
   labels:
-    app.kubernetes.io/name: stock-service-example
+    app.kubernetes.io/name: stock-canary-example
 spec:
   rules:
   - host: ${DOMAIN}

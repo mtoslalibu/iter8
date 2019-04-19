@@ -16,6 +16,8 @@ limitations under the License.
 package v1alpha1
 
 import (
+	"time"
+
 	corev1 "k8s.io/api/core/v1"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 
@@ -28,6 +30,7 @@ import (
 // Canary is the Schema for the canaries API
 // +k8s:openapi-gen=true
 // +kubebuilder:subresource:status
+// +kubebuilder:categories=all,iter8
 type Canary struct {
 	metav1.TypeMeta   `json:",inline"`
 	metav1.ObjectMeta `json:"metadata,omitempty"`
@@ -59,6 +62,12 @@ type CanaryStatus struct {
 	// * ObservedGeneration - the 'Generation' of the Service that was last processed by the controller.
 	// * Conditions - the latest available observations of a resource's current state.
 	duckv1alpha1.Status `json:",inline"`
+
+	// LastIncrementTime is the last time the traffic has been incremented
+	LastIncrementTime metav1.Time `json:"lastIncrementTime"`
+
+	// Progressing is true when rollout is in progress
+	Progressing bool `json:"progressing"`
 }
 
 type TrafficControl struct {
@@ -66,27 +75,61 @@ type TrafficControl struct {
 
 	// MaxTrafficPercent is the maximum traffic ratio to send to the canary. Default is 50
 	// +optional
-	MaxTrafficPercent *float32 `json:"maxTrafficPercent,omitempty"`
+	MaxTrafficPercent *int `json:"maxTrafficPercent,omitempty"`
 
 	// StepSize is the traffic increment per interval. Default is 2
 	// +optional
-	StepSize *float32 `json:"stepSize,omitempty"`
+	StepSize *int `json:"stepSize,omitempty"`
 
 	// Interval is the time in second before the next increment. Default is 1mn
 	// +optional
-	Interval *int32
+	Interval *time.Duration `json:"interval,omitempty"`
+}
+
+// GetMaxTrafficPercent gets the specified max traffic percent or the default value (50)
+func (t *TrafficControl) GetMaxTrafficPercent() int {
+	maxPercent := t.MaxTrafficPercent
+	if maxPercent == nil {
+		fifty := int(50)
+		maxPercent = &fifty
+	}
+	return *maxPercent
+}
+
+// GetStepSize gets the specified step size or the default value (2%)
+func (t *TrafficControl) GetStepSize() int {
+	stepSize := t.StepSize
+	if stepSize == nil {
+		two := int(2)
+		stepSize = &two
+	}
+	return *stepSize
+}
+
+// GetInterval gets the specified interval or the default value (1mn)
+func (t *TrafficControl) GetInterval() time.Duration {
+	interval := t.Interval
+	if interval == nil {
+		onemn := time.Minute
+		interval = &onemn
+	}
+	return *interval
 }
 
 const (
-	// CanaryConditionReady has status True when the Canary is ready to control traffic
+	// CanaryConditionReady has status True when the Canary has finished controlling traffic
 	CanaryConditionReady = duckv1alpha1.ConditionReady
 
 	// CanaryConditionServiceProvided has status True when the Canary has been configured with a Knative service
 	CanaryConditionServiceProvided duckv1alpha1.ConditionType = "ServiceProvided"
+
+	// CanaryConditionMinimumRevisionsAvailable has status True when the Knative service has at least two revisions
+	CanaryConditionMinimumRevisionsAvailable duckv1alpha1.ConditionType = "MinimumRevisionsAvailable"
 )
 
 var canaryCondSet = duckv1alpha1.NewLivingConditionSet(
 	CanaryConditionServiceProvided,
+	CanaryConditionMinimumRevisionsAvailable,
 )
 
 // InitializeConditions sets relevant unset conditions to Unknown state.
@@ -94,7 +137,7 @@ func (s *CanaryStatus) InitializeConditions() {
 	canaryCondSet.Manage(s).InitializeConditions()
 }
 
-// MarkHasService sets the condition that the target service has been found and configured.
+// MarkHasService sets the condition that the target service has been found
 func (s *CanaryStatus) MarkHasService() {
 	canaryCondSet.Manage(s).MarkTrue(CanaryConditionServiceProvided)
 }
@@ -102,6 +145,16 @@ func (s *CanaryStatus) MarkHasService() {
 // MarkHasNotService sets the condition that the target service hasn't been found.
 func (s *CanaryStatus) MarkHasNotService(reason, messageFormat string, messageA ...interface{}) {
 	canaryCondSet.Manage(s).MarkFalse(CanaryConditionServiceProvided, reason, messageFormat, messageA...)
+}
+
+// MarkMinimumRevisionAvailable sets the condition that the target service has enough revisions
+func (s *CanaryStatus) MarkMinimumRevisionAvailable() {
+	canaryCondSet.Manage(s).MarkTrue(CanaryConditionMinimumRevisionsAvailable)
+}
+
+// MarkMinimumRevisionNotAvailable sets the condition thatthe target service has not enough revisions
+func (s *CanaryStatus) MarkMinimumRevisionNotAvailable(reason, messageFormat string, messageA ...interface{}) {
+	canaryCondSet.Manage(s).MarkFalse(CanaryConditionMinimumRevisionsAvailable, reason, messageFormat, messageA...)
 }
 
 func init() {

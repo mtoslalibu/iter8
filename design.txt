@@ -1,0 +1,17 @@
+Feedback:
+- Decouple controlling kservice traffic from analytics. Need 2 CRDs.
+  Pro: more transparency, easier to debug, BYO analytics, contribute Traffic controller to Knative, different persona
+  Cons: yet another CRDs
+
+
+Open questions
+- how to promote candidate to current?
+  plan behavior: when rollout is completed.
+- how to promote latest revisions to candidate?
+  plan behavior: when no candidate
+
+Knative serving behavior
+- when only one revision traffic.current = traffic.latest, and cannot set rolloutPercent
+- when has 2 revisions but revisions is not set, cannot set rolloutPercent
+- status.traffic has current, candidate and latest
+- revisions can have 1 or 2 values only (current and candidate)

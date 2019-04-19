@@ -17,14 +17,18 @@ package canary
 
 import (
 	"context"
+	"time"
 
 	"k8s.io/apimachinery/pkg/api/errors"
+	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/apimachinery/pkg/runtime"
 	"k8s.io/apimachinery/pkg/types"
 	"sigs.k8s.io/controller-runtime/pkg/client"
 	"sigs.k8s.io/controller-runtime/pkg/controller"
+	"sigs.k8s.io/controller-runtime/pkg/event"
 	"sigs.k8s.io/controller-runtime/pkg/handler"
 	"sigs.k8s.io/controller-runtime/pkg/manager"
+	"sigs.k8s.io/controller-runtime/pkg/predicate"
 	"sigs.k8s.io/controller-runtime/pkg/reconcile"
 	logf "sigs.k8s.io/controller-runtime/pkg/runtime/log"
 	"sigs.k8s.io/controller-runtime/pkg/source"
@@ -35,6 +39,10 @@ import (
 )
 
 var log = logf.Log.WithName("canary-controller")
+
+const (
+	canaryLabel = "iter8.ibm.com/canary"
+)
 
 // Add creates a new Canary Controller and adds it to the Manager with default RBAC. The Manager will set fields on the Controller
 // and Start it when the Manager is Started.
@@ -57,6 +65,39 @@ func add(mgr manager.Manager, r reconcile.Reconciler) error {
 
 	// Watch for changes to Canary
 	err = c.Watch(&source.Kind{Type: &iter8v1alpha1.Canary{}}, &handler.EnqueueRequestForObject{})
+	if err != nil {
+		return err
+	}
+
+	// Watch changes to Knative services
+	mapFn := handler.ToRequestsFunc(
+		func(a handler.MapObject) []reconcile.Request {
+			canary := a.Meta.GetLabels()[canaryLabel]
+			return []reconcile.Request{
+				{NamespacedName: types.NamespacedName{
+					Name:      canary,
+					Namespace: a.Meta.GetNamespace(),
+				}},
+			}
+		})
+
+	p := predicate.Funcs{
+		UpdateFunc: func(e event.UpdateEvent) bool {
+			if _, ok := e.MetaOld.GetLabels()[canaryLabel]; !ok {
+				return false
+			}
+			return e.ObjectOld != e.ObjectNew
+		},
+		CreateFunc: func(e event.CreateEvent) bool {
+			_, ok := e.Meta.GetLabels()[canaryLabel]
+			return ok
+		},
+	}
+
+	err = c.Watch(&source.Kind{Type: &servingv1alpha1.Service{}},
+		&handler.EnqueueRequestsFromMapFunc{ToRequests: mapFn},
+		p)
+
 	if err != nil {
 		return err
 	}
@@ -106,6 +147,11 @@ func (r *ReconcileCanary) Reconcile(request reconcile.Request) (reconcile.Result
 
 	instance.Status.InitializeConditions()
 
+	// TODO: not sure why this is needed
+	if instance.Status.LastIncrementTime.IsZero() {
+		instance.Status.LastIncrementTime = metav1.NewTime(time.Unix(0, 0))
+	}
+
 	// Get Knative service
 	serviceName := instance.Spec.TargetService.Name
 	serviceNamespace := instance.Spec.TargetService.Namespace
@@ -130,6 +176,28 @@ func (r *ReconcileCanary) Reconcile(request reconcile.Request) (reconcile.Result
 		return reconcile.Result{}, err
 	}
 
+	// link service to this canary. Only one canary can control a service
+	labels := kservice.GetLabels()
+	if labels != nil && labels[canaryLabel] != instance.GetName() {
+		instance.Status.MarkHasNotService("ExistingCanary", "service is already controlled by %v", labels[canaryLabel])
+		err = r.Status().Update(context, instance)
+		return reconcile.Result{}, err
+	}
+
+	if labels == nil {
+		labels = make(map[string]string)
+	}
+
+	if _, ok := labels[canaryLabel]; !ok {
+		labels[canaryLabel] = instance.GetName()
+		kservice.SetLabels(labels)
+		if err = r.Update(context, kservice); err != nil {
+			return reconcile.Result{}, err
+		}
+	}
+
+	instance.Status.MarkHasService()
+
 	// Check mode is set to 'release'. If not, change it
 	if kservice.Spec.Release == nil {
 		// TODO: maybe should check if equal to LastedCreatedRevisionName?
@@ -143,12 +211,54 @@ func (r *ReconcileCanary) Reconcile(request reconcile.Request) (reconcile.Result
 		kservice.Spec.RunLatest = nil
 		err := r.Update(context, kservice)
 		if err != nil {
+			instance.Status.MarkMinimumRevisionNotAvailable("NotReleaseMode", "%v", err)
+			err = r.Status().Update(context, instance)
 			return reconcile.Result{}, err
 		}
 	}
 
-	instance.Status.MarkHasService()
-	instance.Status.ObservedGeneration = instance.Generation
+	// Release must have at least 2 revisions
+	if len(kservice.Spec.Release.Revisions) < 2 {
+		instance.Status.MarkMinimumRevisionNotAvailable("NotEnoughRevisions", "")
+		err := r.Status().Update(context, instance)
+		return reconcile.Result{}, err
+	}
+
+	instance.Status.MarkMinimumRevisionAvailable()
+
+	// Increment traffic when applicable
+	traffic := instance.Spec.TrafficControl
+	release := kservice.Spec.Release
+	now := time.Now()
+	interval := traffic.GetInterval()
+
+	if release.RolloutPercent < traffic.GetMaxTrafficPercent() &&
+		now.After(instance.Status.LastIncrementTime.Add(interval)) {
+
+		// Due for increment
+		release.RolloutPercent += traffic.GetStepSize()
+		if release.RolloutPercent > traffic.GetMaxTrafficPercent() {
+			release.RolloutPercent = traffic.GetMaxTrafficPercent()
+		}
+
+		err := r.Update(context, kservice)
+		if err != nil {
+			return reconcile.Result{}, err
+		}
+
+		instance.Status.LastIncrementTime = metav1.NewTime(now)
+	}
+
+	result := reconcile.Result{}
+	if release.RolloutPercent == traffic.GetMaxTrafficPercent() {
+		// Rollout done.
+		instance.Status.ObservedGeneration = instance.Generation
+		instance.Status.Progressing = false
+	} else {
+		instance.Status.Progressing = true
+		result.RequeueAfter = interval
+	}
+
 	err = r.Status().Update(context, instance)
-	return reconcile.Result{}, err
+	return result, err
 }

@@ -1,0 +1,13 @@
+apiVersion: serving.knative.dev/v1alpha1
+kind: Service
+metadata:
+  name: stock-canary-example
+spec:
+  release:
+    configuration:
+      revisionTemplate:
+        spec:
+          container:
+            env:
+              - name: RESOURCE
+                value: share
