@@ -33,7 +33,9 @@ curl $DOMAIN
 Welcome to the stock app!
 ```
 
-2. Configure the canary:
+2. In a separate terminal, [run the controller locally](../../README.md#run-the-controller-locally)
+
+3. Configure the canary:
 
 ```sh
 kubectl apply -f canary.yaml
@@ -47,22 +49,35 @@ kubectl get ksvc stock-canary-example -oyaml
 
 You should see `runLatest` has been replaced by `release`.
 
-The canary condition shows `NotEnoughRevisions`:
+The canary condition `Ready` is `True` as the service traffic is 100% directed to the current revision.
 
 ```sh
 kubectl get canary stock-canary-example -oyaml
 ```
 
-3. Create a new stock app revision
+4. Create a new stock app revision
 
 ```sh
 kubectl apply -f stock-share-svc.yaml
 ```
 
+The canary controller automatically promotes the latest revision to candidate.
+It also automatically starts shifting traffic from current to canditate by a 2% increment every 1 minute, until
+reaching a max of 50%.
+
+Observe the traffic shifting by invoking the service multiple times:
+
+```sh
+Welcome to the stock app!
+Welcome to the stock app!
+Welcome to the share app!
+```
+
+
 ## Cleaning up
 
 ```sh
-kubectl delete all -l 'app.kubernetes.io/name=stock-canary-example'
+kubectl delete all,serviceentry -l 'app.kubernetes.io/name=stock-canary-example'
 ```
 
 ## Common issues

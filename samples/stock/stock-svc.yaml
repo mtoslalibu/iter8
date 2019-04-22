@@ -2,7 +2,8 @@ apiVersion: serving.knative.dev/v1alpha1
 kind: Service
 metadata:
   name: stock-canary-example
-  app.kubernetes.io/name: stock-canary-example
+  labels:
+    app.kubernetes.io/name: stock-canary-example
 spec:
   runLatest:
     configuration:

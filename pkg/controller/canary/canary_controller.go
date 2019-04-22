@@ -138,11 +138,6 @@ func (r *ReconcileCanary) Reconcile(request reconcile.Request) (reconcile.Result
 		return reconcile.Result{}, nil
 	}
 
-	if instance.Generation == instance.Status.ObservedGeneration {
-		log.Info("synchronized", "namespace", instance.Namespace, "name", instance.Name)
-		return reconcile.Result{}, nil
-	}
-
 	log.Info("reconciling", "namespace", instance.Namespace, "name", instance.Name)
 
 	instance.Status.InitializeConditions()
@@ -178,8 +173,8 @@ func (r *ReconcileCanary) Reconcile(request reconcile.Request) (reconcile.Result
 
 	// link service to this canary. Only one canary can control a service
 	labels := kservice.GetLabels()
-	if labels != nil && labels[canaryLabel] != instance.GetName() {
-		instance.Status.MarkHasNotService("ExistingCanary", "service is already controlled by %v", labels[canaryLabel])
+	if canary, found := labels[canaryLabel]; found && canary != instance.GetName() {
+		instance.Status.MarkHasNotService("ExistingCanary", "service is already controlled by %v", canary)
 		err = r.Status().Update(context, instance)
 		return reconcile.Result{}, err
 	}
@@ -200,33 +195,58 @@ func (r *ReconcileCanary) Reconcile(request reconcile.Request) (reconcile.Result
 
 	// Check mode is set to 'release'. If not, change it
 	if kservice.Spec.Release == nil {
-		// TODO: maybe should check if equal to LastedCreatedRevisionName?
+		current := getTrafficByName(kservice, "")
+		if current == nil {
+			instance.Status.MarkHasNotService("NoCurrentRevision", "")
+			err = r.Status().Update(context, instance)
+			return reconcile.Result{}, err
+		}
 		kservice.Spec.Release = &servingv1alpha1.ReleaseType{
-			Revisions: []string{
-				kservice.Status.LatestReadyRevisionName,
-			},
+			Revisions:      []string{current.RevisionName},
 			RolloutPercent: 0,
 			Configuration:  kservice.Spec.RunLatest.Configuration,
 		}
 		kservice.Spec.RunLatest = nil
+
 		err := r.Update(context, kservice)
 		if err != nil {
-			instance.Status.MarkMinimumRevisionNotAvailable("NotReleaseMode", "%v", err)
+			instance.Status.MarkHasNotService("NotReleaseMode", "%v", err)
 			err = r.Status().Update(context, instance)
 			return reconcile.Result{}, err
 		}
 	}
 
-	// Release must have at least 2 revisions
-	if len(kservice.Spec.Release.Revisions) < 2 {
-		instance.Status.MarkMinimumRevisionNotAvailable("NotEnoughRevisions", "")
-		err := r.Status().Update(context, instance)
-		return reconcile.Result{}, err
+	// Promote latest to candidate
+	if len(kservice.Spec.Release.Revisions) == 1 {
+		latest := getTrafficByName(kservice, "latest")
+		if latest == nil {
+			instance.Status.MarkHasNotService("NoLatestRevision", "")
+			err = r.Status().Update(context, instance)
+			return reconcile.Result{}, err
+		}
+
+		if kservice.Spec.Release.Revisions[0] != latest.RevisionName {
+			kservice.Spec.Release.Revisions = []string{kservice.Spec.Release.Revisions[0], latest.RevisionName}
+			kservice.Spec.Release.RolloutPercent = 0
+
+			err := r.Update(context, kservice)
+			if err != nil {
+				instance.Status.MarkHasNotService("NoCandidate", "%v", err)
+				err = r.Status().Update(context, instance)
+				return reconcile.Result{}, err
+			}
+		} else {
+			// latest == current. Canary is completed
+			instance.Status.MarkRolloutCompleted()
+			err = r.Status().Update(context, instance)
+			return reconcile.Result{}, err
+		}
 	}
 
-	instance.Status.MarkMinimumRevisionAvailable()
+	// Continue rollout
 
-	// Increment traffic when applicable
+	// Check if traffic must be updated
+
 	traffic := instance.Spec.TrafficControl
 	release := kservice.Spec.Release
 	now := time.Now()
@@ -252,13 +272,23 @@ func (r *ReconcileCanary) Reconcile(request reconcile.Request) (reconcile.Result
 	result := reconcile.Result{}
 	if release.RolloutPercent == traffic.GetMaxTrafficPercent() {
 		// Rollout done.
-		instance.Status.ObservedGeneration = instance.Generation
+		instance.Status.MarkRolloutCompleted()
 		instance.Status.Progressing = false
 	} else {
+		instance.Status.MarkRolloutNotCompleted("Progressing", "")
 		instance.Status.Progressing = true
 		result.RequeueAfter = interval
 	}
 
 	err = r.Status().Update(context, instance)
 	return result, err
+}
+
+func getTrafficByName(service *servingv1alpha1.Service, name string) *servingv1alpha1.TrafficTarget {
+	for _, traffic := range service.Status.Traffic {
+		if traffic.Name == name {
+			return &traffic
+		}
+	}
+	return nil
 }

@@ -123,13 +123,13 @@ const (
 	// CanaryConditionServiceProvided has status True when the Canary has been configured with a Knative service
 	CanaryConditionServiceProvided duckv1alpha1.ConditionType = "ServiceProvided"
 
-	// CanaryConditionMinimumRevisionsAvailable has status True when the Knative service has at least two revisions
-	CanaryConditionMinimumRevisionsAvailable duckv1alpha1.ConditionType = "MinimumRevisionsAvailable"
+	// CanaryConditionRolloutCompleted has status True when the Canary rollout is completed
+	CanaryConditionRolloutCompleted duckv1alpha1.ConditionType = "RolloutCompleted"
 )
 
 var canaryCondSet = duckv1alpha1.NewLivingConditionSet(
 	CanaryConditionServiceProvided,
-	CanaryConditionMinimumRevisionsAvailable,
+	CanaryConditionRolloutCompleted,
 )
 
 // InitializeConditions sets relevant unset conditions to Unknown state.
@@ -147,14 +147,14 @@ func (s *CanaryStatus) MarkHasNotService(reason, messageFormat string, messageA 
 	canaryCondSet.Manage(s).MarkFalse(CanaryConditionServiceProvided, reason, messageFormat, messageA...)
 }
 
-// MarkMinimumRevisionAvailable sets the condition that the target service has enough revisions
-func (s *CanaryStatus) MarkMinimumRevisionAvailable() {
-	canaryCondSet.Manage(s).MarkTrue(CanaryConditionMinimumRevisionsAvailable)
+// MarkHasService sets the condition that the target service has been found
+func (s *CanaryStatus) MarkRolloutCompleted() {
+	canaryCondSet.Manage(s).MarkTrue(CanaryConditionRolloutCompleted)
 }
 
-// MarkMinimumRevisionNotAvailable sets the condition thatthe target service has not enough revisions
-func (s *CanaryStatus) MarkMinimumRevisionNotAvailable(reason, messageFormat string, messageA ...interface{}) {
-	canaryCondSet.Manage(s).MarkFalse(CanaryConditionMinimumRevisionsAvailable, reason, messageFormat, messageA...)
+// MarkHasNotService sets the condition that the target service hasn't been found.
+func (s *CanaryStatus) MarkRolloutNotCompleted(reason, messageFormat string, messageA ...interface{}) {
+	canaryCondSet.Manage(s).MarkFalse(CanaryConditionRolloutCompleted, reason, messageFormat, messageA...)
 }
 
 func init() {

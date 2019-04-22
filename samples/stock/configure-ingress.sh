@@ -1,7 +1,7 @@
 #!/usr/bin/env bash
 
 echo fetching reviews domain
-DOMAIN=$(kubectl get ksvc stock-service-example -o=jsonpath='{.status.domain}')
+DOMAIN=$(kubectl get ksvc stock-canary-example -o=jsonpath='{.status.domain}')
 
 echo configuring ingress
 kubectl apply -f - << EOF
