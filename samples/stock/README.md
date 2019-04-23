@@ -4,7 +4,7 @@
 
 * Kubernetes 1.11+
 * Knative 0.5.0+
-* kubectl 1.14+
+* kubectl 1.11+
 * [Ko](https://github.com/google/ko). Make sure to set `$KO_DOCKER_REPO`
 
 ## Deploying
