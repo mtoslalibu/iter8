@@ -69,7 +69,7 @@ func add(mgr manager.Manager, r reconcile.Reconciler) error {
 		return err
 	}
 
-	// Watch changes to Knative services
+	// Watch for Knative services changes
 	mapFn := handler.ToRequestsFunc(
 		func(a handler.MapObject) []reconcile.Request {
 			canary := a.Meta.GetLabels()[canaryLabel]
@@ -97,6 +97,8 @@ func add(mgr manager.Manager, r reconcile.Reconciler) error {
 	err = c.Watch(&source.Kind{Type: &servingv1alpha1.Service{}},
 		&handler.EnqueueRequestsFromMapFunc{ToRequests: mapFn},
 		p)
+
+	// TODO: Watch for deployment changes
 
 	if err != nil {
 		return err
@@ -147,148 +149,15 @@ func (r *ReconcileCanary) Reconcile(request reconcile.Request) (reconcile.Result
 		instance.Status.LastIncrementTime = metav1.NewTime(time.Unix(0, 0))
 	}
 
-	// Get Knative service
-	serviceName := instance.Spec.TargetService.Name
-	serviceNamespace := instance.Spec.TargetService.Namespace
-	if serviceNamespace == "" {
-		serviceNamespace = instance.Namespace
+	apiVersion := instance.Spec.TargetService.APIVersion
+
+	switch apiVersion {
+	case "":
+	case "serving.knative.dev/v1alpha1":
+		return r.syncKnative(context, instance)
 	}
 
-	kservice := &servingv1alpha1.Service{}
-	err = r.Get(context, types.NamespacedName{Name: serviceName, Namespace: serviceNamespace}, kservice)
-	if err != nil {
-		instance.Status.MarkHasNotService("NotFound", "")
-		err = r.Status().Update(context, instance)
-		if err != nil {
-			return reconcile.Result{}, err
-		}
-		return reconcile.Result{Requeue: true}, nil
-	}
-
-	if kservice.Spec.DeprecatedPinned != nil {
-		instance.Status.MarkHasNotService("DeprecatedPinnedNotSupported", "")
-		err = r.Status().Update(context, instance)
-		return reconcile.Result{}, err
-	}
-
-	// link service to this canary. Only one canary can control a service
-	labels := kservice.GetLabels()
-	if canary, found := labels[canaryLabel]; found && canary != instance.GetName() {
-		instance.Status.MarkHasNotService("ExistingCanary", "service is already controlled by %v", canary)
-		err = r.Status().Update(context, instance)
-		return reconcile.Result{}, err
-	}
-
-	if labels == nil {
-		labels = make(map[string]string)
-	}
-
-	if _, ok := labels[canaryLabel]; !ok {
-		labels[canaryLabel] = instance.GetName()
-		kservice.SetLabels(labels)
-		if err = r.Update(context, kservice); err != nil {
-			return reconcile.Result{}, err
-		}
-	}
-
-	instance.Status.MarkHasService()
-
-	// Check mode is set to 'release'. If not, change it
-	if kservice.Spec.Release == nil {
-		current := getTrafficByName(kservice, "")
-		if current == nil {
-			instance.Status.MarkHasNotService("NoCurrentRevision", "")
-			err = r.Status().Update(context, instance)
-			return reconcile.Result{}, err
-		}
-		kservice.Spec.Release = &servingv1alpha1.ReleaseType{
-			Revisions:      []string{current.RevisionName},
-			RolloutPercent: 0,
-			Configuration:  kservice.Spec.RunLatest.Configuration,
-		}
-		kservice.Spec.RunLatest = nil
-
-		err := r.Update(context, kservice)
-		if err != nil {
-			instance.Status.MarkHasNotService("NotReleaseMode", "%v", err)
-			err = r.Status().Update(context, instance)
-			return reconcile.Result{}, err
-		}
-	}
-
-	// Promote latest to candidate
-	if len(kservice.Spec.Release.Revisions) == 1 {
-		latest := getTrafficByName(kservice, "latest")
-		if latest == nil {
-			instance.Status.MarkHasNotService("NoLatestRevision", "")
-			err = r.Status().Update(context, instance)
-			return reconcile.Result{}, err
-		}
-
-		if kservice.Spec.Release.Revisions[0] != latest.RevisionName {
-			kservice.Spec.Release.Revisions = []string{kservice.Spec.Release.Revisions[0], latest.RevisionName}
-			kservice.Spec.Release.RolloutPercent = 0
-
-			err := r.Update(context, kservice)
-			if err != nil {
-				instance.Status.MarkHasNotService("NoCandidate", "%v", err)
-				err = r.Status().Update(context, instance)
-				return reconcile.Result{}, err
-			}
-		} else {
-			// latest == current. Canary is completed
-			instance.Status.MarkRolloutCompleted()
-			err = r.Status().Update(context, instance)
-			return reconcile.Result{}, err
-		}
-	}
-
-	// Continue rollout
-
-	// Check if traffic must be updated
-
-	traffic := instance.Spec.TrafficControl
-	release := kservice.Spec.Release
-	now := time.Now()
-	interval := traffic.GetInterval()
-
-	if release.RolloutPercent < traffic.GetMaxTrafficPercent() &&
-		now.After(instance.Status.LastIncrementTime.Add(interval)) {
-
-		// Due for increment
-		release.RolloutPercent += traffic.GetStepSize()
-		if release.RolloutPercent > traffic.GetMaxTrafficPercent() {
-			release.RolloutPercent = traffic.GetMaxTrafficPercent()
-		}
-
-		err := r.Update(context, kservice)
-		if err != nil {
-			return reconcile.Result{}, err
-		}
-
-		instance.Status.LastIncrementTime = metav1.NewTime(now)
-	}
-
-	result := reconcile.Result{}
-	if release.RolloutPercent == traffic.GetMaxTrafficPercent() {
-		// Rollout done.
-		instance.Status.MarkRolloutCompleted()
-		instance.Status.Progressing = false
-	} else {
-		instance.Status.MarkRolloutNotCompleted("Progressing", "")
-		instance.Status.Progressing = true
-		result.RequeueAfter = interval
-	}
-
+	instance.Status.MarkHasNotService("UnsupportedAPIVersion", "%s", apiVersion)
 	err = r.Status().Update(context, instance)
-	return result, err
-}
-
-func getTrafficByName(service *servingv1alpha1.Service, name string) *servingv1alpha1.TrafficTarget {
-	for _, traffic := range service.Status.Traffic {
-		if traffic.Name == name {
-			return &traffic
-		}
-	}
-	return nil
+	return reconcile.Result{}, err
 }
