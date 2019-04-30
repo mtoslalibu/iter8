@@ -52,7 +52,7 @@ You should see `runLatest` has been replaced by `release`.
 The canary condition `Ready` is `True` as the service traffic is 100% directed to the current revision.
 
 ```sh
-kubectl get canary stock-canary-example -oyaml
+kubectl get canary.iter8.ibm.com stock-canary-example -oyaml
 ```
 
 4. Create a new stock app revision
