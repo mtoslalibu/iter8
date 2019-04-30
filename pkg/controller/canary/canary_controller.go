@@ -153,6 +153,7 @@ func (r *ReconcileCanary) Reconcile(request reconcile.Request) (reconcile.Result
 
 	switch apiVersion {
 	case "":
+		fallthrough
 	case "serving.knative.dev/v1alpha1":
 		return r.syncKnative(context, instance)
 	}
