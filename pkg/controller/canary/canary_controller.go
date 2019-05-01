@@ -35,6 +35,8 @@ import (
 	"sigs.k8s.io/controller-runtime/pkg/source"
 
 	servingv1alpha1 "github.com/knative/serving/pkg/apis/serving/v1alpha1"
+	appsv1 "k8s.io/api/apps/v1"
+	corev1 "k8s.io/api/core/v1"
 
 	iter8v1alpha1 "github.ibm.com/istio-research/iter8-controller/pkg/apis/iter8/v1alpha1"
 )
@@ -43,6 +45,9 @@ var log = logf.Log.WithName("canary-controller")
 
 const (
 	canaryLabel = "iter8.ibm.com/canary"
+
+	KubernetesService      = "kubernetes.service/v1"
+	KnativeServiceV1Alpha1 = "serving.knative.dev/v1alpha1"
 )
 
 // Add creates a new Canary Controller and adds it to the Manager with default RBAC. The Manager will set fields on the Controller
@@ -100,11 +105,18 @@ func add(mgr manager.Manager, r reconcile.Reconciler) error {
 		p)
 
 	if err != nil {
+		return err
+	}
+
+	// Watch for k8s deployment updates
+	err = c.Watch(&source.Kind{Type: &appsv1.Deployment{}},
+		&handler.EnqueueRequestsFromMapFunc{ToRequests: mapFn},
+		p)
+
+	if err != nil {
 		// Just log error.
 		log.Info("NoKnativeServingWatch", zap.Error(err))
 	}
-
-	// TODO: Watch for deployment changes
 
 	return nil
 }
@@ -177,10 +189,10 @@ func (r *ReconcileCanary) Reconcile(request reconcile.Request) (reconcile.Result
 	case "":
 		fallthrough
 	case "serving.knative.dev/v1alpha1":
-		return r.syncKnative(ctx, instance)
+		return r.syncKnative(context, instance)
+	default:
+		instance.Status.MarkHasNotService("UnsupportedAPIVersion", "%s", apiVersion)
+		err := r.Status().Update(context, instance)
+		return reconcile.Result{}, err
 	}
-
-	instance.Status.MarkHasNotService("UnsupportedAPIVersion", "%s", apiVersion)
-	err = r.Status().Update(ctx, instance)
-	return reconcile.Result{}, err
 }
