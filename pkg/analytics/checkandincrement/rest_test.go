@@ -15,6 +15,8 @@ package checkandincrement
 
 import (
 	"testing"
+
+	"sigs.k8s.io/controller-runtime/pkg/runtime/log"
 )
 
 type testCase struct {
@@ -54,8 +56,10 @@ func TestInvoke(t *testing.T) {
 			},
 		},
 	}
+	log.SetLogger(log.ZapLogger(false))
+	logger := log.Log.WithName("entrypoint")
 	for _, tc := range table {
-		_, err := Invoke(tc.endpoint, tc.request)
+		_, err := Invoke(logger, tc.endpoint, &tc.request)
 		if err != nil {
 			t.Error(err)
 		}

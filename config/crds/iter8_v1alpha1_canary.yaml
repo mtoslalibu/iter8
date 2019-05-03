@@ -27,6 +27,37 @@ spec:
           type: object
         spec:
           properties:
+            analysis:
+              properties:
+                analyticsService:
+                  type: string
+                metrics:
+                  items:
+                    properties:
+                      name:
+                        type: string
+                      onSuccess:
+                        type: string
+                      sampleSize:
+                        format: int64
+                        type: integer
+                      type:
+                        type: string
+                      value:
+                        format: double
+                        type: number
+                    required:
+                    - name
+                    - type
+                    - onSuccess
+                    - value
+                    - sampleSize
+                    type: object
+                  type: array
+              required:
+              - analyticsService
+              - metrics
+              type: object
             targetService:
               type: object
             trafficControl:
@@ -48,14 +79,17 @@ spec:
           required:
           - targetService
           - trafficControl
+          - analysis
           type: object
         status:
           properties:
+            analysisState:
+              type: object
             conditions:
               items:
                 properties:
                   lastTransitionTime:
-                    type: string
+                    type: object
                   message:
                     type: string
                   reason:
@@ -82,6 +116,7 @@ spec:
           required:
           - lastIncrementTime
           - progressing
+          - analysisState
           type: object
   version: v1alpha1
 status:

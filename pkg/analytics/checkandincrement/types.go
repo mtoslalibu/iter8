@@ -51,6 +51,12 @@ type TrafficControl struct {
 	// each time it passes the success criteria; defaults to 1 percent point
 	StepSize float64 `json:"step_size"`
 
+	// Determines how the traffic must be split at the end of the experiment; options:
+	// "baseline": all traffic goes to the baseline version;
+	// "canary": all traffic goes to the canary version;
+	// "both": traffic is split across baseline and canary. Defaults to “canary”
+	OnSuccess string `json:"on_success"`
+
 	// List of criteria for assessing the canary version
 	SuccessCriteria []SuccessCriterion `json:"success_criteria"`
 }
@@ -72,15 +78,25 @@ type SuccessCriterion struct {
 	// "threshold": checks the canary with respect to the metric
 	Type SuccessCriterionType `json:"type"`
 
-	// Determines how the traffic must be split at the end of the experiment; options:
-	// "baseline": all traffic goes to the baseline version;
-	// "canary": all traffic goes to the canary version;
-	// "both": traffic is split across baseline and canary.
-	// Defaults to “canary”
-	OnSuccess string `json:"on_success"`
-
 	// Value to check
 	Value float64 `json:"value"`
+
+	// Minimum number of data points required to make a decision based on this criterion;
+	// if not specified, there is no requirement on the sample size
+	SampleSize int `json:"sample_size"`
+
+	// Indicates whether or not the experiment must finish if this criterion is not satisfied;
+	// defaults to false
+	StopOnFailure bool `json:"stop_on_failure"`
+
+	// Indicates whether or not this criterion is considered for traffic-control decisions;
+	// defaults to true
+	EnableTrafficControl bool `json:"enable_traffic_control"`
+
+	// Indicates that this criterion is based on statistical confidence;
+	// for instance, one can specify a 98% confidence that the criterion is satisfied;
+	// if not specified, there is no confidence requirement
+	Confidence float64 `json:"confidence"`
 }
 
 type Response struct {
@@ -89,11 +105,52 @@ type Response struct {
 
 	// Measurements and traffic recommendation for the baseline version
 	Canary MetricsTraffic `json:"canary"`
+
+	// Summary of the canary assessment based on success criteria
+	Assessment Assessment `json:"assessment"`
+
+	// State returned by the server, to be passed on the next call
+	LastState interface{} `json:"_last_state"`
+}
+
+type Assessment struct {
+	// Summary of the canary assessment based on success criteria
+	Summary Summary `json:"summary"`
+
+	// Summary of results for each success criterion
+	SuccessCriteria []SuccessCriterionOutput `json:"success_criteria"`
+}
+
+type Summary struct {
+	// Overall summary based on all success criteria
+	Conclusions []string `json:"conclusions"`
+
+	// Indicates whether or not all success criteria for assessing the canary version
+	// have been met
+	AllSuccessCriteriaMet bool `json:"all_success_criteria_met"`
+
+	// Indicates whether or not the experiment must be aborted based on the success criteria
+	AbortExperiment bool `json:"abort_experiment"`
+}
+
+type SuccessCriterionOutput struct {
+	// Name of the metric to which the criterion applies
+	// example: iter8_latency
+	MetricName string `json:"metric_name"`
+
+	// Overall summary based on all success criteria
+	Conclusions []string `json:"conclusions"`
+
+	// Indicates whether or not the success criterion for the corresponding metric has been met
+	SuccessCriteriaMet bool `json:"success_criteria_met"`
+
+	// Indicates whether or not the experiment must be aborted on the basis of the criterion for this metric
+	AbortExperiment bool `json:"abort_experiment"`
 }
 
 type MetricsTraffic struct {
 	// Measurements and traffic recommendation for the baseline version
-	TrafficPercentage float64 `json:traffic_percentage"`
+	TrafficPercentage float64 `json:"traffic_percentage"`
 
 	// Sate returned by the server, to be passed on the next call
 	LastState interface{} `json:"_last_state"`
