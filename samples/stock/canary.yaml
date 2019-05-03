@@ -9,7 +9,8 @@ spec:
     name: stock-canary-example
   trafficControl:
     strategy: check_and_increment
-    interval: 10000000000 # 10sec
+    interval: 20s
+    stepSize: 5
   analysis:
     analyticsService: "localhost:5555"
     metrics:

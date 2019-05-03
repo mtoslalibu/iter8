@@ -133,12 +133,12 @@ func (r *ReconcileCanary) syncKnative(context context.Context, instance *iter8v1
 	traffic := instance.Spec.TrafficControl
 	release := kservice.Spec.Release
 	now := time.Now()
-	interval := traffic.GetInterval()
+	interval, _ := traffic.GetIntervalDuration()
 
-	if release.RolloutPercent < traffic.GetMaxTrafficPercent() &&
+	if release.RolloutPercent < int(traffic.GetMaxTrafficPercent()) &&
 		now.After(instance.Status.LastIncrementTime.Add(interval)) {
 
-		newRolloutPercent := release.RolloutPercent
+		newRolloutPercent := float64(release.RolloutPercent)
 		switch instance.Spec.TrafficControl.Strategy {
 		case "manual":
 			newRolloutPercent += traffic.GetStepSize()
@@ -170,8 +170,8 @@ func (r *ReconcileCanary) syncKnative(context context.Context, instance *iter8v1
 				return reconcile.Result{}, err
 			}
 
-			baselineTraffic := int(response.Baseline.TrafficPercentage)
-			canaryTraffic := int(response.Canary.TrafficPercentage)
+			baselineTraffic := response.Baseline.TrafficPercentage
+			canaryTraffic := response.Canary.TrafficPercentage
 			log.Info("NewTraffic", "baseline", baselineTraffic, "canary", canaryTraffic)
 			newRolloutPercent = canaryTraffic
 
@@ -185,8 +185,8 @@ func (r *ReconcileCanary) syncKnative(context context.Context, instance *iter8v1
 			instance.Status.AnalysisState = runtime.RawExtension{Raw: lastState}
 		}
 
-		if release.RolloutPercent != newRolloutPercent {
-			release.RolloutPercent = newRolloutPercent
+		if release.RolloutPercent != int(newRolloutPercent) {
+			release.RolloutPercent = int(newRolloutPercent)
 
 			err = r.Update(context, kservice)
 			if err != nil {
@@ -198,7 +198,7 @@ func (r *ReconcileCanary) syncKnative(context context.Context, instance *iter8v1
 	}
 
 	result := reconcile.Result{}
-	if release.RolloutPercent == traffic.GetMaxTrafficPercent() {
+	if release.RolloutPercent == int(traffic.GetMaxTrafficPercent()) {
 		// Rollout done.
 		instance.Status.MarkRolloutCompleted()
 		instance.Status.Progressing = false

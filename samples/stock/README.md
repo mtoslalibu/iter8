@@ -6,6 +6,7 @@
 * Knative 0.5.0+
 * kubectl 1.11+
 * [Ko](https://github.com/google/ko). Make sure to set `$KO_DOCKER_REPO`
+* [fortio](https://github.com/fortio/fortio) for load testing
 
 ## Deploying
 
@@ -26,10 +27,10 @@ ko apply -f stock-svc.yaml
 
 ```sh
 kubectl apply -f prometheus-lb.yaml
-ITER8_ANALYTICS_METRICS_BACKEND_URL=http://$(k get services prometheus-system-np-lb -o=jsonpath='{.status.loadBalancer.ingress[0].ip}' -n knative-monitoring)
+ITER8_ANALYTICS_METRICS_BACKEND_URL=http://$(k get services prometheus-system-np-lb -o=jsonpath='{.status.loadBalancer.ingress[0].ip}' -n knative-monitoring):9090
 ```
 
-## Verifying
+## Verifying (locally)
 
 1. Start the [analytic service locally](https://github.ibm.com/istio-research/iter8/tree/master/scripts)
 
@@ -46,10 +47,16 @@ Welcome to the stock app!
 
 3. In a separate terminal, [run the controller locally](../../README.md#run-the-controller-locally)
 
-4. Configure the manual canary:
+4. Create a new stock app revision
 
 ```sh
-kubectl apply -f canary-manual.yaml
+kubectl apply -f stock-share-svc.yaml
+```
+
+5. Configure the canary:
+
+```sh
+kubectl apply -f canary.yaml
 ```
 
 Wait a bit and get the service:
@@ -66,23 +73,31 @@ The canary condition `Ready` is `True` as the service traffic is 100% directed t
 kubectl get canary.iter8.ibm.com stock-canary-example -oyaml
 ```
 
-5. Create a new stock app revision
+6. Generate some load
 
 ```sh
-kubectl apply -f stock-share-svc.yaml
+fortio load -t 10m -qps 100  http://$DOMAIN
 ```
 
 The canary controller automatically promotes the latest revision to candidate.
-It also automatically starts shifting traffic from current to canditate by a 2% increment every 1 minute, until
-reaching a max of 50%.
 
 Observe the traffic shifting by invoking the service multiple times:
 
 ```sh
-Welcome to the stock app!
-Welcome to the stock app!
-Welcome to the share app!
+$ watch curl $DOMAIN
 ```
+
+## Observing traffic with Graphana
+
+1. Forward Knative monitoring Prometheus traffic to localhost
+
+```sh
+kubectl port-forward --namespace knative-monitoring $(kubectl get pods --namespace knative-monitoring --selector=app=grafana --output=jsonpath="{.items..metadata.name}") 3000
+```
+
+2. Open [http://localhost:3000](http://localhost:3000)
+
+3. Open Knative Serving - Revision HTTP Requests dashboard
 
 ## Cleaning up
 
