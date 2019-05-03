@@ -149,6 +149,10 @@ func (r *ReconcileCanary) Reconcile(request reconcile.Request) (reconcile.Result
 		instance.Status.LastIncrementTime = metav1.NewTime(time.Unix(0, 0))
 	}
 
+	if instance.Status.AnalysisState.Raw == nil {
+		instance.Status.AnalysisState.Raw = []byte("{}")
+	}
+
 	apiVersion := instance.Spec.TargetService.APIVersion
 
 	switch apiVersion {

@@ -8,12 +8,6 @@ spec:
   targetService:
     name: stock-canary-example
   trafficControl:
-    strategy: check_and_increment
+    strategy: manual
     interval: 10000000000 # 10sec
-  analysis:
-    analyticsService: "localhost:5555"
-    metrics:
-      - name: iter8_latency
-        type: delta
-        value: 1.0
-        sampleSize: 10
+

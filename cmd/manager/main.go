@@ -35,7 +35,7 @@ func main() {
 	var metricsAddr string
 	flag.StringVar(&metricsAddr, "metrics-addr", ":8080", "The address the metric endpoint binds to.")
 	flag.Parse()
-	logf.SetLogger(logf.ZapLogger(false))
+	logf.SetLogger(logf.ZapLogger(true))
 	log := logf.Log.WithName("entrypoint")
 
 	// Get a config to talk to the apiserver

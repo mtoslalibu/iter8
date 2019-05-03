@@ -9,6 +9,8 @@ Open questions
   plan behavior: when rollout is completed.
 - how to promote latest revisions to candidate?
   plan behavior: when no candidate
+- When to reset analytic last state
+  current behavior: each time the spec changes.
 
 Knative serving behavior
 - when only one revision traffic.current = traffic.latest, and cannot set rolloutPercent

@@ -17,15 +17,20 @@ package checkandincrement
 import (
 	"bytes"
 	"encoding/json"
+	"fmt"
 	"io/ioutil"
 	"net/http"
+
+	"github.com/go-logr/logr"
 )
 
-func Invoke(endpoint string, payload Request) (*Response, error) {
+func Invoke(log logr.Logger, endpoint string, payload *Request) (*Response, error) {
 	data, err := json.Marshal(payload)
 	if err != nil {
 		return nil, err
 	}
+
+	log.V(7).Info("post", "endpoint", "check_and_increment", "request", string(data))
 
 	raw, err := http.Post("http://"+endpoint+"/api/v1/analytics/canary/check_and_increment", "application/json", bytes.NewBuffer(data))
 	if err != nil {
@@ -35,10 +40,17 @@ func Invoke(endpoint string, payload Request) (*Response, error) {
 	defer raw.Body.Close()
 	body, err := ioutil.ReadAll(raw.Body)
 
+	log.V(7).Info("post", "endpoint", "check_and_increment", "response", string(body))
+
+	if raw.StatusCode >= 400 {
+		return nil, fmt.Errorf("%v", string(body))
+	}
+
 	var response Response
 	err = json.Unmarshal(body, &response)
 	if err != nil {
 		return nil, err
 	}
+
 	return &response, nil
 }
