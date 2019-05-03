@@ -58,7 +58,8 @@ type CanarySpec struct {
 	TrafficControl TrafficControl `json:"trafficControl"`
 
 	// Analysis parameters
-	Analysis Analysis `json:"analysis"`
+	// +optional
+	Analysis Analysis `json:"analysis,omitempty"`
 }
 
 // CanaryStatus defines the observed state of Canary
@@ -83,17 +84,23 @@ type TrafficControl struct {
 
 	// MaxTrafficPercent is the maximum traffic ratio to send to the canary. Default is 50
 	// +optional
-	// Deprecated
-	MaxTrafficPercent *int `json:"maxTrafficPercent,omitempty"`
+	MaxTrafficPercent *float64 `json:"maxTrafficPercent,omitempty"`
 
 	// StepSize is the traffic increment per interval. Default is 2
 	// +optional
-	// Deprecated
-	StepSize *int `json:"stepSize,omitempty"`
+	StepSize *float64 `json:"stepSize,omitempty"`
 
 	// Interval is the time in second before the next increment. Default is 1mn
 	// +optional
-	Interval *time.Duration `json:"interval,omitempty"`
+	Interval *string `json:"interval,omitempty"`
+
+	// Determines how the traffic must be split at the end of the experiment; options:
+	// "baseline": all traffic goes to the baseline version;
+	// "canary": all traffic goes to the canary version;
+	// "both": traffic is split across baseline and canary.
+	// Defaults to “canary”
+	// +optional
+	OnSuccess *string `json:"onSuccess,omitempty"`
 }
 
 type Analysis struct {
@@ -114,49 +121,76 @@ type SuccessCriterion struct {
 	// "threshold": checks the canary with respect to the metric
 	Type checkandincrement.SuccessCriterionType `json:"type"`
 
-	// Determines how the traffic must be split at the end of the experiment; options:
-	// "baseline": all traffic goes to the baseline version;
-	// "canary": all traffic goes to the canary version;
-	// "both": traffic is split across baseline and canary.
-	// Defaults to “canary”
-	OnSuccess string `json:"onSuccess"`
-
 	// Value to check
 	Value float64 `json:"value"`
 
 	// Minimum number of data points required to make a decision based on this criterion;
 	// if not specified, there is no requirement on the sample size
-	SampleSize int `json:"sampleSize"`
+	// +optional
+	SampleSize *int `json:"sampleSize,omitempty"`
+
+	// Indicates whether or not the experiment must finish if this criterion is not satisfied;
+	// defaults to false
+	// +optional
+	StopOnFailure *bool `json:"stopOnFailure,omitempty"`
+
+	// Indicates whether or not this criterion is considered for traffic-control decisions;
+	// defaults to true
+	// +optional
+	EnableTrafficControl *bool `json:"enableTrafficControl,omitempty"`
+
+	// Indicates that this criterion is based on statistical confidence;
+	// for instance, one can specify a 98% confidence that the criterion is satisfied;
+	// if not specified, there is no confidence requirement
+	// +optional
+	Confidence *float64 `json:"confidence,omitempty"`
 }
 
 // GetMaxTrafficPercent gets the specified max traffic percent or the default value (50)
-func (t *TrafficControl) GetMaxTrafficPercent() int {
+func (t *TrafficControl) GetMaxTrafficPercent() float64 {
 	maxPercent := t.MaxTrafficPercent
 	if maxPercent == nil {
-		fifty := int(50)
+		fifty := float64(50)
 		maxPercent = &fifty
 	}
 	return *maxPercent
 }
 
 // GetStepSize gets the specified step size or the default value (2%)
-func (t *TrafficControl) GetStepSize() int {
+func (t *TrafficControl) GetStepSize() float64 {
 	stepSize := t.StepSize
 	if stepSize == nil {
-		two := int(2)
+		two := float64(2)
 		stepSize = &two
 	}
 	return *stepSize
 }
 
-// GetInterval gets the specified interval or the default value (1mn)
-func (t *TrafficControl) GetInterval() time.Duration {
+// GetInterval gets the specified interval or the default value (1m)
+func (t *TrafficControl) GetInterval() string {
 	interval := t.Interval
 	if interval == nil {
-		onemn := time.Minute
+		onemn := "1m"
 		interval = &onemn
 	}
 	return *interval
+}
+
+// GetIntervalDuration gets the specified interval or the default value (1mn)
+func (t *TrafficControl) GetIntervalDuration() (time.Duration, error) {
+	interval := t.GetInterval()
+
+	return time.ParseDuration(interval)
+}
+
+// Get how the traffic must be split at the end of the experiment; Default is "canary"
+func (t *TrafficControl) GetOnSuccess() string {
+	onsuccess := t.OnSuccess
+	if onsuccess == nil {
+		canary := "canary"
+		onsuccess = &canary
+	}
+	return *onsuccess
 }
 
 const (

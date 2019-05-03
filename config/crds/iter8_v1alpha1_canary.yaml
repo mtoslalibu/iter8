@@ -34,13 +34,18 @@ spec:
                 metrics:
                   items:
                     properties:
+                      confidence:
+                        format: double
+                        type: number
+                      enableTrafficControl:
+                        type: boolean
                       name:
-                        type: string
-                      onSuccess:
                         type: string
                       sampleSize:
                         format: int64
                         type: integer
+                      stopOnFailure:
+                        type: boolean
                       type:
                         type: string
                       value:
@@ -49,9 +54,7 @@ spec:
                     required:
                     - name
                     - type
-                    - onSuccess
                     - value
-                    - sampleSize
                     type: object
                   type: array
               required:
@@ -63,14 +66,15 @@ spec:
             trafficControl:
               properties:
                 interval:
-                  format: int64
-                  type: integer
+                  type: string
                 maxTrafficPercent:
-                  format: int64
-                  type: integer
+                  format: double
+                  type: number
+                onSuccess:
+                  type: string
                 stepSize:
-                  format: int64
-                  type: integer
+                  format: double
+                  type: number
                 strategy:
                   type: string
               required:
@@ -79,7 +83,6 @@ spec:
           required:
           - targetService
           - trafficControl
-          - analysis
           type: object
         status:
           properties:
@@ -89,7 +92,7 @@ spec:
               items:
                 properties:
                   lastTransitionTime:
-                    type: object
+                    type: string
                   message:
                     type: string
                   reason:

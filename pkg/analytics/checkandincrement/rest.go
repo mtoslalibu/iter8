@@ -30,7 +30,7 @@ func Invoke(log logr.Logger, endpoint string, payload *Request) (*Response, erro
 		return nil, err
 	}
 
-	log.V(7).Info("post", "endpoint", "check_and_increment", "request", string(data))
+	log.Info("post", "endpoint", "check_and_increment", "request", string(data))
 
 	raw, err := http.Post("http://"+endpoint+"/api/v1/analytics/canary/check_and_increment", "application/json", bytes.NewBuffer(data))
 	if err != nil {
@@ -40,7 +40,7 @@ func Invoke(log logr.Logger, endpoint string, payload *Request) (*Response, erro
 	defer raw.Body.Close()
 	body, err := ioutil.ReadAll(raw.Body)
 
-	log.V(7).Info("post", "endpoint", "check_and_increment", "response", string(body))
+	log.Info("post", "endpoint", "check_and_increment", "response", string(body))
 
 	if raw.StatusCode >= 400 {
 		return nil, fmt.Errorf("%v", string(body))

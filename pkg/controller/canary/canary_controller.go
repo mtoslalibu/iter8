@@ -153,6 +153,13 @@ func (r *ReconcileCanary) Reconcile(request reconcile.Request) (reconcile.Result
 		instance.Status.AnalysisState.Raw = []byte("{}")
 	}
 
+	creationts := instance.ObjectMeta.GetCreationTimestamp()
+	now := metav1.Now()
+	if !creationts.Before(&now) {
+		// Delay experiment by 1 sec
+		return reconcile.Result{RequeueAfter: time.Second}, nil
+	}
+
 	apiVersion := instance.Spec.TargetService.APIVersion
 
 	switch apiVersion {

@@ -33,30 +33,41 @@ func MakeRequest(object *iter8v1alpha1.Canary, baseline, canary *corev1.Service)
 			MetricName: metric.Name,
 			Type:       metric.Type,
 			Value:      metric.Value,
-			SampleSize: metric.SampleSize,
-			// OnSuccess:  metric.OnSuccess,
+		}
+		if metric.SampleSize != nil {
+			metrics[i].SampleSize = *metric.SampleSize
+		}
+		if metric.StopOnFailure != nil {
+			metrics[i].StopOnFailure = *metric.StopOnFailure
+		}
+		if metric.EnableTrafficControl != nil {
+			metrics[i].EnableTrafficControl = *metric.EnableTrafficControl
+		}
+		if metric.Confidence != nil {
+			metrics[i].Confidence = *metric.Confidence
 		}
 	}
 	now := time.Now().Format(time.RFC3339)
 
 	return &checkandincrement.Request{
 		Baseline: checkandincrement.Window{
-			StartTime: baseline.ObjectMeta.GetCreationTimestamp().Format(time.RFC3339),
+			StartTime: object.ObjectMeta.GetCreationTimestamp().Format(time.RFC3339),
 			EndTime:   now,
 			Tags: map[string]string{
 				"destination_service_name": baseline.GetName(),
 			},
 		},
 		Canary: checkandincrement.Window{
-			StartTime: canary.ObjectMeta.GetCreationTimestamp().Format(time.RFC3339),
+			StartTime: object.ObjectMeta.GetCreationTimestamp().Format(time.RFC3339),
 			EndTime:   now,
 			Tags: map[string]string{
 				"destination_service_name": canary.GetName(),
 			},
 		},
 		TrafficControl: checkandincrement.TrafficControl{
-			MaxTrafficPercent: 50,
-			StepSize:          2,
+			MaxTrafficPercent: object.Spec.TrafficControl.GetMaxTrafficPercent(),
+			StepSize:          object.Spec.TrafficControl.GetStepSize(),
+			OnSuccess:         object.Spec.TrafficControl.GetOnSuccess(),
 			SuccessCriteria:   metrics,
 		},
 		LastState: object.Status.AnalysisState,
