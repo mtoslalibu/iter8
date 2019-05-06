@@ -20,6 +20,7 @@ import (
 	"encoding/json"
 	"time"
 
+	"github.com/go-logr/logr"
 	servingv1alpha1 "github.com/knative/serving/pkg/apis/serving/v1alpha1"
 	corev1 "k8s.io/api/core/v1"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
@@ -32,6 +33,8 @@ import (
 )
 
 func (r *ReconcileCanary) syncKnative(context context.Context, instance *iter8v1alpha1.Canary) (reconcile.Result, error) {
+	log := context.Value("logger").(logr.Logger)
+
 	// Get Knative service
 	serviceName := instance.Spec.TargetService.Name
 	serviceNamespace := instance.Spec.TargetService.Namespace
@@ -101,7 +104,7 @@ func (r *ReconcileCanary) syncKnative(context context.Context, instance *iter8v1
 		}
 	}
 
-	// Promote latest to candidate
+	// Promote latest to candidate when there is only one revision
 	if len(kservice.Spec.Release.Revisions) == 1 {
 		latest := getTrafficByName(kservice, "latest")
 		if latest == nil {
@@ -128,22 +131,68 @@ func (r *ReconcileCanary) syncKnative(context context.Context, instance *iter8v1
 		}
 	}
 
-	// Check if traffic should be updated.
+	// check experiment is finished
+	if instance.Spec.TrafficControl.GetIterationCount() <= instance.Status.CurrentIteration {
+		log.Info("experiment completed.")
+		update := false
+		if instance.Status.AssessmentSummary.AllSuccessCriteriaMet {
+			// experiment is successful
+			switch instance.Spec.TrafficControl.GetOnSuccess() {
+			case "baseline":
+				if kservice.Spec.Release.RolloutPercent != 0 {
+					kservice.Spec.Release.RolloutPercent = 0
+					update = true
+				}
+			case "canary":
+				if kservice.Spec.Release.RolloutPercent != 100 {
+					kservice.Spec.Release.RolloutPercent = 100
+					update = true
+				}
+			case "both":
+				// noop.
+			}
 
+		} else {
+			// Switch traffic back to current
+			if kservice.Spec.Release.RolloutPercent != 0 {
+				kservice.Spec.Release.RolloutPercent = 0
+				update = true
+			}
+		}
+
+		labels := kservice.GetLabels()
+		_, has := labels[canaryLabel]
+		if has {
+			delete(labels, canaryLabel)
+		}
+
+		if has || update {
+			err := r.Update(context, kservice)
+			if err != nil {
+				return reconcile.Result{}, err // retry
+			}
+		}
+
+		// End experiment
+		instance.Status.MarkRolloutCompleted()
+		err = r.Status().Update(context, instance)
+		return reconcile.Result{}, err
+	}
+
+	// Check if traffic should be updated.
 	traffic := instance.Spec.TrafficControl
 	release := kservice.Spec.Release
 	now := time.Now()
-	interval, _ := traffic.GetIntervalDuration()
+	interval, _ := traffic.GetIntervalDuration() // TODO: admissioncontrollervalidation
 
-	if release.RolloutPercent < int(traffic.GetMaxTrafficPercent()) &&
-		now.After(instance.Status.LastIncrementTime.Add(interval)) {
+	if now.After(instance.Status.LastIncrementTime.Add(interval)) {
+		log.Info("process iteration.")
 
 		newRolloutPercent := float64(release.RolloutPercent)
 		switch instance.Spec.TrafficControl.Strategy {
 		case "manual":
 			newRolloutPercent += traffic.GetStepSize()
 		case "check_and_increment":
-
 			// Get underlying k8s services
 			baselineService, err := r.getServiceForRevision(context, kservice, kservice.Spec.Release.Revisions[0])
 			if err != nil {
@@ -170,6 +219,18 @@ func (r *ReconcileCanary) syncKnative(context context.Context, instance *iter8v1
 				return reconcile.Result{}, err
 			}
 
+			// Abort?
+			if response.Assessment.Summary.AbortExperiment {
+				log.Info("abort experiment.")
+				if kservice.Spec.Release.RolloutPercent != 0 {
+					kservice.Spec.Release.RolloutPercent = 0
+					err := r.Update(context, kservice)
+					if err != nil {
+						return reconcile.Result{}, err // retry
+					}
+				}
+			}
+
 			baselineTraffic := response.Baseline.TrafficPercentage
 			canaryTraffic := response.Canary.TrafficPercentage
 			log.Info("NewTraffic", "baseline", baselineTraffic, "canary", canaryTraffic)
@@ -182,14 +243,19 @@ func (r *ReconcileCanary) syncKnative(context context.Context, instance *iter8v1
 				err = r.Status().Update(context, instance)
 				return reconcile.Result{}, err
 			}
+
 			instance.Status.AnalysisState = runtime.RawExtension{Raw: lastState}
+			instance.Status.AssessmentSummary = response.Assessment.Summary
+			instance.Status.CurrentIteration++
 		}
 
-		if release.RolloutPercent != int(newRolloutPercent) {
+		if newRolloutPercent <= traffic.GetMaxTrafficPercent() && release.RolloutPercent != int(newRolloutPercent) {
+			log.Info("set traffic", "rolloutPercent", newRolloutPercent)
 			release.RolloutPercent = int(newRolloutPercent)
 
 			err = r.Update(context, kservice)
 			if err != nil {
+				// TODO: the analysis service will be called again upon retry. Maybe we do want that.
 				return reconcile.Result{}, err
 			}
 		}
@@ -197,19 +263,9 @@ func (r *ReconcileCanary) syncKnative(context context.Context, instance *iter8v1
 		instance.Status.LastIncrementTime = metav1.NewTime(now)
 	}
 
-	result := reconcile.Result{}
-	if release.RolloutPercent == int(traffic.GetMaxTrafficPercent()) {
-		// Rollout done.
-		instance.Status.MarkRolloutCompleted()
-		instance.Status.Progressing = false
-	} else {
-		instance.Status.MarkRolloutNotCompleted("Progressing", "")
-		instance.Status.Progressing = true
-		result.RequeueAfter = interval
-	}
-
+	instance.Status.MarkRolloutNotCompleted("Progressing", "")
 	err = r.Status().Update(context, instance)
-	return result, err
+	return reconcile.Result{RequeueAfter: interval}, err
 }
 
 func getTrafficByName(service *servingv1alpha1.Service, name string) *servingv1alpha1.TrafficTarget {
@@ -233,5 +289,4 @@ func (r *ReconcileCanary) getServiceForRevision(context context.Context, ksvc *s
 		return nil, err
 	}
 	return service, nil
-
 }

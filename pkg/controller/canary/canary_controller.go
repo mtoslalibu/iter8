@@ -19,6 +19,7 @@ import (
 	"context"
 	"time"
 
+	corev1 "k8s.io/api/core/v1"
 	"k8s.io/apimachinery/pkg/api/errors"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/apimachinery/pkg/runtime"
@@ -120,11 +121,11 @@ type ReconcileCanary struct {
 // +kubebuilder:rbac:groups=iter8.ibm.com,resources=canaries,verbs=get;list;watch;create;update;patch;delete
 // +kubebuilder:rbac:groups=iter8.ibm.com,resources=canaries/status,verbs=get;update;patch
 func (r *ReconcileCanary) Reconcile(request reconcile.Request) (reconcile.Result, error) {
-	context := context.Background()
+	ctx := context.Background()
 
 	// Fetch the Canary instance
 	instance := &iter8v1alpha1.Canary{}
-	err := r.Get(context, request.NamespacedName, instance)
+	err := r.Get(ctx, request.NamespacedName, instance)
 	if err != nil {
 		if errors.IsNotFound(err) {
 			// Object not found, return.  Created objects are automatically garbage collected.
@@ -140,7 +141,16 @@ func (r *ReconcileCanary) Reconcile(request reconcile.Request) (reconcile.Result
 		return reconcile.Result{}, nil
 	}
 
-	log.Info("reconciling", "namespace", instance.Namespace, "name", instance.Name)
+	log := log.WithValues("namespace", instance.Namespace, "name", instance.Name)
+	ctx = context.WithValue(ctx, "logger", log)
+	// Stop right here if the experiment is completed.
+	completed := instance.Status.GetCondition(iter8v1alpha1.CanaryConditionRolloutCompleted)
+	if completed != nil && completed.Status == corev1.ConditionTrue {
+		log.Info("rollout completed")
+		return reconcile.Result{}, nil
+	}
+
+	log.Info("reconciling")
 
 	instance.Status.InitializeConditions()
 
@@ -166,10 +176,10 @@ func (r *ReconcileCanary) Reconcile(request reconcile.Request) (reconcile.Result
 	case "":
 		fallthrough
 	case "serving.knative.dev/v1alpha1":
-		return r.syncKnative(context, instance)
+		return r.syncKnative(ctx, instance)
 	}
 
 	instance.Status.MarkHasNotService("UnsupportedAPIVersion", "%s", apiVersion)
-	err = r.Status().Update(context, instance)
+	err = r.Status().Update(ctx, instance)
 	return reconcile.Result{}, err
 }

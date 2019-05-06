@@ -22,8 +22,6 @@ import (
 	corev1 "k8s.io/api/core/v1"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	runtime "k8s.io/apimachinery/pkg/runtime"
-
-	"github.ibm.com/istio-research/iter8-controller/pkg/analytics/checkandincrement"
 )
 
 // +genclient
@@ -70,13 +68,16 @@ type CanaryStatus struct {
 	duckv1alpha1.Status `json:",inline"`
 
 	// LastIncrementTime is the last time the traffic has been incremented
-	LastIncrementTime metav1.Time `json:"lastIncrementTime"`
+	LastIncrementTime metav1.Time `json:"lastIncrementTime,omitempty"`
 
-	// Progressing is true when rollout is in progress
-	Progressing bool `json:"progressing"`
+	// CurrentIteration is the current iteration number
+	CurrentIteration int `json:"currentIteration,omitempty"`
 
 	// AnalysisState is the last analysis state
-	AnalysisState runtime.RawExtension `json:"analysisState"`
+	AnalysisState runtime.RawExtension `json:"analysisState,omitempty"`
+
+	// AssessmentSummary returned by the last analyis
+	AssessmentSummary Summary `json:"assessment,omitempty"`
 }
 
 type TrafficControl struct {
@@ -94,12 +95,17 @@ type TrafficControl struct {
 	// +optional
 	Interval *string `json:"interval,omitempty"`
 
+	// Number of iterations for this experiment. Default to 100.
+	// +optional
+	IterationCount *int `json:"iterationCount,omitempty"`
+
 	// Determines how the traffic must be split at the end of the experiment; options:
 	// "baseline": all traffic goes to the baseline version;
 	// "canary": all traffic goes to the canary version;
 	// "both": traffic is split across baseline and canary.
 	// Defaults to “canary”
 	// +optional
+	//+kubebuilder:validation:Enum=baseline,canary,both
 	OnSuccess *string `json:"onSuccess,omitempty"`
 }
 
@@ -111,6 +117,25 @@ type Analysis struct {
 	Metrics []SuccessCriterion `json:"metrics"`
 }
 
+type Summary struct {
+	// Overall summary based on all success criteria
+	Conclusions []string `json:"conclusions,omitempty"`
+
+	// Indicates whether or not all success criteria for assessing the canary version
+	// have been met
+	AllSuccessCriteriaMet bool `json:"all_success_criteria_met,omitempty"`
+
+	// Indicates whether or not the experiment must be aborted based on the success criteria
+	AbortExperiment bool `json:"abort_experiment,omitempty"`
+}
+
+type SuccessCriterionType string
+
+const (
+	SuccessCriterionDelta     SuccessCriterionType = "delta"
+	SuccessCriterionThreshold SuccessCriterionType = "threshold"
+)
+
 type SuccessCriterion struct {
 	// Name of the metric to which the criterion applies
 	// example: iter8_latency
@@ -119,7 +144,7 @@ type SuccessCriterion struct {
 	// 	Criterion type. Options:
 	// "delta": compares the canary against the baseline version with respect to the metric;
 	// "threshold": checks the canary with respect to the metric
-	Type checkandincrement.SuccessCriterionType `json:"type"`
+	Type SuccessCriterionType `json:"type"`
 
 	// Value to check
 	Value float64 `json:"value"`
@@ -164,6 +189,16 @@ func (t *TrafficControl) GetStepSize() float64 {
 		stepSize = &two
 	}
 	return *stepSize
+}
+
+// GetIterationCount gets the number of iterations or the default value (100)
+func (t *TrafficControl) GetIterationCount() int {
+	count := t.IterationCount
+	if count == nil {
+		hundred := int(100)
+		count = &hundred
+	}
+	return *count
 }
 
 // GetInterval gets the specified interval or the default value (1m)
