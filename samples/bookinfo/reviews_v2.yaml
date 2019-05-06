@@ -1,0 +1,60 @@
+# Copyright 2017 Istio Authors
+#
+#   Licensed under the Apache License, Version 2.0 (the "License");
+#   you may not use this file except in compliance with the License.
+#   You may obtain a copy of the License at
+#
+#       http://www.apache.org/licenses/LICENSE-2.0
+#
+#   Unless required by applicable law or agreed to in writing, software
+#   distributed under the License is distributed on an "AS IS" BASIS,
+#   WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+#   See the License for the specific language governing permissions and
+#   limitations under the License.
+---
+##################################################################################################
+# reviews service
+##################################################################################################
+apiVersion: v1
+kind: Service
+metadata:
+  name: reviews
+  labels:
+    app: reviews
+    service: reviews
+spec:
+  ports:
+  - port: 9080
+    name: http
+  selector:
+    app: reviews
+---
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: reviews-v2
+  labels:
+    app: reviews
+    version: v2
+    iter8.ibm.com/canary: baseline
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app: reviews
+      version: v2
+      iter8.ibm.com/canary: baseline
+  template:
+    metadata:
+      labels:
+        app: reviews
+        version: v2
+        iter8.ibm.com/canary: baseline
+    spec:
+      containers:
+      - name: reviews
+        image: istio/examples-bookinfo-reviews-v2:1.11.0
+        imagePullPolicy: IfNotPresent
+        ports:
+        - containerPort: 9080
+---

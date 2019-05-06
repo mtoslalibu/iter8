@@ -34,6 +34,11 @@ import (
 	"k8s.io/apimachinery/pkg/types"
 )
 
+const (
+	Baseline  = "baseline"
+	Candidate = "candidate"
+)
+
 func (r *ReconcileCanary) syncIstio(context context.Context, canary *iter8v1alpha1.Canary) (reconcile.Result, error) {
 	serviceName := canary.Spec.TargetService.Name
 	serviceNamespace := canary.Spec.TargetService.Namespace
@@ -71,9 +76,9 @@ func (r *ReconcileCanary) syncIstio(context context.Context, canary *iter8v1alph
 	var baseline, candidate *appsv1.Deployment
 	for _, d := range deployments.Items {
 		if val, ok := d.ObjectMeta.Labels[canaryLabel]; ok {
-			if val == "candidate" {
+			if val == Candidate {
 				candidate = d.DeepCopy()
-			} else if val == "base" {
+			} else if val == Baseline {
 				baseline = d.DeepCopy()
 			}
 		}
@@ -88,7 +93,7 @@ func (r *ReconcileCanary) syncIstio(context context.Context, canary *iter8v1alph
 		return reconcile.Result{Requeue: true}, nil
 	}
 
-	log.Info("istio-sync", "baseline", baseline.GetName(), "candidate", candidate.GetName())
+	log.Info("istio-sync", "baseline", baseline.GetName(), Candidate, candidate.GetName())
 
 	// Get info on Canary
 	traffic := canary.Spec.TrafficControl
@@ -123,7 +128,7 @@ func (r *ReconcileCanary) syncIstio(context context.Context, canary *iter8v1alph
 	}
 
 	// Check canary rollout status
-	rolloutPercent := float64(getWeight("candidate", vs))
+	rolloutPercent := float64(getWeight(Candidate, vs))
 	log.Info("istio-sync", "prev rollout percent", rolloutPercent, "max traffic percent", traffic.GetMaxTrafficPercent())
 	if rolloutPercent < traffic.GetMaxTrafficPercent() &&
 		now.After(canary.Status.LastIncrementTime.Add(interval)) {
@@ -171,7 +176,7 @@ func (r *ReconcileCanary) syncIstio(context context.Context, canary *iter8v1alph
 	}
 
 	result := reconcile.Result{}
-	if getWeight("candidate", vs) == int(traffic.GetMaxTrafficPercent()) {
+	if getWeight(Candidate, vs) == int(traffic.GetMaxTrafficPercent()) {
 		// Rollout done.
 		canary.Status.MarkRolloutCompleted()
 		canary.Status.Progressing = false
@@ -211,12 +216,12 @@ func newDestinationRule(canary *iter8v1alpha1.Canary) *v1alpha3.DestinationRule 
 			Host: canary.Spec.TargetService.Name,
 			Subsets: []v1alpha3.Subset{
 				v1alpha3.Subset{
-					Name:   "base",
-					Labels: map[string]string{canaryLabel: "base"},
+					Name:   Baseline,
+					Labels: map[string]string{canaryLabel: Baseline},
 				},
 				v1alpha3.Subset{
-					Name:   "candidate",
-					Labels: map[string]string{canaryLabel: "candidate"},
+					Name:   Candidate,
+					Labels: map[string]string{canaryLabel: Candidate},
 				},
 			},
 		},
@@ -255,30 +260,21 @@ func makeVirtualService(rolloutPercent int, canary *iter8v1alpha1.Canary) *v1alp
 			// TODO: add owner references
 		},
 		Spec: v1alpha3.VirtualServiceSpec{
-			Gateways: []string{"mesh"},
-			Hosts:    []string{canary.Spec.TargetService.Name},
+			Hosts: []string{canary.Spec.TargetService.Name},
 			HTTP: []v1alpha3.HTTPRoute{
 				{
 					Route: []v1alpha3.HTTPRouteDestination{
 						{
 							Destination: v1alpha3.Destination{
 								Host:   canary.Spec.TargetService.Name,
-								Subset: "base",
-								Port: v1alpha3.PortSelector{
-									// TODO: Add this field to CRD
-									Number: 9080,
-								},
+								Subset: Baseline,
 							},
 							Weight: 100 - rolloutPercent,
 						},
 						{
 							Destination: v1alpha3.Destination{
 								Host:   canary.Spec.TargetService.Name,
-								Subset: "candidate",
-								Port: v1alpha3.PortSelector{
-									// TODO: Add this field to CRD
-									Number: 9080,
-								},
+								Subset: Candidate,
 							},
 							Weight: rolloutPercent,
 						},
