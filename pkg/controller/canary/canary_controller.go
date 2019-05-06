@@ -34,7 +34,7 @@ import (
 	logf "sigs.k8s.io/controller-runtime/pkg/runtime/log"
 	"sigs.k8s.io/controller-runtime/pkg/source"
 
-	servingv1alpha1 "github.com/knative/serving/pkg/apis/serving/v1alpha1"
+	//	servingv1alpha1 "github.com/knative/serving/pkg/apis/serving/v1alpha1"
 	appsv1 "k8s.io/api/apps/v1"
 
 	iter8v1alpha1 "github.ibm.com/istio-research/iter8-controller/pkg/apis/iter8/v1alpha1"
@@ -99,13 +99,13 @@ func add(mgr manager.Manager, r reconcile.Reconciler) error {
 		},
 	}
 
-	err = c.Watch(&source.Kind{Type: &servingv1alpha1.Service{}},
-		&handler.EnqueueRequestsFromMapFunc{ToRequests: mapFn},
-		p)
+	// err = c.Watch(&source.Kind{Type: &servingv1alpha1.Service{}},
+	// 	&handler.EnqueueRequestsFromMapFunc{ToRequests: mapFn},
+	// 	p)
 
-	if err != nil {
-		return err
-	}
+	// if err != nil {
+	// 	return err
+	// }
 
 	// Watch for k8s deployment updates
 	err = c.Watch(&source.Kind{Type: &appsv1.Deployment{}},
