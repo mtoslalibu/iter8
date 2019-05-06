@@ -17,44 +17,47 @@ package canary
 
 import (
 	"context"
+	"time"
 
 	iter8v1alpha1 "github.ibm.com/istio-research/iter8-controller/pkg/apis/iter8/v1alpha1"
+	"sigs.k8s.io/controller-runtime/pkg/client"
 	"sigs.k8s.io/controller-runtime/pkg/reconcile"
 
 	v1alpha3 "github.com/knative/pkg/apis/istio/v1alpha3"
+
 	appsv1 "k8s.io/api/apps/v1"
 	corev1 "k8s.io/api/core/v1"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
-	"github.com/knative/pkg/kmeta"
+	"k8s.io/apimachinery/pkg/types"
 )
 
-func (r *ReconcileCanary) syncIstio(context context.Context, instance *iter8v1alpha1.Canary) (reconcile.Result, error) {
-	serviceName := instance.Spec.TargetService.Name
-	serviceNamespace := instance.Spec.TargetService.Namespace
+func (r *ReconcileCanary) syncIstio(context context.Context, canary *iter8v1alpha1.Canary) (reconcile.Result, error) {
+	serviceName := canary.Spec.TargetService.Name
+	serviceNamespace := canary.Spec.TargetService.Namespace
 	if serviceNamespace == "" {
-		serviceNamespace = instance.Namespace
+		serviceNamespace = canary.Namespace
 	}
 
 	// Get k8s service
 	service := &corev1.Service{}
 	err := r.Get(context, types.NamespacedName{Name: serviceName, Namespace: serviceNamespace}, service)
 	if err != nil {
-		instance.Status.MarkHasNotService("NotFound", "")
-		err = r.Status().Update(context, instance)
+		canary.Status.MarkHasNotService("NotFound", "")
+		err = r.Status().Update(context, canary)
 		if err != nil {
 			return reconcile.Result{}, err
 		}
 		return reconcile.Result{Requeue: true}, nil
 	}
 
-	instance.Status.MarkHasService()
+	canary.Status.MarkHasService()
 
 	// Get deployment list
 	deployments := &appsv1.DeploymentList{}
-	if err = List(context, &deployments, client.MatchingLabels(service.Spec.Selector)); err != nil {
+	if err = r.List(context, client.MatchingLabels(service.Spec.Selector), deployments); err != nil {
 		// TODO: add new type of status to set unavailable deployments
-		instance.Status.MarkHasNotService("NotFound", "")
-		err = r.Status().Update(context, instance)
+		canary.Status.MarkHasNotService("NotFound", "")
+		err = r.Status().Update(context, canary)
 		if err != nil {
 			return reconcile.Result{}, err
 		}
@@ -63,120 +66,196 @@ func (r *ReconcileCanary) syncIstio(context context.Context, instance *iter8v1al
 
 	// Get current deployment and candidate deployment
 	var base, candidate *appsv1.Deployment
-	for _, d := deployments.Items {
+	for _, d := range deployments.Items {
 		if val, ok := d.ObjectMeta.Labels[canaryLabel]; ok {
 			if val == "candidate" {
 				candidate = d.DeepCopy()
-			}else if val == "base" {
+			} else if val == "base" {
 				base = d.DeepCopy()
 			}
 		}
 	}
 
 	if base == nil || candidate == nil {
-		instance.Status.MarkHasNotService("Base or candidate deployment is missing", "")
-		err = r.Status().Update(context, instance)
+		canary.Status.MarkHasNotService("Base or candidate deployment is missing", "")
+		err = r.Status().Update(context, canary)
 		if err != nil {
 			return reconcile.Result{}, err
 		}
 		return reconcile.Result{Requeue: true}, nil
 	}
 
+	log.Info("istio-sync", "base", base.GetName(), "candidate", candidate.GetName())
+
+	// Get info on Canary
+	traffic := canary.Spec.TrafficControl
+	now := time.Now()
+	interval := traffic.GetInterval()
+
 	// Start Canary Process
 	// Setup Istio Routing Rules
+	// TODO: should include deployment info here
+	drName := getDestinationRuleName(canary)
+	dr := &v1alpha3.DestinationRule{}
+	if err = r.Get(context, types.NamespacedName{Name: drName, Namespace: canary.Namespace}, dr); err != nil {
+		dr = newDestinationRule(canary)
+		err := r.Create(context, dr)
+		if err != nil {
+			return reconcile.Result{}, err
+		}
+		log.Info("istio-sync", "create destinationRule", drName)
+	}
 
-	// Take reviews as an example
-	// apiVersion: networking.istio.io/v1alpha3
-	// kind: DestinationRule
-	// metadata:
-	//   name: reviews-canary
-	// spec:
-	//   host: reviews
-	//   subsets:
-	//   - name: base
-	// 	   labels:
-	// 	     iter8.ibm.com/canary: base
-	//   - name: candidate
-	// 	   labels:
-	// 	     iter8.ibm.com/canary: candidate
+	vsName := getVirtualServiceName(canary)
+	vs := &v1alpha3.VirtualService{}
+	if err = r.Get(context, types.NamespacedName{Name: vsName, Namespace: canary.Namespace}, vs); err != nil {
+		vs = makeVirtualService(0, canary)
+		//	log.Info("istio-sync", "subset name", vs.Spec.HTTP[0].Route[0].Destination.Subset)
+		err := r.Create(context, vs)
+		if err != nil {
+			return reconcile.Result{}, err
+		}
+		log.Info("istio-sync", "create virtualservice", vsName)
+	}
 
-	
+	// Check canary rollout status
+	rolloutPercent := getWeight("candidate", vs)
+	log.Info("istio-sync", "prev rollout percent", rolloutPercent, "max traffic percent", traffic.GetMaxTrafficPercent())
+	if rolloutPercent < traffic.GetMaxTrafficPercent() &&
+		now.After(canary.Status.LastIncrementTime.Add(interval)) {
 
+		// Due for increment
+		rolloutPercent += traffic.GetStepSize()
+		if rolloutPercent > traffic.GetMaxTrafficPercent() {
+			rolloutPercent = traffic.GetMaxTrafficPercent()
+		}
 
-	return reconcile.Result{}, nil
+		log.Info("istio-sync", "new rollout perccent", rolloutPercent)
+		rv := vs.ObjectMeta.ResourceVersion
+		vs = makeVirtualService(rolloutPercent, canary)
+		setResourceVersion(rv, vs)
+		log.Info("istio-sync", "updated vs", *vs)
+		err := r.Update(context, vs)
+		if err != nil {
+			return reconcile.Result{}, err
+		}
+
+		canary.Status.LastIncrementTime = metav1.NewTime(now)
+	}
+
+	result := reconcile.Result{}
+	if getWeight("candidate", vs) == traffic.GetMaxTrafficPercent() {
+		// Rollout done.
+		canary.Status.MarkRolloutCompleted()
+		canary.Status.Progressing = false
+	} else {
+		canary.Status.MarkRolloutNotCompleted("Progressing", "")
+		canary.Status.Progressing = true
+		result.RequeueAfter = interval
+	}
+
+	err = r.Status().Update(context, canary)
+
+	return result, err
 }
 
-func newDestinationRule(canary *iter8v1alpha1.Canary){
+// apiVersion: networking.istio.io/v1alpha3
+// kind: DestinationRule
+// metadata:
+//   name: reviews-canary
+// spec:
+//   host: reviews
+//   subsets:
+//   - name: base
+// 	   labels:
+// 	     iter8.ibm.com/canary: base
+//   - name: candidate
+// 	   labels:
+// 	     iter8.ibm.com/canary: candidate
+
+func newDestinationRule(canary *iter8v1alpha1.Canary) *v1alpha3.DestinationRule {
 	dr := &v1alpha3.DestinationRule{
 		ObjectMeta: metav1.ObjectMeta{
-			Name: getDestinationRuleName(canary),
-			Namespace: serviceNamespace,
-			// TODO: add owner references 
+			Name:      getDestinationRuleName(canary),
+			Namespace: canary.Namespace,
+			// TODO: add owner references
 		},
-		Spec: &v1alpha3.DestinationRuleSpec{
-			Host: serviceName,
-			Subsets: []*istiov1alpha3.Subset{
-				&istiov1alpha3.Subset{
-					Name: "base",
+		Spec: v1alpha3.DestinationRuleSpec{
+			Host: canary.Spec.TargetService.Name,
+			Subsets: []v1alpha3.Subset{
+				v1alpha3.Subset{
+					Name:   "base",
 					Labels: map[string]string{canaryLabel: "base"},
 				},
-				&istiov1alpha3.Subset{
-					Name: "candidate",
+				v1alpha3.Subset{
+					Name:   "candidate",
 					Labels: map[string]string{canaryLabel: "candidate"},
 				},
 			},
 		},
-}
+	}
+
+	return dr
 }
 
 func getDestinationRuleName(canary *iter8v1alpha1.Canary) string {
-	return canary.Spec.TargetService.Name + "-canary"
+	return canary.Spec.TargetService.Name + "-iter8.canary"
 }
 
 // apiVersion: networking.istio.io/v1alpha3
-	// kind: VirtualService
-	// metadata:
-	//   name: reviews-canary
-	// spec:
-	//   hosts:
-	// 	- reviews
-	//   http:
-	//   - route:
-	// 		- destination:
-	// 			host: reviews
-	// 			subset: base
-	// 	  	  weight: 50
-	// 		- destination:
-	// 			host: reviews
-	// 			subset: candidate
-	// 	  	  weight: 50
-	
-func newVirtualService(canary *iter8v1alpha1.Canary) *v1alpha3.VirtualService {
+// kind: VirtualService
+// metadata:
+//   name: reviews-canary
+// spec:
+//   hosts:
+// 	- reviews
+//   http:
+//   - route:
+// 		- destination:
+// 			host: reviews
+// 			subset: base
+// 	  	  weight: 50
+// 		- destination:
+// 			host: reviews
+// 			subset: candidate
+// 	  	  weight: 50
+
+func makeVirtualService(rolloutPercent int, canary *iter8v1alpha1.Canary) *v1alpha3.VirtualService {
 	vs := &v1alpha3.VirtualService{
 		ObjectMeta: metav1.ObjectMeta{
-			Name: getVirtualServiceName(canary),
-			Namespace: canary.Spec.TargetService.Namespace,
-			// TODO: add owner references 
+			Name:      getVirtualServiceName(canary),
+			Namespace: canary.Namespace,
+			// TODO: add owner references
 		},
-		Spec: &v1alpha3.VirtualServiceSpec{
-			Gateways: "mesh",
-			Hosts: canary.Spec.TargetService.Name ,
-			HTTP: &v1alpha3.HTTPRoute{
-				Route: v1alpha3.HTTPRouteDestination{
-					{
-						Destination: v1alpha3.Destination{
-							Host: canary.Spec.TargetService.Name ,
-							Subset: "base",
+		Spec: v1alpha3.VirtualServiceSpec{
+			Gateways: []string{"mesh"},
+			Hosts:    []string{canary.Spec.TargetService.Name},
+			HTTP: []v1alpha3.HTTPRoute{
+				{
+					Route: []v1alpha3.HTTPRouteDestination{
+						{
+							Destination: v1alpha3.Destination{
+								Host:   canary.Spec.TargetService.Name,
+								Subset: "base",
+								Port: v1alpha3.PortSelector{
+									// TODO: Add this field to CRD
+									Number: 9080,
+								},
+							},
+							Weight: 100 - rolloutPercent,
 						},
-						Weight: 100,
+						{
+							Destination: v1alpha3.Destination{
+								Host:   canary.Spec.TargetService.Name,
+								Subset: "candidate",
+								Port: v1alpha3.PortSelector{
+									// TODO: Add this field to CRD
+									Number: 9080,
+								},
+							},
+							Weight: rolloutPercent,
+						},
 					},
-					{
-						Destination: v1alpha3.Destination{
-							Host: canary.Spec.TargetService.Name ,
-							Subset: "candidate",
-						},
-						Weight: 0,
-					},		
 				},
 			},
 		},
@@ -185,6 +264,20 @@ func newVirtualService(canary *iter8v1alpha1.Canary) *v1alpha3.VirtualService {
 	return vs
 }
 
+// Should add deployment names
 func getVirtualServiceName(canary *iter8v1alpha1.Canary) string {
-	return canary.Spec.TargetService.Name + "-canary"
+	return canary.Spec.TargetService.Name + "-iter8.canary"
+}
+
+func getWeight(subset string, vs *v1alpha3.VirtualService) int {
+	for _, route := range vs.Spec.HTTP[0].Route {
+		if route.Destination.Subset == subset {
+			return route.Weight
+		}
+	}
+	return 0
+}
+
+func setResourceVersion(rv string, vs *v1alpha3.VirtualService) {
+	vs.ObjectMeta.ResourceVersion = rv
 }

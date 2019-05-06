@@ -36,7 +36,6 @@ import (
 
 	servingv1alpha1 "github.com/knative/serving/pkg/apis/serving/v1alpha1"
 	appsv1 "k8s.io/api/apps/v1"
-	corev1 "k8s.io/api/core/v1"
 
 	iter8v1alpha1 "github.ibm.com/istio-research/iter8-controller/pkg/apis/iter8/v1alpha1"
 )
@@ -46,7 +45,7 @@ var log = logf.Log.WithName("canary-controller")
 const (
 	canaryLabel = "iter8.ibm.com/canary"
 
-	KubernetesService      = "kubernetes.service/v1"
+	KubernetesService      = "v1"
 	KnativeServiceV1Alpha1 = "serving.knative.dev/v1alpha1"
 )
 
