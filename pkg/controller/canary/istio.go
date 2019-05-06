@@ -17,8 +17,10 @@ package canary
 
 import (
 	"context"
+	"encoding/json"
 	"time"
 
+	"github.ibm.com/istio-research/iter8-controller/pkg/analytics/checkandincrement"
 	iter8v1alpha1 "github.ibm.com/istio-research/iter8-controller/pkg/apis/iter8/v1alpha1"
 	"sigs.k8s.io/controller-runtime/pkg/client"
 	"sigs.k8s.io/controller-runtime/pkg/reconcile"
@@ -28,6 +30,7 @@ import (
 	appsv1 "k8s.io/api/apps/v1"
 	corev1 "k8s.io/api/core/v1"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
+	runtime "k8s.io/apimachinery/pkg/runtime"
 	"k8s.io/apimachinery/pkg/types"
 )
 
@@ -65,18 +68,18 @@ func (r *ReconcileCanary) syncIstio(context context.Context, canary *iter8v1alph
 	}
 
 	// Get current deployment and candidate deployment
-	var base, candidate *appsv1.Deployment
+	var baseline, candidate *appsv1.Deployment
 	for _, d := range deployments.Items {
 		if val, ok := d.ObjectMeta.Labels[canaryLabel]; ok {
 			if val == "candidate" {
 				candidate = d.DeepCopy()
 			} else if val == "base" {
-				base = d.DeepCopy()
+				baseline = d.DeepCopy()
 			}
 		}
 	}
 
-	if base == nil || candidate == nil {
+	if baseline == nil || candidate == nil {
 		canary.Status.MarkHasNotService("Base or candidate deployment is missing", "")
 		err = r.Status().Update(context, canary)
 		if err != nil {
@@ -85,12 +88,13 @@ func (r *ReconcileCanary) syncIstio(context context.Context, canary *iter8v1alph
 		return reconcile.Result{Requeue: true}, nil
 	}
 
-	log.Info("istio-sync", "base", base.GetName(), "candidate", candidate.GetName())
+	log.Info("istio-sync", "baseline", baseline.GetName(), "candidate", candidate.GetName())
 
 	// Get info on Canary
 	traffic := canary.Spec.TrafficControl
 	now := time.Now()
-	interval := traffic.GetInterval()
+	// TODO: check err in getting the time value
+	interval, _ := traffic.GetIntervalDuration()
 
 	// Start Canary Process
 	// Setup Istio Routing Rules
@@ -119,20 +123,43 @@ func (r *ReconcileCanary) syncIstio(context context.Context, canary *iter8v1alph
 	}
 
 	// Check canary rollout status
-	rolloutPercent := getWeight("candidate", vs)
+	rolloutPercent := float64(getWeight("candidate", vs))
 	log.Info("istio-sync", "prev rollout percent", rolloutPercent, "max traffic percent", traffic.GetMaxTrafficPercent())
 	if rolloutPercent < traffic.GetMaxTrafficPercent() &&
 		now.After(canary.Status.LastIncrementTime.Add(interval)) {
 
-		// Due for increment
-		rolloutPercent += traffic.GetStepSize()
-		if rolloutPercent > traffic.GetMaxTrafficPercent() {
-			rolloutPercent = traffic.GetMaxTrafficPercent()
+		switch canary.Spec.TrafficControl.Strategy {
+		case "manual":
+			rolloutPercent += traffic.GetStepSize()
+		case "check_and_increment":
+			// Get latest analysis
+			payload := MakeRequest(canary, baseline, candidate)
+			response, err := checkandincrement.Invoke(log, canary.Spec.Analysis.AnalyticsService, payload)
+			if err != nil {
+				// TODO: Need new condition
+				canary.Status.MarkHasNotService("ErrorAnalytics", "%v", err)
+				err = r.Status().Update(context, canary)
+				return reconcile.Result{}, err
+			}
+
+			baselineTraffic := response.Baseline.TrafficPercentage
+			canaryTraffic := response.Canary.TrafficPercentage
+			log.Info("NewTraffic", "baseline", baselineTraffic, "canary", canaryTraffic)
+			rolloutPercent = canaryTraffic
+
+			lastState, err := json.Marshal(response.LastState)
+			if err != nil {
+				// TODO: Need new condition
+				canary.Status.MarkHasNotService("ErrorAnalyticsResponse", "%v", err)
+				err = r.Status().Update(context, canary)
+				return reconcile.Result{}, err
+			}
+			canary.Status.AnalysisState = runtime.RawExtension{Raw: lastState}
 		}
 
 		log.Info("istio-sync", "new rollout perccent", rolloutPercent)
 		rv := vs.ObjectMeta.ResourceVersion
-		vs = makeVirtualService(rolloutPercent, canary)
+		vs = makeVirtualService(int(rolloutPercent), canary)
 		setResourceVersion(rv, vs)
 		log.Info("istio-sync", "updated vs", *vs)
 		err := r.Update(context, vs)
@@ -144,7 +171,7 @@ func (r *ReconcileCanary) syncIstio(context context.Context, canary *iter8v1alph
 	}
 
 	result := reconcile.Result{}
-	if getWeight("candidate", vs) == traffic.GetMaxTrafficPercent() {
+	if getWeight("candidate", vs) == int(traffic.GetMaxTrafficPercent()) {
 		// Rollout done.
 		canary.Status.MarkRolloutCompleted()
 		canary.Status.Progressing = false

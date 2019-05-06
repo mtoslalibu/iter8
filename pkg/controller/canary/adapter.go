@@ -18,14 +18,15 @@ package canary
 import (
 	"time"
 
+	appsv1 "k8s.io/api/apps/v1"
 	corev1 "k8s.io/api/core/v1"
 
 	"github.ibm.com/istio-research/iter8-controller/pkg/analytics/checkandincrement"
 	iter8v1alpha1 "github.ibm.com/istio-research/iter8-controller/pkg/apis/iter8/v1alpha1"
 )
 
-func MakeRequest(object *iter8v1alpha1.Canary, baseline, canary *corev1.Service) *checkandincrement.Request {
-	spec := object.Spec
+func MakeRequest(instance *iter8v1alpha1.Canary, baseline, canary interface{}) *checkandincrement.Request {
+	spec := instance.Spec
 
 	metrics := make([]checkandincrement.SuccessCriterion, len(spec.Analysis.Metrics))
 	for i, metric := range spec.Analysis.Metrics {
@@ -48,30 +49,60 @@ func MakeRequest(object *iter8v1alpha1.Canary, baseline, canary *corev1.Service)
 		}
 	}
 	now := time.Now().Format(time.RFC3339)
+	destinationKey, namespaceKey, baseVal, canaryVal, baseNsVal, canaryNsVal := "", "", "", "", "", ""
+	switch instance.Spec.TargetService.APIVersion {
+	case KubernetesService:
+		destinationKey = "destination_workload"
+		namespaceKey = "destination_namespace"
+		baseVal = baseline.(*appsv1.Deployment).GetName()
+		canaryVal = canary.(*appsv1.Deployment).GetName()
+		baseNsVal = baseline.(*appsv1.Deployment).GetNamespace()
+		canaryNsVal = canary.(*appsv1.Deployment).GetNamespace()
+	case KnativeServiceV1Alpha1:
+		destinationKey = "destination_service_name"
+		namespaceKey = "destination_service_namespace"
+		baseVal = baseline.(*corev1.Service).GetName()
+		canaryVal = canary.(*corev1.Service).GetName()
+		baseNsVal = baseline.(*corev1.Service).GetNamespace()
+		canaryNsVal = canary.(*corev1.Service).GetNamespace()
+	default:
+		// TODO: add err information
+		return &checkandincrement.Request{}
+	}
 
 	return &checkandincrement.Request{
 		Baseline: checkandincrement.Window{
-			StartTime: object.ObjectMeta.GetCreationTimestamp().Format(time.RFC3339),
+			StartTime: instance.ObjectMeta.GetCreationTimestamp().Format(time.RFC3339),
 			EndTime:   now,
 			Tags: map[string]string{
+<<<<<<< HEAD
 				"destination_service_name":      baseline.GetName(),
 				"destination_service_namespace": baseline.GetNamespace(),
+=======
+				destinationKey: baseVal,
+				namespaceKey:   baseNsVal,
+>>>>>>> stage changes
 			},
 		},
 		Canary: checkandincrement.Window{
-			StartTime: object.ObjectMeta.GetCreationTimestamp().Format(time.RFC3339),
+			StartTime: instance.ObjectMeta.GetCreationTimestamp().Format(time.RFC3339),
 			EndTime:   now,
 			Tags: map[string]string{
+<<<<<<< HEAD
 				"destination_service_name":      canary.GetName(),
 				"destination_service_namespace": baseline.GetNamespace(),
+=======
+				destinationKey: canaryVal,
+				namespaceKey:   canaryNsVal,
+>>>>>>> stage changes
 			},
 		},
 		TrafficControl: checkandincrement.TrafficControl{
-			MaxTrafficPercent: object.Spec.TrafficControl.GetMaxTrafficPercent(),
-			StepSize:          object.Spec.TrafficControl.GetStepSize(),
-			OnSuccess:         object.Spec.TrafficControl.GetOnSuccess(),
+			MaxTrafficPercent: instance.Spec.TrafficControl.GetMaxTrafficPercent(),
+			StepSize:          instance.Spec.TrafficControl.GetStepSize(),
+			OnSuccess:         instance.Spec.TrafficControl.GetOnSuccess(),
 			SuccessCriteria:   metrics,
 		},
-		LastState: object.Status.AnalysisState,
+		LastState: instance.Status.AnalysisState,
 	}
 }
