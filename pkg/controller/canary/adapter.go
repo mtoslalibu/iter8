@@ -54,14 +54,16 @@ func MakeRequest(object *iter8v1alpha1.Canary, baseline, canary *corev1.Service)
 			StartTime: object.ObjectMeta.GetCreationTimestamp().Format(time.RFC3339),
 			EndTime:   now,
 			Tags: map[string]string{
-				"destination_service_name": baseline.GetName(),
+				"destination_service_name":      baseline.GetName(),
+				"destination_service_namespace": baseline.GetNamespace(),
 			},
 		},
 		Canary: checkandincrement.Window{
 			StartTime: object.ObjectMeta.GetCreationTimestamp().Format(time.RFC3339),
 			EndTime:   now,
 			Tags: map[string]string{
-				"destination_service_name": canary.GetName(),
+				"destination_service_name":      canary.GetName(),
+				"destination_service_namespace": baseline.GetNamespace(),
 			},
 		},
 		TrafficControl: checkandincrement.TrafficControl{
