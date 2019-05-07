@@ -16,6 +16,6 @@ spec:
     analyticsService: "localhost:5555"
     metrics:
       - name: iter8_latency
-        type: delta
-        value: 1.0
+        type: threshold
+        value: 0.2
         sampleSize: 10
