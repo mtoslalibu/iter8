@@ -16,6 +16,7 @@ package checkandincrement
 import (
 	"testing"
 
+	iter8v1alpha1 "github.ibm.com/istio-research/iter8-controller/pkg/apis/iter8/v1alpha1"
 	"sigs.k8s.io/controller-runtime/pkg/runtime/log"
 )
 
@@ -47,7 +48,7 @@ func TestInvoke(t *testing.T) {
 					SuccessCriteria: []SuccessCriterion{
 						SuccessCriterion{
 							MetricName: "iter8_latency",
-							Type:       SuccessCriterionDelta,
+							Type:       iter8v1alpha1.SuccessCriterionDelta,
 							Value:      0.02,
 						},
 					},

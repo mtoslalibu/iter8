@@ -15,6 +15,10 @@ limitations under the License.
 
 package checkandincrement
 
+import (
+	iter8v1alpha1 "github.ibm.com/istio-research/iter8-controller/pkg/apis/iter8/v1alpha1"
+)
+
 type Request struct {
 	// Specifies a time interval and key-value pairs for retrieving and processing data pertaining to the baseline version
 	Baseline Window `json:"baseline"`
@@ -61,13 +65,6 @@ type TrafficControl struct {
 	SuccessCriteria []SuccessCriterion `json:"success_criteria"`
 }
 
-type SuccessCriterionType string
-
-const (
-	SuccessCriterionDelta     SuccessCriterionType = "delta"
-	SuccessCriterionThreshold SuccessCriterionType = "threshold"
-)
-
 type SuccessCriterion struct {
 	// Name of the metric to which the criterion applies
 	// example: iter8_latency
@@ -76,7 +73,7 @@ type SuccessCriterion struct {
 	// 	Criterion type. Options:
 	// "delta": compares the canary against the baseline version with respect to the metric;
 	// "threshold": checks the canary with respect to the metric
-	Type SuccessCriterionType `json:"type"`
+	Type iter8v1alpha1.SuccessCriterionType `json:"type"`
 
 	// Value to check
 	Value float64 `json:"value"`
@@ -115,22 +112,10 @@ type Response struct {
 
 type Assessment struct {
 	// Summary of the canary assessment based on success criteria
-	Summary Summary `json:"summary"`
+	Summary iter8v1alpha1.Summary `json:"summary"`
 
 	// Summary of results for each success criterion
 	SuccessCriteria []SuccessCriterionOutput `json:"success_criteria"`
-}
-
-type Summary struct {
-	// Overall summary based on all success criteria
-	Conclusions []string `json:"conclusions"`
-
-	// Indicates whether or not all success criteria for assessing the canary version
-	// have been met
-	AllSuccessCriteriaMet bool `json:"all_success_criteria_met"`
-
-	// Indicates whether or not the experiment must be aborted based on the success criteria
-	AbortExperiment bool `json:"abort_experiment"`
 }
 
 type SuccessCriterionOutput struct {

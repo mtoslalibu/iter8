@@ -67,10 +67,17 @@ spec:
               properties:
                 interval:
                   type: string
+                iterationCount:
+                  format: int64
+                  type: integer
                 maxTrafficPercent:
                   format: double
                   type: number
                 onSuccess:
+                  enum:
+                  - baseline
+                  - canary
+                  - both
                   type: string
                 stepSize:
                   format: double
@@ -87,6 +94,13 @@ spec:
         status:
           properties:
             analysisState:
+              type: object
+            assessment:
+              properties:
+                conclusions:
+                  items:
+                    type: string
+                  type: array
               type: object
             conditions:
               items:
@@ -108,18 +122,15 @@ spec:
                 - status
                 type: object
               type: array
+            currentIteration:
+              format: int64
+              type: integer
             lastIncrementTime:
               format: date-time
               type: string
             observedGeneration:
               format: int64
               type: integer
-            progressing:
-              type: boolean
-          required:
-          - lastIncrementTime
-          - progressing
-          - analysisState
           type: object
   version: v1alpha1
 status:
