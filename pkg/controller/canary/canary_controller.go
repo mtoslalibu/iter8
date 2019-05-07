@@ -19,6 +19,7 @@ import (
 	"context"
 	"time"
 
+	"go.uber.org/zap"
 	corev1 "k8s.io/api/core/v1"
 	"k8s.io/apimachinery/pkg/api/errors"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
@@ -99,11 +100,12 @@ func add(mgr manager.Manager, r reconcile.Reconciler) error {
 		&handler.EnqueueRequestsFromMapFunc{ToRequests: mapFn},
 		p)
 
-	// TODO: Watch for deployment changes
-
 	if err != nil {
-		return err
+		// Just log error.
+		log.Info("NoKnativeServingWatch", zap.Error(err))
 	}
+
+	// TODO: Watch for deployment changes
 
 	return nil
 }
