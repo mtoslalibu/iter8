@@ -9,4 +9,13 @@ spec:
     name: reviews
     apiVersion: v1
   trafficControl:
-    strategy: manual
+    strategy: check_and_increment
+    interval: 20s
+    stepSize: 5
+  analysis:
+    analyticsService: "localhost:5555"
+    metrics:
+      - name: iter8_latency
+        type: delta
+        value: 1.0
+        sampleSize: 10

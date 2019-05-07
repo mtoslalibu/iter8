@@ -22,3 +22,6 @@ bin
 *.swo
 *~
 .vscode
+
+# Go package lock file
+Gopkg.lock

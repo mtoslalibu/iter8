@@ -53,7 +53,7 @@ func MakeRequest(instance *iter8v1alpha1.Canary, baseline, canary interface{}) *
 	switch instance.Spec.TargetService.APIVersion {
 	case KubernetesService:
 		destinationKey = "destination_workload"
-		namespaceKey = "destination_service_namespace"
+		namespaceKey = "destination_namespace"
 		baseVal = baseline.(*appsv1.Deployment).GetName()
 		canaryVal = canary.(*appsv1.Deployment).GetName()
 		baseNsVal = baseline.(*appsv1.Deployment).GetNamespace()
@@ -75,26 +75,16 @@ func MakeRequest(instance *iter8v1alpha1.Canary, baseline, canary interface{}) *
 			StartTime: instance.ObjectMeta.GetCreationTimestamp().Format(time.RFC3339),
 			EndTime:   now,
 			Tags: map[string]string{
-<<<<<<< HEAD
-				"destination_service_name":      baseline.GetName(),
-				"destination_service_namespace": baseline.GetNamespace(),
-=======
 				destinationKey: baseVal,
 				namespaceKey:   baseNsVal,
->>>>>>> stage changes
 			},
 		},
 		Canary: checkandincrement.Window{
 			StartTime: instance.ObjectMeta.GetCreationTimestamp().Format(time.RFC3339),
 			EndTime:   now,
 			Tags: map[string]string{
-<<<<<<< HEAD
-				"destination_service_name":      canary.GetName(),
-				"destination_service_namespace": baseline.GetNamespace(),
-=======
 				destinationKey: canaryVal,
 				namespaceKey:   canaryNsVal,
->>>>>>> stage changes
 			},
 		},
 		TrafficControl: checkandincrement.TrafficControl{
