@@ -1,0 +1,12 @@
+language: go
+go:
+  - "1.12"
+sudo: required
+
+go_import_path: github.ibm.com/istio-research/iter8-controller/
+
+before_install:
+  - ./test/scripts/tools.sh
+
+script:
+  - ./test/e2e/e2e.sh

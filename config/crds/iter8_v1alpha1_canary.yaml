@@ -106,7 +106,7 @@ spec:
               items:
                 properties:
                   lastTransitionTime:
-                    type: string
+                    type: object
                   message:
                     type: string
                   reason:
