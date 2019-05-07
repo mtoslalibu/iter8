@@ -24,4 +24,4 @@ bin
 .vscode
 
 # Go package lock file
-Gopkg.lock
+*Gopkg.lock*
