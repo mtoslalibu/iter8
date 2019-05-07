@@ -19,20 +19,17 @@ metadata:
   labels:
     app: reviews
     version: v3
-    iter8.ibm.com/canary: candidate
 spec:
   replicas: 1
   selector:
     matchLabels:
       app: reviews
       version: v3
-      iter8.ibm.com/canary: candidate
   template:
     metadata:
       labels:
         app: reviews
         version: v3
-        iter8.ibm.com/canary: candidate
     spec:
       containers:
       - name: reviews

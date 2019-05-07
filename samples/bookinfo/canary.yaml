@@ -10,4 +10,3 @@ spec:
     apiVersion: v1
   trafficControl:
     strategy: manual
-
