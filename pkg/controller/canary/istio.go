@@ -38,6 +38,7 @@ import (
 const (
 	Baseline  = "baseline"
 	Candidate = "candidate"
+	Stable    = "stable"
 )
 
 var ServiceSelector map[string]string
@@ -125,6 +126,19 @@ func (r *ReconcileCanary) syncIstio(context context.Context, canary *iter8v1alph
 
 	log.Info("istio-sync", "baseline", baseline.GetName(), Candidate, candidate.GetName())
 
+	// Remove stable rules if there is any
+	stableName := getStableName(canary)
+	dr := &v1alpha3.DestinationRule{}
+	if err = r.Get(context, types.NamespacedName{Name: stableName, Namespace: canary.GetNamespace()}, dr); err == nil {
+		r.Delete(context, dr)
+		log.Info("istio sync", "delete stable dr", stableName)
+	}
+	vs := &v1alpha3.VirtualService{}
+	if err = r.Get(context, types.NamespacedName{Name: stableName, Namespace: canary.GetNamespace()}, vs); err == nil {
+		r.Delete(context, vs)
+		log.Info("istio sync", "delete stable vs", stableName)
+	}
+
 	// Get info on Canary
 	traffic := canary.Spec.TrafficControl
 	now := time.Now()
@@ -135,9 +149,9 @@ func (r *ReconcileCanary) syncIstio(context context.Context, canary *iter8v1alph
 	// Setup Istio Routing Rules
 	// TODO: should include deployment info here
 	drName := getDestinationRuleName(canary)
-	dr := &v1alpha3.DestinationRule{}
+	dr = &v1alpha3.DestinationRule{}
 	if err = r.Get(context, types.NamespacedName{Name: drName, Namespace: canary.Namespace}, dr); err != nil {
-		dr = newDestinationRule(canary)
+		dr = newDestinationRule(canary, baseline, candidate)
 		err := r.Create(context, dr)
 		if err != nil {
 			return reconcile.Result{}, err
@@ -146,7 +160,7 @@ func (r *ReconcileCanary) syncIstio(context context.Context, canary *iter8v1alph
 	}
 
 	vsName := getVirtualServiceName(canary)
-	vs := &v1alpha3.VirtualService{}
+	vs = &v1alpha3.VirtualService{}
 	if err = r.Get(context, types.NamespacedName{Name: vsName, Namespace: canary.Namespace}, vs); err != nil {
 		vs = makeVirtualService(0, canary)
 		err := r.Create(context, vs)
@@ -173,6 +187,7 @@ func (r *ReconcileCanary) syncIstio(context context.Context, canary *iter8v1alph
 				// TODO: Need new condition
 				canary.Status.MarkHasNotService("ErrorAnalytics", "%v", err)
 				err = r.Status().Update(context, canary)
+				deleteRules(context, r, canary)
 				return reconcile.Result{}, err
 			}
 
@@ -209,13 +224,15 @@ func (r *ReconcileCanary) syncIstio(context context.Context, canary *iter8v1alph
 		// Rollout done.
 		canary.Status.MarkRolloutCompleted()
 		canary.Status.Progressing = false
-		// clean canary labels
-		for _, d := range deployments.Items {
-			if _, ok := d.ObjectMeta.Labels[canaryLabel]; ok {
-				delete(d.ObjectMeta.Labels, canaryLabel)
-				r.Update(context, &d)
-			}
-		}
+		// remove labels
+		removeCanaryLabel(context, r, baseline)
+		removeCanaryLabel(context, r, candidate)
+		// delete rules
+		deleteRules(context, r, canary)
+		// generate new rules to shift all traffic to candidate
+		stableDr, stableVs := newStableRules(candidate, canary)
+		r.Create(context, stableDr)
+		r.Create(context, stableVs)
 	} else {
 		canary.Status.MarkRolloutNotCompleted("Progressing", "")
 		canary.Status.Progressing = true
@@ -225,6 +242,33 @@ func (r *ReconcileCanary) syncIstio(context context.Context, canary *iter8v1alph
 	err = r.Status().Update(context, canary)
 
 	return result, err
+}
+
+func removeCanaryLabel(context context.Context, r *ReconcileCanary, d *appsv1.Deployment) {
+	labels := d.GetLabels()
+	delete(labels, canaryLabel)
+	d.SetLabels(labels)
+	r.Update(context, d)
+	log.Info("istio sync", "remove labels", d.GetName())
+}
+
+func deleteRules(context context.Context, r *ReconcileCanary, canary *iter8v1alpha1.Canary) (err error) {
+	drName := getDestinationRuleName(canary)
+	vsName := getVirtualServiceName(canary)
+
+	dr := &v1alpha3.DestinationRule{}
+	if err = r.Get(context, types.NamespacedName{Name: drName, Namespace: canary.Namespace}, dr); err == nil {
+		r.Delete(context, dr)
+		log.Info("istio sync", "delete dr", drName)
+	}
+
+	vs := &v1alpha3.VirtualService{}
+	if err = r.Get(context, types.NamespacedName{Name: vsName, Namespace: canary.Namespace}, vs); err == nil {
+		r.Delete(context, vs)
+		log.Info("istio sync", "delete vs", vsName)
+	}
+
+	return err
 }
 
 // apiVersion: networking.istio.io/v1alpha3
@@ -241,7 +285,11 @@ func (r *ReconcileCanary) syncIstio(context context.Context, canary *iter8v1alph
 // 	   labels:
 // 	     iter8.ibm.com/canary: candidate
 
-func newDestinationRule(canary *iter8v1alpha1.Canary) *v1alpha3.DestinationRule {
+func newDestinationRule(canary *iter8v1alpha1.Canary, baseline, candidate *appsv1.Deployment) *v1alpha3.DestinationRule {
+	bLabels := baseline.GetLabels()
+	cLabels := candidate.GetLabels()
+	delete(bLabels, canaryLabel)
+	delete(cLabels, canaryLabel)
 	dr := &v1alpha3.DestinationRule{
 		ObjectMeta: metav1.ObjectMeta{
 			Name:      getDestinationRuleName(canary),
@@ -253,11 +301,11 @@ func newDestinationRule(canary *iter8v1alpha1.Canary) *v1alpha3.DestinationRule 
 			Subsets: []v1alpha3.Subset{
 				v1alpha3.Subset{
 					Name:   Baseline,
-					Labels: map[string]string{canaryLabel: Baseline},
+					Labels: bLabels,
 				},
 				v1alpha3.Subset{
 					Name:   Candidate,
-					Labels: map[string]string{canaryLabel: Candidate},
+					Labels: cLabels,
 				},
 			},
 		},
@@ -341,6 +389,7 @@ func setResourceVersion(rv string, vs *v1alpha3.VirtualService) {
 	vs.ObjectMeta.ResourceVersion = rv
 }
 
+<<<<<<< HEAD
 func getLatestDeployment(ds *appsv1.DeploymentList) (*appsv1.Deployment, error) {
 	latestTs := *new(time.Time)
 	index := -1
@@ -376,4 +425,53 @@ func getCanaryDeployment(ds *appsv1.DeploymentList, baseline *appsv1.Deployment)
 		return nil, errors.New("Latest deployment not found")
 	}
 	return &ds.Items[index], nil
+=======
+func newStableRules(d *appsv1.Deployment, canary *iter8v1alpha1.Canary) (*v1alpha3.DestinationRule, *v1alpha3.VirtualService) {
+	dr := &v1alpha3.DestinationRule{
+		ObjectMeta: metav1.ObjectMeta{
+			Name:      getStableName(canary),
+			Namespace: canary.Namespace,
+			// TODO: add owner references
+		},
+		Spec: v1alpha3.DestinationRuleSpec{
+			Host: canary.Spec.TargetService.Name,
+			Subsets: []v1alpha3.Subset{
+				v1alpha3.Subset{
+					Name:   Stable,
+					Labels: d.GetLabels(),
+				},
+			},
+		},
+	}
+
+	vs := &v1alpha3.VirtualService{
+		ObjectMeta: metav1.ObjectMeta{
+			Name:      getStableName(canary),
+			Namespace: canary.Namespace,
+			// TODO: add owner references
+		},
+		Spec: v1alpha3.VirtualServiceSpec{
+			Hosts: []string{canary.Spec.TargetService.Name},
+			HTTP: []v1alpha3.HTTPRoute{
+				{
+					Route: []v1alpha3.HTTPRouteDestination{
+						{
+							Destination: v1alpha3.Destination{
+								Host:   canary.Spec.TargetService.Name,
+								Subset: Stable,
+							},
+							Weight: 100,
+						},
+					},
+				},
+			},
+		},
+	}
+
+	return dr, vs
+}
+
+func getStableName(canary *iter8v1alpha1.Canary) string {
+	return canary.GetName() + "iter-stable"
+>>>>>>> update istio logic
 }
