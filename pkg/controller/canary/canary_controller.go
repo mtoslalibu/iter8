@@ -20,7 +20,6 @@ import (
 	"time"
 
 	"go.uber.org/zap"
-	corev1 "k8s.io/api/core/v1"
 	"k8s.io/apimachinery/pkg/api/errors"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/apimachinery/pkg/runtime"
@@ -145,12 +144,12 @@ func (r *ReconcileCanary) Reconcile(request reconcile.Request) (reconcile.Result
 
 	log := log.WithValues("namespace", instance.Namespace, "name", instance.Name)
 	ctx = context.WithValue(ctx, "logger", log)
-	// Stop right here if the experiment is completed.
-	completed := instance.Status.GetCondition(iter8v1alpha1.CanaryConditionRolloutCompleted)
-	if completed != nil && completed.Status == corev1.ConditionTrue {
-		log.Info("rollout completed")
-		return reconcile.Result{}, nil
-	}
+	// // Stop right here if the experiment is completed.
+	// completed := instance.Status.GetCondition(iter8v1alpha1.CanaryConditionRolloutCompleted)
+	// if completed != nil && completed.Status == corev1.ConditionTrue {
+	// 	log.Info("rollout completed")
+	// 	return reconcile.Result{}, nil
+	// }
 
 	log.Info("reconciling")
 
