@@ -8,6 +8,12 @@ spec:
   targetService:
     name: reviews
     apiVersion: v1
+    baseline: 
+      name: reviews-v1
+      apiVersion: apps/v1
+    candidate: 
+      name: reviews-v2
+      apiVersion: apps/v1
   trafficControl:
     strategy: check_and_increment
     interval: 20s
