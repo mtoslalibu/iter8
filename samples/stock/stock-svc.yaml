@@ -10,10 +10,10 @@ spec:
       revisionTemplate:
         spec:
           container:
-            image: kimikowang/rest-api-go 
+            image: github.ibm.com/istio-research/iter8-controller/samples/stock
             env:
               - name: RESOURCE
-                value: share
+                value: stock
             readinessProbe:
               httpGet:
                 path: /

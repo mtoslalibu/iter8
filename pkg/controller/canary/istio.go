@@ -18,7 +18,6 @@ package canary
 import (
 	"context"
 	"encoding/json"
-	"errors"
 	"time"
 
 	"github.ibm.com/istio-research/iter8-controller/pkg/analytics/checkandincrement"
@@ -41,8 +40,6 @@ const (
 	Stable    = "stable"
 )
 
-var ServiceSelector map[string]string
-
 func (r *ReconcileCanary) syncIstio(context context.Context, canary *iter8v1alpha1.Canary) (reconcile.Result, error) {
 	serviceName := canary.Spec.TargetService.Name
 	serviceNamespace := canary.Spec.TargetService.Namespace
@@ -61,13 +58,6 @@ func (r *ReconcileCanary) syncIstio(context context.Context, canary *iter8v1alph
 		}
 		return reconcile.Result{Requeue: true}, nil
 	}
-
-	ServiceSelector = make(map[string]string)
-	log.Info("istio sync", "service name", service.GetName())
-	for key, val := range service.Spec.Selector {
-		ServiceSelector[key] = val
-	}
-	log.Info("istio sync", "Initilize selector", ServiceSelector)
 	canary.Status.MarkHasService()
 
 	// Get deployment list
@@ -94,34 +84,13 @@ func (r *ReconcileCanary) syncIstio(context context.Context, canary *iter8v1alph
 		}
 	}
 
-	//	log.Info("istio sync", "Checking baseline and canary...")
-	// Case 1: Baseline is not existed, mark the latest deployment as baseline
-	// Waits for canary
-	if baseline == nil {
-		d, err := getLatestDeployment(deployments)
+	if baseline == nil || candidate == nil {
+		canary.Status.MarkHasNotService("Base or candidate deployment is missing", "")
+		err = r.Status().Update(context, canary)
 		if err != nil {
 			return reconcile.Result{}, err
 		}
-		d.ObjectMeta.SetLabels(map[string]string{canaryLabel: Baseline})
-		err = r.Update(context, d)
-		if err != nil {
-			return reconcile.Result{}, err
-		}
-		log.Info("istio sync", "Label baseline", d.GetName())
-		return reconcile.Result{}, nil
-	} else if candidate == nil {
-		// Promote the latest deployment as candidate
-		d, err := getCanaryDeployment(deployments, baseline)
-		if err != nil {
-			return reconcile.Result{}, err
-		}
-		d.ObjectMeta.SetLabels(map[string]string{canaryLabel: Candidate})
-		err = r.Update(context, d)
-		if err != nil {
-			return reconcile.Result{}, err
-		}
-		log.Info("istio sync", "Label candidate", d.GetName())
-		return reconcile.Result{Requeue: true}, err
+		return reconcile.Result{Requeue: true}, nil
 	}
 
 	log.Info("istio-sync", "baseline", baseline.GetName(), Candidate, candidate.GetName())
