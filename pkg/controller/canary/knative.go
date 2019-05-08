@@ -144,14 +144,13 @@ func (r *ReconcileCanary) syncKnative(context context.Context, instance *iter8v1
 					update = true
 				}
 			case "canary":
-				if kservice.Spec.Release.RolloutPercent != 100 {
-					kservice.Spec.Release.RolloutPercent = 100
-					update = true
-				}
+				// Promote canary to baseline
+				kservice.Spec.Release.Revisions = []string{kservice.Spec.Release.Revisions[1]}
+				kservice.Spec.Release.RolloutPercent = 0
+				update = true
 			case "both":
 				// noop.
 			}
-
 		} else {
 			// Switch traffic back to current
 			if kservice.Spec.Release.RolloutPercent != 0 {
