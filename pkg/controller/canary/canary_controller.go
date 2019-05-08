@@ -86,29 +86,6 @@ func add(mgr manager.Manager, r reconcile.Reconciler) error {
 			}
 		})
 
-	dp := predicate.Funcs{
-		UpdateFunc: func(e event.UpdateEvent) bool {
-			if _, ok := e.MetaOld.GetLabels()[canaryLabel]; !ok {
-				return false
-			}
-			return e.ObjectOld != e.ObjectNew
-		},
-		CreateFunc: func(e event.CreateEvent) bool {
-			if ServiceSelector == nil || len(ServiceSelector) == 0 {
-				return false
-			}
-			labels := e.Meta.GetLabels()
-			log.Info("canary controller", "event labels", labels, "selectors", ServiceSelector)
-			for key, sVal := range ServiceSelector {
-				if val, ok := labels[key]; !ok || val != sVal {
-					return false
-				}
-			}
-			log.Info("canary controller", "added to queue", e.Meta.GetName())
-			return true
-		},
-	}
-
 	// err = c.Watch(&source.Kind{Type: &servingv1alpha1.Service{}},
 	// 	&handler.EnqueueRequestsFromMapFunc{ToRequests: mapFn},
 	// 	p)
@@ -117,23 +94,23 @@ func add(mgr manager.Manager, r reconcile.Reconciler) error {
 	// 	return err
 	// }
 
-	// p := predicate.Funcs{
-	// 	UpdateFunc: func(e event.UpdateEvent) bool {
-	// 		if _, ok := e.MetaOld.GetLabels()[canaryLabel]; !ok {
-	// 			return false
-	// 		}
-	// 		return e.ObjectOld != e.ObjectNew
-	// 	},
-	// 	CreateFunc: func(e event.CreateEvent) bool {
-	// 		_, ok := e.Meta.GetLabels()[canaryLabel]
-	// 		return ok
-	// 	},
-	// }
+	p := predicate.Funcs{
+		UpdateFunc: func(e event.UpdateEvent) bool {
+			if _, ok := e.MetaOld.GetLabels()[canaryLabel]; !ok {
+				return false
+			}
+			return e.ObjectOld != e.ObjectNew
+		},
+		CreateFunc: func(e event.CreateEvent) bool {
+			_, ok := e.Meta.GetLabels()[canaryLabel]
+			return ok
+		},
+	}
 
 	// Watch for k8s deployment updates
 	err = c.Watch(&source.Kind{Type: &appsv1.Deployment{}},
 		&handler.EnqueueRequestsFromMapFunc{ToRequests: mapFn},
-		dp)
+		p)
 
 	if err != nil {
 		// Just log error.
