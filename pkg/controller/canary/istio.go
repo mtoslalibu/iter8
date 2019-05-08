@@ -18,6 +18,7 @@ package canary
 import (
 	"context"
 	"encoding/json"
+	"errors"
 	"time"
 
 	"github.ibm.com/istio-research/iter8-controller/pkg/analytics/checkandincrement"
@@ -39,6 +40,8 @@ const (
 	Candidate = "candidate"
 )
 
+var ServiceSelector map[string]string
+
 func (r *ReconcileCanary) syncIstio(context context.Context, canary *iter8v1alpha1.Canary) (reconcile.Result, error) {
 	serviceName := canary.Spec.TargetService.Name
 	serviceNamespace := canary.Spec.TargetService.Namespace
@@ -58,11 +61,17 @@ func (r *ReconcileCanary) syncIstio(context context.Context, canary *iter8v1alph
 		return reconcile.Result{Requeue: true}, nil
 	}
 
+	ServiceSelector = make(map[string]string)
+	log.Info("istio sync", "service name", service.GetName())
+	for key, val := range service.Spec.Selector {
+		ServiceSelector[key] = val
+	}
+	log.Info("istio sync", "Initilize selector", ServiceSelector)
 	canary.Status.MarkHasService()
 
 	// Get deployment list
 	deployments := &appsv1.DeploymentList{}
-	if err = r.List(context, client.MatchingLabels(service.Spec.Selector), deployments); err != nil {
+	if err = r.List(context, client.MatchingLabels(service.Spec.Selector), deployments); err != nil || len(deployments.Items) == 0 {
 		// TODO: add new type of status to set unavailable deployments
 		canary.Status.MarkHasNotService("NotFound", "")
 		err = r.Status().Update(context, canary)
@@ -84,13 +93,34 @@ func (r *ReconcileCanary) syncIstio(context context.Context, canary *iter8v1alph
 		}
 	}
 
-	if baseline == nil || candidate == nil {
-		canary.Status.MarkHasNotService("Base or candidate deployment is missing", "")
-		err = r.Status().Update(context, canary)
+	//	log.Info("istio sync", "Checking baseline and canary...")
+	// Case 1: Baseline is not existed, mark the latest deployment as baseline
+	// Waits for canary
+	if baseline == nil {
+		d, err := getLatestDeployment(deployments)
 		if err != nil {
 			return reconcile.Result{}, err
 		}
-		return reconcile.Result{Requeue: true}, nil
+		d.ObjectMeta.SetLabels(map[string]string{canaryLabel: Baseline})
+		err = r.Update(context, d)
+		if err != nil {
+			return reconcile.Result{}, err
+		}
+		log.Info("istio sync", "Label baseline", d.GetName())
+		return reconcile.Result{}, nil
+	} else if candidate == nil {
+		// Promote the latest deployment as candidate
+		d, err := getCanaryDeployment(deployments, baseline)
+		if err != nil {
+			return reconcile.Result{}, err
+		}
+		d.ObjectMeta.SetLabels(map[string]string{canaryLabel: Candidate})
+		err = r.Update(context, d)
+		if err != nil {
+			return reconcile.Result{}, err
+		}
+		log.Info("istio sync", "Label candidate", d.GetName())
+		return reconcile.Result{Requeue: true}, err
 	}
 
 	log.Info("istio-sync", "baseline", baseline.GetName(), Candidate, candidate.GetName())
@@ -119,7 +149,6 @@ func (r *ReconcileCanary) syncIstio(context context.Context, canary *iter8v1alph
 	vs := &v1alpha3.VirtualService{}
 	if err = r.Get(context, types.NamespacedName{Name: vsName, Namespace: canary.Namespace}, vs); err != nil {
 		vs = makeVirtualService(0, canary)
-		//	log.Info("istio-sync", "subset name", vs.Spec.HTTP[0].Route[0].Destination.Subset)
 		err := r.Create(context, vs)
 		if err != nil {
 			return reconcile.Result{}, err
@@ -180,6 +209,13 @@ func (r *ReconcileCanary) syncIstio(context context.Context, canary *iter8v1alph
 		// Rollout done.
 		canary.Status.MarkRolloutCompleted()
 		canary.Status.Progressing = false
+		// clean canary labels
+		for _, d := range deployments.Items {
+			if _, ok := d.ObjectMeta.Labels[canaryLabel]; ok {
+				delete(d.ObjectMeta.Labels, canaryLabel)
+				r.Update(context, &d)
+			}
+		}
 	} else {
 		canary.Status.MarkRolloutNotCompleted("Progressing", "")
 		canary.Status.Progressing = true
@@ -303,4 +339,41 @@ func getWeight(subset string, vs *v1alpha3.VirtualService) int {
 
 func setResourceVersion(rv string, vs *v1alpha3.VirtualService) {
 	vs.ObjectMeta.ResourceVersion = rv
+}
+
+func getLatestDeployment(ds *appsv1.DeploymentList) (*appsv1.Deployment, error) {
+	latestTs := *new(time.Time)
+	index := -1
+	for i, d := range ds.Items {
+		if val, ok := d.ObjectMeta.Labels[canaryLabel]; !ok || val != Baseline {
+			ct := d.ObjectMeta.CreationTimestamp
+			if ct.After(latestTs) {
+				latestTs = ct.Time
+				index = i
+			}
+		}
+	}
+
+	if index == -1 {
+		return nil, errors.New("Latest deployment not found")
+	}
+	return &ds.Items[index], nil
+}
+
+func getCanaryDeployment(ds *appsv1.DeploymentList, baseline *appsv1.Deployment) (*appsv1.Deployment, error) {
+	baselineTs := baseline.ObjectMeta.CreationTimestamp.Time
+	index := -1
+	for i, d := range ds.Items {
+		if val, ok := d.ObjectMeta.Labels[canaryLabel]; !ok || val != Baseline {
+			ct := d.ObjectMeta.CreationTimestamp.Time
+			if ct.After(baselineTs) {
+				index = i
+			}
+		}
+	}
+
+	if index == -1 {
+		return nil, errors.New("Latest deployment not found")
+	}
+	return &ds.Items[index], nil
 }
