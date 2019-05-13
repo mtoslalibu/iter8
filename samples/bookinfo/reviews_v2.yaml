@@ -36,7 +36,7 @@ metadata:
   labels:
     app: reviews
     version: v2
-    iter8.ibm.com/canary: baseline 
+    iter8.ibm.com/canary: candidate 
 spec:
   replicas: 1
   selector:
