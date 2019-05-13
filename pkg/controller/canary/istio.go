@@ -38,6 +38,8 @@ const (
 	Baseline  = "baseline"
 	Candidate = "candidate"
 	Stable    = "stable"
+
+	canaryRole = "iter8.ibm.com/role"
 )
 
 func (r *ReconcileCanary) syncIstio(context context.Context, canary *iter8v1alpha1.Canary) (reconcile.Result, error) {
@@ -75,7 +77,8 @@ func (r *ReconcileCanary) syncIstio(context context.Context, canary *iter8v1alph
 	// Get current deployment and candidate deployment
 	var baseline, candidate *appsv1.Deployment
 	for _, d := range deployments.Items {
-		if val, ok := d.ObjectMeta.Labels[canaryLabel]; ok {
+		log.Info("istio sync", "deploy name", d.GetName(), "labels", d.GetLabels())
+		if val, ok := d.ObjectMeta.Labels[canaryRole]; ok {
 			if val == Candidate {
 				candidate = d.DeepCopy()
 			} else if val == Baseline {
@@ -86,10 +89,17 @@ func (r *ReconcileCanary) syncIstio(context context.Context, canary *iter8v1alph
 
 	if baseline == nil || candidate == nil {
 		canary.Status.MarkHasNotService("Base or candidate deployment is missing", "")
+		if baseline == nil {
+			log.Info("istio sync missing baseline")
+		}
+		if candidate == nil {
+			log.Info("istio sync missing candidate")
+		}
 		err = r.Status().Update(context, canary)
 		if err != nil {
 			return reconcile.Result{}, err
 		}
+
 		return reconcile.Result{Requeue: true}, nil
 	}
 
@@ -176,7 +186,6 @@ func (r *ReconcileCanary) syncIstio(context context.Context, canary *iter8v1alph
 					return reconcile.Result{}, err
 				}
 			case "both":
-				// noop.
 				// Change name of the current vs rule as stable
 				vs.SetName(getStableName(canary))
 				if err := r.Update(context, vs); err != nil {
@@ -207,7 +216,7 @@ func (r *ReconcileCanary) syncIstio(context context.Context, canary *iter8v1alph
 				// TODO: Need new condition
 				canary.Status.MarkHasNotService("ErrorAnalytics", "%v", err)
 				err = r.Status().Update(context, canary)
-				// Should we remove the istio rules?
+				// Should we delet the istio rules?
 				return reconcile.Result{}, err
 			}
 
@@ -252,7 +261,8 @@ func (r *ReconcileCanary) syncIstio(context context.Context, canary *iter8v1alph
 
 func removeCanaryLabel(context context.Context, r *ReconcileCanary, d *appsv1.Deployment) (err error) {
 	labels := d.GetLabels()
-	delete(labels, canaryLabel)
+	//	delete(labels, canaryLabel)
+	delete(labels, canaryRole)
 	d.SetLabels(labels)
 	if err = r.Update(context, d); err != nil {
 		return
@@ -291,8 +301,10 @@ func deleteRules(context context.Context, r *ReconcileCanary, canary *iter8v1alp
 func newDestinationRule(canary *iter8v1alpha1.Canary, baseline, candidate *appsv1.Deployment) *v1alpha3.DestinationRule {
 	bLabels := baseline.GetLabels()
 	cLabels := candidate.GetLabels()
-	delete(bLabels, canaryLabel)
-	delete(cLabels, canaryLabel)
+	//	delete(bLabels, canaryLabel)
+	//	delete(cLabels, canaryLabel)
+	delete(bLabels, canaryRole)
+	delete(cLabels, canaryRole)
 	dr := &v1alpha3.DestinationRule{
 		ObjectMeta: metav1.ObjectMeta{
 			Name:      getDestinationRuleName(canary, baseline, candidate),

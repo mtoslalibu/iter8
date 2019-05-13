@@ -34,7 +34,7 @@ import (
 	logf "sigs.k8s.io/controller-runtime/pkg/runtime/log"
 	"sigs.k8s.io/controller-runtime/pkg/source"
 
-	//	servingv1alpha1 "github.com/knative/serving/pkg/apis/serving/v1alpha1"
+	servingv1alpha1 "github.com/knative/serving/pkg/apis/serving/v1alpha1"
 	appsv1 "k8s.io/api/apps/v1"
 
 	iter8v1alpha1 "github.ibm.com/istio-research/iter8-controller/pkg/apis/iter8/v1alpha1"
@@ -74,6 +74,20 @@ func add(mgr manager.Manager, r reconcile.Reconciler) error {
 		return err
 	}
 
+	p := predicate.Funcs{
+		UpdateFunc: func(e event.UpdateEvent) bool {
+			if _, ok := e.MetaOld.GetLabels()[canaryLabel]; !ok {
+				return false
+			}
+			return e.ObjectOld != e.ObjectNew
+		},
+		CreateFunc: func(e event.CreateEvent) bool {
+			_, ok := e.Meta.GetLabels()[canaryLabel]
+			log.Info("canary-controller", "create labels", e.Meta.GetLabels(), "ok?", ok)
+			return ok
+		},
+	}
+
 	// Watch for Knative services changes
 	mapFn := handler.ToRequestsFunc(
 		func(a handler.MapObject) []reconcile.Request {
@@ -86,25 +100,12 @@ func add(mgr manager.Manager, r reconcile.Reconciler) error {
 			}
 		})
 
-	// err = c.Watch(&source.Kind{Type: &servingv1alpha1.Service{}},
-	// 	&handler.EnqueueRequestsFromMapFunc{ToRequests: mapFn},
-	// 	p)
+	err = c.Watch(&source.Kind{Type: &servingv1alpha1.Service{}},
+		&handler.EnqueueRequestsFromMapFunc{ToRequests: mapFn},
+		p)
 
-	// if err != nil {
-	// 	return err
-	// }
-
-	p := predicate.Funcs{
-		UpdateFunc: func(e event.UpdateEvent) bool {
-			if _, ok := e.MetaOld.GetLabels()[canaryLabel]; !ok {
-				return false
-			}
-			return e.ObjectOld != e.ObjectNew
-		},
-		CreateFunc: func(e event.CreateEvent) bool {
-			_, ok := e.Meta.GetLabels()[canaryLabel]
-			return ok
-		},
+	if err != nil {
+		return err
 	}
 
 	// Watch for k8s deployment updates
