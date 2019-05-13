@@ -117,7 +117,7 @@ func (r *ReconcileCanary) syncIstio(context context.Context, canary *iter8v1alph
 	// Start Canary Process
 	// Setup Istio Routing Rules
 	// TODO: should include deployment info here
-	drName := getDestinationRuleName(canary)
+	drName := getDestinationRuleName(canary, baseline, candidate)
 	dr = &v1alpha3.DestinationRule{}
 	if err = r.Get(context, types.NamespacedName{Name: drName, Namespace: canary.Namespace}, dr); err != nil {
 		dr = newDestinationRule(canary, baseline, candidate)
@@ -157,7 +157,7 @@ func (r *ReconcileCanary) syncIstio(context context.Context, canary *iter8v1alph
 			switch canary.Spec.TrafficControl.GetOnSuccess() {
 			case "baseline":
 				// delete routing rules
-				if err := deleteRules(context, r, canary); err != nil {
+				if err := deleteRules(context, r, canary, baseline, candidate); err != nil {
 					return reconcile.Result{}, err
 				}
 				// Set all traffic to baseline deployment
@@ -167,7 +167,7 @@ func (r *ReconcileCanary) syncIstio(context context.Context, canary *iter8v1alph
 				}
 			case "canary":
 				// delete routing rules
-				if err := deleteRules(context, r, canary); err != nil {
+				if err := deleteRules(context, r, canary, baseline, candidate); err != nil {
 					return reconcile.Result{}, err
 				}
 				// Set all traffic to candidate deployment
@@ -207,7 +207,7 @@ func (r *ReconcileCanary) syncIstio(context context.Context, canary *iter8v1alph
 				// TODO: Need new condition
 				canary.Status.MarkHasNotService("ErrorAnalytics", "%v", err)
 				err = r.Status().Update(context, canary)
-				deleteRules(context, r, canary)
+				// Should we remove the istio rules?
 				return reconcile.Result{}, err
 			}
 
@@ -261,8 +261,8 @@ func removeCanaryLabel(context context.Context, r *ReconcileCanary, d *appsv1.De
 	return
 }
 
-func deleteRules(context context.Context, r *ReconcileCanary, canary *iter8v1alpha1.Canary) (err error) {
-	drName := getDestinationRuleName(canary)
+func deleteRules(context context.Context, r *ReconcileCanary, canary *iter8v1alpha1.Canary, baseline, candidate *appsv1.Deployment) (err error) {
+	drName := getDestinationRuleName(canary, baseline, candidate)
 	vsName := getVirtualServiceName(canary)
 
 	dr := &v1alpha3.DestinationRule{}
@@ -295,9 +295,11 @@ func newDestinationRule(canary *iter8v1alpha1.Canary, baseline, candidate *appsv
 	delete(cLabels, canaryLabel)
 	dr := &v1alpha3.DestinationRule{
 		ObjectMeta: metav1.ObjectMeta{
-			Name:      getDestinationRuleName(canary),
+			Name:      getDestinationRuleName(canary, baseline, candidate),
 			Namespace: canary.Namespace,
-			// TODO: add owner references
+			OwnerReferences: []metav1.OwnerReference{
+				*metav1.NewControllerRef(canary.GetObjectMeta(), canary.GroupVersionKind()),
+			},
 		},
 		Spec: v1alpha3.DestinationRuleSpec{
 			Host: canary.Spec.TargetService.Name,
@@ -317,8 +319,8 @@ func newDestinationRule(canary *iter8v1alpha1.Canary, baseline, candidate *appsv
 	return dr
 }
 
-func getDestinationRuleName(canary *iter8v1alpha1.Canary) string {
-	return canary.Spec.TargetService.Name + "-iter8.canary"
+func getDestinationRuleName(canary *iter8v1alpha1.Canary, baseline, candidate *appsv1.Deployment) string {
+	return canary.Spec.TargetService.Name + "." + baseline.GetName() + "." + candidate.GetName()
 }
 
 func makeVirtualService(rolloutPercent int, canary *iter8v1alpha1.Canary) *v1alpha3.VirtualService {
@@ -326,7 +328,9 @@ func makeVirtualService(rolloutPercent int, canary *iter8v1alpha1.Canary) *v1alp
 		ObjectMeta: metav1.ObjectMeta{
 			Name:      getVirtualServiceName(canary),
 			Namespace: canary.Namespace,
-			// TODO: add owner references
+			OwnerReferences: []metav1.OwnerReference{
+				*metav1.NewControllerRef(canary.GetObjectMeta(), canary.GroupVersionKind()),
+			},
 		},
 		Spec: v1alpha3.VirtualServiceSpec{
 			Hosts: []string{canary.Spec.TargetService.Name},
@@ -382,6 +386,7 @@ func setStableRules(context context.Context, r *ReconcileCanary, d *appsv1.Deplo
 	if err = r.Create(context, stableVs); err != nil {
 		return
 	}
+	log.Info("istio-sync", "create stable dr rule", stableDr.GetName(), "stable vs rule", stableVs.GetName())
 	return
 }
 
@@ -390,7 +395,9 @@ func newStableRules(d *appsv1.Deployment, canary *iter8v1alpha1.Canary) (*v1alph
 		ObjectMeta: metav1.ObjectMeta{
 			Name:      getStableName(canary),
 			Namespace: canary.Namespace,
-			// TODO: add owner references
+			OwnerReferences: []metav1.OwnerReference{
+				*metav1.NewControllerRef(canary.GetObjectMeta(), canary.GroupVersionKind()),
+			},
 		},
 		Spec: v1alpha3.DestinationRuleSpec{
 			Host: canary.Spec.TargetService.Name,
@@ -407,7 +414,9 @@ func newStableRules(d *appsv1.Deployment, canary *iter8v1alpha1.Canary) (*v1alph
 		ObjectMeta: metav1.ObjectMeta{
 			Name:      getStableName(canary),
 			Namespace: canary.Namespace,
-			// TODO: add owner references
+			OwnerReferences: []metav1.OwnerReference{
+				*metav1.NewControllerRef(canary.GetObjectMeta(), canary.GroupVersionKind()),
+			},
 		},
 		Spec: v1alpha3.VirtualServiceSpec{
 			Hosts: []string{canary.Spec.TargetService.Name},
