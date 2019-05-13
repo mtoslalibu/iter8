@@ -186,12 +186,12 @@ func (r *ReconcileCanary) Reconcile(request reconcile.Request) (reconcile.Result
 
 	switch apiVersion {
 	case KubernetesService:
-		return r.syncIstio(context, instance)
+		return r.syncIstio(ctx, instance)
 	case KnativeServiceV1Alpha1:
-		return r.syncKnative(context, instance)
+		return r.syncKnative(ctx, instance)
 	default:
 		instance.Status.MarkHasNotService("UnsupportedAPIVersion", "%s", apiVersion)
-		err := r.Status().Update(context, instance)
+		err := r.Status().Update(ctx, instance)
 		return reconcile.Result{}, err
 	}
 }

@@ -139,11 +139,62 @@ func (r *ReconcileCanary) syncIstio(context context.Context, canary *iter8v1alph
 		log.Info("istio-sync", "create virtualservice", vsName)
 	}
 
+	// check experiment is finished
+	if canary.Spec.TrafficControl.GetIterationCount() <= canary.Status.CurrentIteration ||
+		getWeight(Candidate, vs) == int(traffic.GetMaxTrafficPercent()) {
+		log.Info("experiment completed.")
+		// remove canary labels
+		if err := removeCanaryLabel(context, r, baseline); err != nil {
+			return reconcile.Result{}, err
+		}
+		if err := removeCanaryLabel(context, r, candidate); err != nil {
+			return reconcile.Result{}, err
+		}
+
+		if canary.Status.AssessmentSummary.AllSuccessCriteriaMet ||
+			canary.Spec.TrafficControl.Strategy == "manual" {
+			// experiment is successful
+			switch canary.Spec.TrafficControl.GetOnSuccess() {
+			case "baseline":
+				// delete routing rules
+				if err := deleteRules(context, r, canary); err != nil {
+					return reconcile.Result{}, err
+				}
+				// Set all traffic to baseline deployment
+				// generate new rules to shift all traffic to baseline
+				if err := setStableRules(context, r, baseline, canary); err != nil {
+					return reconcile.Result{}, err
+				}
+			case "canary":
+				// delete routing rules
+				if err := deleteRules(context, r, canary); err != nil {
+					return reconcile.Result{}, err
+				}
+				// Set all traffic to candidate deployment
+				// generate new rules to shift all traffic to candidate
+				if err := setStableRules(context, r, candidate, canary); err != nil {
+					return reconcile.Result{}, err
+				}
+			case "both":
+				// noop.
+				// Change name of the current vs rule as stable
+				vs.SetName(getStableName(canary))
+				if err := r.Update(context, vs); err != nil {
+					return reconcile.Result{}, err
+				}
+			}
+		}
+
+		// End experiment
+		canary.Status.MarkRolloutCompleted()
+		err = r.Status().Update(context, canary)
+		return reconcile.Result{}, err
+	}
+
 	// Check canary rollout status
 	rolloutPercent := float64(getWeight(Candidate, vs))
 	log.Info("istio-sync", "prev rollout percent", rolloutPercent, "max traffic percent", traffic.GetMaxTrafficPercent())
-	if rolloutPercent < traffic.GetMaxTrafficPercent() &&
-		now.After(canary.Status.LastIncrementTime.Add(interval)) {
+	if now.After(canary.Status.LastIncrementTime.Add(interval)) {
 
 		switch canary.Spec.TrafficControl.Strategy {
 		case "manual":
@@ -173,52 +224,41 @@ func (r *ReconcileCanary) syncIstio(context context.Context, canary *iter8v1alph
 				return reconcile.Result{}, err
 			}
 			canary.Status.AnalysisState = runtime.RawExtension{Raw: lastState}
+			canary.Status.AssessmentSummary = response.Assessment.Summary
+			canary.Status.CurrentIteration++
 		}
 
-		log.Info("istio-sync", "new rollout perccent", rolloutPercent)
-		rv := vs.ObjectMeta.ResourceVersion
-		vs = makeVirtualService(int(rolloutPercent), canary)
-		setResourceVersion(rv, vs)
-		log.Info("istio-sync", "updated vs", *vs)
-		err := r.Update(context, vs)
-		if err != nil {
-			return reconcile.Result{}, err
+		if rolloutPercent <= traffic.GetMaxTrafficPercent() && getWeight(Candidate, vs) != int(rolloutPercent) {
+			// Update Traffic splitting rule
+			log.Info("istio-sync", "new rollout perccent", rolloutPercent)
+			rv := vs.ObjectMeta.ResourceVersion
+			vs = makeVirtualService(int(rolloutPercent), canary)
+			setResourceVersion(rv, vs)
+			log.Info("istio-sync", "updated vs", *vs)
+			err := r.Update(context, vs)
+			if err != nil {
+				return reconcile.Result{}, err
+			}
 		}
 
 		canary.Status.LastIncrementTime = metav1.NewTime(now)
 	}
 
-	result := reconcile.Result{}
-	if getWeight(Candidate, vs) == int(traffic.GetMaxTrafficPercent()) {
-		// Rollout done.
-		canary.Status.MarkRolloutCompleted()
-		canary.Status.Progressing = false
-		// remove labels
-		removeCanaryLabel(context, r, baseline)
-		removeCanaryLabel(context, r, candidate)
-		// delete rules
-		deleteRules(context, r, canary)
-		// generate new rules to shift all traffic to candidate
-		stableDr, stableVs := newStableRules(candidate, canary)
-		r.Create(context, stableDr)
-		r.Create(context, stableVs)
-	} else {
-		canary.Status.MarkRolloutNotCompleted("Progressing", "")
-		canary.Status.Progressing = true
-		result.RequeueAfter = interval
-	}
-
+	canary.Status.MarkRolloutNotCompleted("Progressing", "")
 	err = r.Status().Update(context, canary)
 
-	return result, err
+	return reconcile.Result{RequeueAfter: interval}, err
 }
 
-func removeCanaryLabel(context context.Context, r *ReconcileCanary, d *appsv1.Deployment) {
+func removeCanaryLabel(context context.Context, r *ReconcileCanary, d *appsv1.Deployment) (err error) {
 	labels := d.GetLabels()
 	delete(labels, canaryLabel)
 	d.SetLabels(labels)
-	r.Update(context, d)
-	log.Info("istio sync", "remove labels", d.GetName())
+	if err = r.Update(context, d); err != nil {
+		return
+	}
+	log.Info("istio sync", "remove canary label from", d.GetName())
+	return
 }
 
 func deleteRules(context context.Context, r *ReconcileCanary, canary *iter8v1alpha1.Canary) (err error) {
@@ -227,32 +267,26 @@ func deleteRules(context context.Context, r *ReconcileCanary, canary *iter8v1alp
 
 	dr := &v1alpha3.DestinationRule{}
 	if err = r.Get(context, types.NamespacedName{Name: drName, Namespace: canary.Namespace}, dr); err == nil {
-		r.Delete(context, dr)
+		if err = r.Delete(context, dr); err != nil {
+			return
+		}
 		log.Info("istio sync", "delete dr", drName)
+	} else {
+		return
 	}
 
 	vs := &v1alpha3.VirtualService{}
 	if err = r.Get(context, types.NamespacedName{Name: vsName, Namespace: canary.Namespace}, vs); err == nil {
-		r.Delete(context, vs)
+		if err = r.Delete(context, vs); err != nil {
+			return
+		}
 		log.Info("istio sync", "delete vs", vsName)
+	} else {
+		return
 	}
 
-	return err
+	return
 }
-
-// apiVersion: networking.istio.io/v1alpha3
-// kind: DestinationRule
-// metadata:
-//   name: reviews-canary
-// spec:
-//   host: reviews
-//   subsets:
-//   - name: base
-// 	   labels:
-// 	     iter8.ibm.com/canary: base
-//   - name: candidate
-// 	   labels:
-// 	     iter8.ibm.com/canary: candidate
 
 func newDestinationRule(canary *iter8v1alpha1.Canary, baseline, candidate *appsv1.Deployment) *v1alpha3.DestinationRule {
 	bLabels := baseline.GetLabels()
@@ -286,24 +320,6 @@ func newDestinationRule(canary *iter8v1alpha1.Canary, baseline, candidate *appsv
 func getDestinationRuleName(canary *iter8v1alpha1.Canary) string {
 	return canary.Spec.TargetService.Name + "-iter8.canary"
 }
-
-// apiVersion: networking.istio.io/v1alpha3
-// kind: VirtualService
-// metadata:
-//   name: reviews-canary
-// spec:
-//   hosts:
-// 	- reviews
-//   http:
-//   - route:
-// 		- destination:
-// 			host: reviews
-// 			subset: base
-// 	  	  weight: 50
-// 		- destination:
-// 			host: reviews
-// 			subset: candidate
-// 	  	  weight: 50
 
 func makeVirtualService(rolloutPercent int, canary *iter8v1alpha1.Canary) *v1alpha3.VirtualService {
 	vs := &v1alpha3.VirtualService{
@@ -358,43 +374,17 @@ func setResourceVersion(rv string, vs *v1alpha3.VirtualService) {
 	vs.ObjectMeta.ResourceVersion = rv
 }
 
-<<<<<<< HEAD
-func getLatestDeployment(ds *appsv1.DeploymentList) (*appsv1.Deployment, error) {
-	latestTs := *new(time.Time)
-	index := -1
-	for i, d := range ds.Items {
-		if val, ok := d.ObjectMeta.Labels[canaryLabel]; !ok || val != Baseline {
-			ct := d.ObjectMeta.CreationTimestamp
-			if ct.After(latestTs) {
-				latestTs = ct.Time
-				index = i
-			}
-		}
+func setStableRules(context context.Context, r *ReconcileCanary, d *appsv1.Deployment, canary *iter8v1alpha1.Canary) (err error) {
+	stableDr, stableVs := newStableRules(d, canary)
+	if err = r.Create(context, stableDr); err != nil {
+		return
 	}
-
-	if index == -1 {
-		return nil, errors.New("Latest deployment not found")
+	if err = r.Create(context, stableVs); err != nil {
+		return
 	}
-	return &ds.Items[index], nil
+	return
 }
 
-func getCanaryDeployment(ds *appsv1.DeploymentList, baseline *appsv1.Deployment) (*appsv1.Deployment, error) {
-	baselineTs := baseline.ObjectMeta.CreationTimestamp.Time
-	index := -1
-	for i, d := range ds.Items {
-		if val, ok := d.ObjectMeta.Labels[canaryLabel]; !ok || val != Baseline {
-			ct := d.ObjectMeta.CreationTimestamp.Time
-			if ct.After(baselineTs) {
-				index = i
-			}
-		}
-	}
-
-	if index == -1 {
-		return nil, errors.New("Latest deployment not found")
-	}
-	return &ds.Items[index], nil
-=======
 func newStableRules(d *appsv1.Deployment, canary *iter8v1alpha1.Canary) (*v1alpha3.DestinationRule, *v1alpha3.VirtualService) {
 	dr := &v1alpha3.DestinationRule{
 		ObjectMeta: metav1.ObjectMeta{
@@ -441,6 +431,5 @@ func newStableRules(d *appsv1.Deployment, canary *iter8v1alpha1.Canary) (*v1alph
 }
 
 func getStableName(canary *iter8v1alpha1.Canary) string {
-	return canary.GetName() + "iter-stable"
->>>>>>> update istio logic
+	return canary.GetName() + ".iter-stable"
 }
