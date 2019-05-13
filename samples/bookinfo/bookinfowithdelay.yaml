@@ -112,13 +112,11 @@ spec:
     matchLabels:
       app: reviews
       version: v1
-      iter8.ibm.com/canary: baseline
   template:
     metadata:
       labels:
         app: reviews
         version: v1
-        iter8.ibm.com/canary: baseline
     spec:
       containers:
       - name: reviews
