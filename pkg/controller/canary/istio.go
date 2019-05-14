@@ -282,7 +282,7 @@ func (r *ReconcileCanary) syncIstio(context context.Context, canary *iter8v1alph
 
 func removeCanaryLabel(context context.Context, r *ReconcileCanary, d *appsv1.Deployment) (err error) {
 	labels := d.GetLabels()
-	//	delete(labels, canaryLabel)
+	delete(labels, canaryLabel)
 	delete(labels, canaryRole)
 	d.SetLabels(labels)
 	if err = r.Update(context, d); err != nil {
@@ -322,8 +322,8 @@ func deleteRules(context context.Context, r *ReconcileCanary, canary *iter8v1alp
 func newDestinationRule(canary *iter8v1alpha1.Canary, baseline, candidate *appsv1.Deployment) *v1alpha3.DestinationRule {
 	bLabels := baseline.GetLabels()
 	cLabels := candidate.GetLabels()
-	//	delete(bLabels, canaryLabel)
-	//	delete(cLabels, canaryLabel)
+	delete(bLabels, canaryLabel)
+	delete(cLabels, canaryLabel)
 	delete(bLabels, canaryRole)
 	delete(cLabels, canaryRole)
 	dr := &v1alpha3.DestinationRule{
