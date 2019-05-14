@@ -104,16 +104,18 @@ func (r *ReconcileCanary) syncIstio(context context.Context, canary *iter8v1alph
 				}
 			}
 		}
-
 	}
 
 	if baseline == nil || candidate == nil {
-		canary.Status.MarkHasNotService("Base or candidate deployment is missing", "")
-		if baseline == nil {
-			log.Info("istio sync missing baseline")
-		}
-		if candidate == nil {
+		if baseline == nil && candidate == nil {
+			log.Info("istio sync missing baseline and candidate")
+			canary.Status.MarkHasNotService("Baseline and candidate deployment are missing", "")
+		} else if candidate == nil {
 			log.Info("istio sync missing candidate")
+			canary.Status.MarkHasNotService("Candidate deployment is missing", "")
+		} else {
+			log.Info("istio sync missing baseline")
+			canary.Status.MarkHasNotService("Baseline deployment is missing", "")
 		}
 		err = r.Status().Update(context, canary)
 		if err != nil {
@@ -211,10 +213,21 @@ func (r *ReconcileCanary) syncIstio(context context.Context, canary *iter8v1alph
 					return reconcile.Result{}, err
 				}
 			}
+			canary.Status.MarkRolloutCompleted()
+		} else {
+			// delete routing rules
+			if err := deleteRules(context, r, canary, baseline, candidate); err != nil {
+				return reconcile.Result{}, err
+			}
+			// Set all traffic to baseline deployment
+			// generate new rules to shift all traffic to baseline
+			if err := setStableRules(context, r, baseline, canary); err != nil {
+				return reconcile.Result{}, err
+			}
+			canary.Status.MarkHasNotService("Experiment Failure", "")
 		}
 
 		// End experiment
-		canary.Status.MarkRolloutCompleted()
 		err = r.Status().Update(context, canary)
 		return reconcile.Result{}, err
 	}
@@ -473,5 +486,5 @@ func newStableRules(d *appsv1.Deployment, canary *iter8v1alpha1.Canary) (*v1alph
 }
 
 func getStableName(canary *iter8v1alpha1.Canary) string {
-	return canary.GetName() + ".iter-stable"
+	return canary.GetName() + ".iter8-stable"
 }
