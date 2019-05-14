@@ -8,6 +8,10 @@ spec:
   targetService:
     name: reviews
     apiVersion: v1
+    baseline: reviews-v2 # Name of deployment
+    candidate: reviews-v3
   trafficControl:
     strategy: manual
+    interval: 20s
+    stepSize: 25
 

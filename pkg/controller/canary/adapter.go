@@ -53,7 +53,7 @@ func MakeRequest(instance *iter8v1alpha1.Canary, baseline, canary interface{}) *
 	switch instance.Spec.TargetService.APIVersion {
 	case KubernetesService:
 		destinationKey = "destination_workload"
-		namespaceKey = "destination_namespace"
+		namespaceKey = "destination_service_namespace"
 		baseVal = baseline.(*appsv1.Deployment).GetName()
 		canaryVal = canary.(*appsv1.Deployment).GetName()
 		baseNsVal = baseline.(*appsv1.Deployment).GetNamespace()

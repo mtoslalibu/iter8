@@ -7,13 +7,9 @@ metadata:
 spec:
   targetService:
     name: reviews
-    apiVersion: v1
-    baseline: 
-      name: reviews-v1
-      apiVersion: apps/v1
-    candidate: 
-      name: reviews-v2
-      apiVersion: apps/v1
+    platform: Kubernetes #Option: Knative or Kubernetes
+    baseline: reviews-v1 # Name of deployment
+    candidate: reviews-v2
   trafficControl:
     strategy: check_and_increment
     interval: 20s

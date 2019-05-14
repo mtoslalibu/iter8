@@ -74,17 +74,37 @@ func (r *ReconcileCanary) syncIstio(context context.Context, canary *iter8v1alph
 		return reconcile.Result{Requeue: true}, nil
 	}
 
+	baselineName, candidateName := canary.Spec.TargetService.Baseline, canary.Spec.TargetService.Candidate
+
 	// Get current deployment and candidate deployment
 	var baseline, candidate *appsv1.Deployment
 	for _, d := range deployments.Items {
-		log.Info("istio sync", "deploy name", d.GetName(), "labels", d.GetLabels())
-		if val, ok := d.ObjectMeta.Labels[canaryRole]; ok {
-			if val == Candidate {
-				candidate = d.DeepCopy()
-			} else if val == Baseline {
+		// First check the specification in Canary;
+		// If not specified, check the labels in deployment
+		// Noted that only one set of labels can be recognized at one time
+
+		// Check specification in canary
+		if len(baselineName) > 0 && len(candidateName) > 0 {
+			if d.GetName() == baselineName {
+				log.Info("istio sync", "Found baseline in canary", baselineName)
 				baseline = d.DeepCopy()
+			} else if d.GetName() == candidateName {
+				log.Info("istio sync", "Found candidate in canary", candidateName)
+				candidate = d.DeepCopy()
+			}
+		} else {
+			// Check labels in deployment
+			if val, ok := d.ObjectMeta.Labels[canaryRole]; ok {
+				if val == Candidate {
+					log.Info("istio sync", "Found candidate in labels", d.GetName())
+					candidate = d.DeepCopy()
+				} else if val == Baseline {
+					log.Info("istio sync", "Found baseline in labels", d.GetName())
+					baseline = d.DeepCopy()
+				}
 			}
 		}
+
 	}
 
 	if baseline == nil || candidate == nil {
@@ -150,8 +170,7 @@ func (r *ReconcileCanary) syncIstio(context context.Context, canary *iter8v1alph
 	}
 
 	// check experiment is finished
-	if canary.Spec.TrafficControl.GetIterationCount() <= canary.Status.CurrentIteration ||
-		getWeight(Candidate, vs) == int(traffic.GetMaxTrafficPercent()) {
+	if canary.Spec.TrafficControl.GetIterationCount() <= canary.Status.CurrentIteration {
 		log.Info("experiment completed.")
 		// remove canary labels
 		if err := removeCanaryLabel(context, r, baseline); err != nil {
@@ -235,8 +254,10 @@ func (r *ReconcileCanary) syncIstio(context context.Context, canary *iter8v1alph
 			canary.Status.AnalysisState = runtime.RawExtension{Raw: lastState}
 			canary.Status.AssessmentSummary = response.Assessment.Summary
 			canary.Status.CurrentIteration++
+			log.Info("istio-sync", "new rollout iteration", canary.Status.CurrentIteration)
 		}
 
+		// Increase the traffic upto max traffic amount
 		if rolloutPercent <= traffic.GetMaxTrafficPercent() && getWeight(Candidate, vs) != int(rolloutPercent) {
 			// Update Traffic splitting rule
 			log.Info("istio-sync", "new rollout perccent", rolloutPercent)
