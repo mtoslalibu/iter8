@@ -7,12 +7,12 @@ metadata:
 spec:
   targetService:
     name: reviews
-    platform: Kubernetes #Option: Knative or Kubernetes
-    baseline: reviews-v1 # Name of deployment
+    apiVersion: v2 
+    baseline: reviews-v1
     candidate: reviews-v2
   trafficControl:
     strategy: check_and_increment
-    interval: 20s
+    interval: 30s
     stepSize: 5
   analysis:
     analyticsService: "localhost:5555"
