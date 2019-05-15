@@ -333,12 +333,6 @@ func deleteRules(context context.Context, r *ReconcileCanary, canary *iter8v1alp
 }
 
 func newDestinationRule(canary *iter8v1alpha1.Canary, baseline, candidate *appsv1.Deployment) *v1alpha3.DestinationRule {
-	bLabels := baseline.GetLabels()
-	cLabels := candidate.GetLabels()
-	delete(bLabels, canaryLabel)
-	delete(cLabels, canaryLabel)
-	delete(bLabels, canaryRole)
-	delete(cLabels, canaryRole)
 	dr := &v1alpha3.DestinationRule{
 		ObjectMeta: metav1.ObjectMeta{
 			Name:      getDestinationRuleName(canary, baseline, candidate),
@@ -352,11 +346,11 @@ func newDestinationRule(canary *iter8v1alpha1.Canary, baseline, candidate *appsv
 			Subsets: []v1alpha3.Subset{
 				v1alpha3.Subset{
 					Name:   Baseline,
-					Labels: bLabels,
+					Labels: baseline.Spec.Selector.MatchLabels,
 				},
 				v1alpha3.Subset{
 					Name:   Candidate,
-					Labels: cLabels,
+					Labels: candidate.Spec.Selector.MatchLabels,
 				},
 			},
 		},
