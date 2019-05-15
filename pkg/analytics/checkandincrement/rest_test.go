@@ -14,8 +14,13 @@ limitations under the License.
 package checkandincrement
 
 import (
+	"encoding/json"
+	"io/ioutil"
+	"net/http"
+	"net/http/httptest"
 	"testing"
 
+	"github.com/google/go-cmp/cmp"
 	iter8v1alpha1 "github.ibm.com/istio-research/iter8-controller/pkg/apis/iter8/v1alpha1"
 	"sigs.k8s.io/controller-runtime/pkg/runtime/log"
 )
@@ -23,47 +28,85 @@ import (
 type testCase struct {
 	endpoint string
 	request  Request
+	response Response
 }
 
 func TestInvoke(t *testing.T) {
-	table := []testCase{
-		testCase{
-			endpoint: "localhost:5555",
-			request: Request{
-				Baseline: Window{
-					StartTime: "2019-05-01T18:53:35.163Z",
-					EndTime:   "2019-05-01T18:53:35.163Z",
-					Tags: map[string]string{
-						"destination_service_name": "reviews-v2",
-					},
+	req1 := Request{
+		Baseline: Window{
+			StartTime: "2019-05-01T18:53:35.163Z",
+			EndTime:   "2019-05-01T18:53:35.163Z",
+			Tags: map[string]string{
+				"destination_service_name": "reviews-v2",
+			},
+		},
+		Canary: Window{
+			StartTime: "2019-05-01T18:53:35.163Z",
+			EndTime:   "2019-05-01T18:53:35.163Z",
+			Tags: map[string]string{
+				"destination_service_name": "reviews-v2",
+			},
+		},
+		TrafficControl: TrafficControl{
+			SuccessCriteria: []SuccessCriterion{
+				SuccessCriterion{
+					MetricName: "iter8_latency",
+					Type:       iter8v1alpha1.SuccessCriterionDelta,
+					Value:      0.02,
 				},
-				Canary: Window{
-					StartTime: "2019-05-01T18:53:35.163Z",
-					EndTime:   "2019-05-01T18:53:35.163Z",
-					Tags: map[string]string{
-						"destination_service_name": "reviews-v2",
-					},
-				},
-				TrafficControl: TrafficControl{
-					SuccessCriteria: []SuccessCriterion{
-						SuccessCriterion{
-							MetricName: "iter8_latency",
-							Type:       iter8v1alpha1.SuccessCriterionDelta,
-							Value:      0.02,
-						},
-					},
-				},
-				LastState: map[string]string{},
+			},
+		},
+		LastState: map[string]string{},
+	}
+
+	resp1 := Response{
+		Baseline: MetricsTraffic{
+			TrafficPercentage: 95,
+		},
+		Canary: MetricsTraffic{
+			TrafficPercentage: 5,
+		},
+		Assessment: Assessment{
+			Summary: iter8v1alpha1.Summary{
+				AbortExperiment: false,
 			},
 		},
 	}
+	rawResp1, err := json.Marshal(resp1)
+	if err != nil {
+		t.Error(err)
+	}
+
+	server := httptest.NewServer(http.HandlerFunc(func(rw http.ResponseWriter, req *http.Request) {
+		_, err := ioutil.ReadAll(req.Body)
+		if err != nil {
+			rw.WriteHeader(400)
+			return
+		}
+
+		rw.WriteHeader(200)
+		rw.Write(rawResp1)
+	}))
+	// Close the server when test finishes
+	defer server.Close()
+
+	table := []testCase{
+		testCase{
+			endpoint: server.URL,
+			request:  req1,
+			response: resp1,
+		},
+	}
+
 	log.SetLogger(log.ZapLogger(false))
 	logger := log.Log.WithName("entrypoint")
 	for _, tc := range table {
-		_, err := Invoke(logger, tc.endpoint, &tc.request)
+		response, err := Invoke(logger, tc.endpoint, &tc.request)
 		if err != nil {
 			t.Error(err)
 		}
+		if diff := cmp.Diff(*response, resp1); diff != "" {
+			t.Error(diff)
+		}
 	}
-
 }

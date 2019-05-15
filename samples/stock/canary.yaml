@@ -12,7 +12,7 @@ spec:
     interval: 20s
     stepSize: 5
   analysis:
-    analyticsService: "localhost:5555"
+    analyticsService: "http://localhost:5555"
     metrics:
       - name: iter8_latency
         type: delta

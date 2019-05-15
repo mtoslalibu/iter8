@@ -32,7 +32,7 @@ func Invoke(log logr.Logger, endpoint string, payload *Request) (*Response, erro
 
 	log.Info("post", "endpoint", "check_and_increment", "request", string(data))
 
-	raw, err := http.Post("http://"+endpoint+"/api/v1/analytics/canary/check_and_increment", "application/json", bytes.NewBuffer(data))
+	raw, err := http.Post(endpoint+"/api/v1/analytics/canary/check_and_increment", "application/json", bytes.NewBuffer(data))
 	if err != nil {
 		return nil, err
 	}
