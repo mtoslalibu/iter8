@@ -26,3 +26,17 @@ make run
 ```sh
 kubectl apply -f config/samples/iter8_v1alpha1_canary.yaml
 ```
+
+## Run the Demo
+
+### Stage 1 of the demo
+
+1. `kubectl apply -f samples/bookinfo/bookinfowithdelay.yaml`
+2. `kubectl apply -f samples/bookinfo/bookinfo-gateway.yaml`
+3. `kubectl apply -f canaryv1v2.yaml`
+4. `kubectl apply -f reviews_v2.yaml`
+
+### Stage 2 of the demo
+
+5. `kubectl apply -f canaryv2v3.yaml`
+6. `kubectl apply -f reviews_v3.yaml`

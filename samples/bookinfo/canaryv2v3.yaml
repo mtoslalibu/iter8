@@ -1,0 +1,25 @@
+apiVersion: iter8.ibm.com/v1alpha1
+kind: Canary
+metadata:
+  name: reviews
+  labels:
+    app.kubernetes.io/name: reviews
+spec:
+  targetService:
+    name: reviews
+    apiVersion: v1 
+    baseline: reviews-v2
+    candidate: reviews-v3
+  trafficControl:
+    strategy: check_and_increment
+    interval: 30s
+    stepSize: 5
+    iterationCount: 10 #default value = 100
+    maxTrafficPercent: 25 #default value = 50
+  analysis:
+    analyticsService: "localhost:5555"
+    metrics:
+      - name: iter8_latency
+        type: delta
+        value: 2
+        sampleSize: 10
