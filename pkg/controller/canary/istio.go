@@ -387,7 +387,6 @@ func makeVirtualService(rolloutPercent int, canary *iter8v1alpha1.Canary) *v1alp
 	return vs
 }
 
-// Should add deployment names
 func getVirtualServiceName(canary *iter8v1alpha1.Canary) string {
 	return canary.Spec.TargetService.Name + "-iter8.canary"
 }
@@ -431,7 +430,7 @@ func newStableRules(d *appsv1.Deployment, canary *iter8v1alpha1.Canary) (*v1alph
 			Subsets: []v1alpha3.Subset{
 				v1alpha3.Subset{
 					Name:   Stable,
-					Labels: d.GetLabels(),
+					Labels: d.Spec.Template.Labels,
 				},
 			},
 		},
