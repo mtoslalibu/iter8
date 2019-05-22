@@ -28,6 +28,7 @@ import (
 	logf "sigs.k8s.io/controller-runtime/pkg/runtime/log"
 	"sigs.k8s.io/controller-runtime/pkg/runtime/signals"
 
+	istiov1alpha3 "github.com/knative/pkg/apis/istio/v1alpha3"
 	servingv1alpha1 "github.com/knative/serving/pkg/apis/serving/v1alpha1"
 )
 
@@ -70,6 +71,11 @@ func main() {
 	}
 
 	if err := servingv1alpha1.AddToScheme(mgr.GetScheme()); err != nil {
+		log.Error(err, "unable add APIs to scheme")
+		os.Exit(1)
+	}
+
+	if err := istiov1alpha3.AddToScheme(mgr.GetScheme()); err != nil {
 		log.Error(err, "unable add APIs to scheme")
 		os.Exit(1)
 	}

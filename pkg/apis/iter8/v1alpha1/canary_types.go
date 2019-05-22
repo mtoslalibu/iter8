@@ -50,7 +50,7 @@ type CanaryList struct {
 // CanarySpec defines the desired state of Canary
 type CanarySpec struct {
 	// TargetService is a reference to an object to use as target service
-	TargetService *corev1.ObjectReference `json:"targetService"`
+	TargetService TargetService `json:"targetService"`
 
 	// TrafficControl defines parameters for controlling the traffic
 	TrafficControl TrafficControl `json:"trafficControl"`
@@ -58,6 +58,18 @@ type CanarySpec struct {
 	// Analysis parameters
 	// +optional
 	Analysis Analysis `json:"analysis,omitempty"`
+}
+
+// TargetService defines what to watch in the controller
+type TargetService struct {
+	// defines the characteristics of the service
+	*corev1.ObjectReference `json:",inline"`
+
+	// Baseline tells the name of baseline
+	Baseline string `json:"baseline,omitempty"`
+
+	// Candidate tells the name of candidate
+	Candidate string `json:"candidate,omitempty"`
 }
 
 // CanaryStatus defines the observed state of Canary

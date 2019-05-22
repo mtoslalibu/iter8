@@ -1,0 +1,17 @@
+apiVersion: iter8.ibm.com/v1alpha1
+kind: Canary
+metadata:
+  name: reviews
+  labels:
+    app.kubernetes.io/name: reviews
+spec:
+  targetService:
+    name: reviews
+    apiVersion: v1
+    baseline: reviews-v2 # Name of deployment
+    candidate: reviews-v3
+  trafficControl:
+    strategy: manual
+    interval: 20s
+    stepSize: 25
+

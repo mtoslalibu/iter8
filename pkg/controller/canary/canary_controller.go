@@ -35,6 +35,8 @@ import (
 	"sigs.k8s.io/controller-runtime/pkg/source"
 
 	servingv1alpha1 "github.com/knative/serving/pkg/apis/serving/v1alpha1"
+	appsv1 "k8s.io/api/apps/v1"
+	corev1 "k8s.io/api/core/v1"
 
 	iter8v1alpha1 "github.ibm.com/istio-research/iter8-controller/pkg/apis/iter8/v1alpha1"
 )
@@ -43,6 +45,9 @@ var log = logf.Log.WithName("canary-controller")
 
 const (
 	canaryLabel = "iter8.ibm.com/canary"
+
+	KubernetesService      = "v1"
+	KnativeServiceV1Alpha1 = "serving.knative.dev/v1alpha1"
 )
 
 // Add creates a new Canary Controller and adds it to the Manager with default RBAC. The Manager will set fields on the Controller
@@ -70,18 +75,6 @@ func add(mgr manager.Manager, r reconcile.Reconciler) error {
 		return err
 	}
 
-	// Watch for Knative services changes
-	mapFn := handler.ToRequestsFunc(
-		func(a handler.MapObject) []reconcile.Request {
-			canary := a.Meta.GetLabels()[canaryLabel]
-			return []reconcile.Request{
-				{NamespacedName: types.NamespacedName{
-					Name:      canary,
-					Namespace: a.Meta.GetNamespace(),
-				}},
-			}
-		})
-
 	p := predicate.Funcs{
 		UpdateFunc: func(e event.UpdateEvent) bool {
 			if _, ok := e.MetaOld.GetLabels()[canaryLabel]; !ok {
@@ -95,16 +88,35 @@ func add(mgr manager.Manager, r reconcile.Reconciler) error {
 		},
 	}
 
+	// Watch for Knative services changes
+	mapFn := handler.ToRequestsFunc(
+		func(a handler.MapObject) []reconcile.Request {
+			canary := a.Meta.GetLabels()[canaryLabel]
+			return []reconcile.Request{
+				{NamespacedName: types.NamespacedName{
+					Name:      canary,
+					Namespace: a.Meta.GetNamespace(),
+				}},
+			}
+		})
+
 	err = c.Watch(&source.Kind{Type: &servingv1alpha1.Service{}},
 		&handler.EnqueueRequestsFromMapFunc{ToRequests: mapFn},
 		p)
 
 	if err != nil {
-		// Just log error.
 		log.Info("NoKnativeServingWatch", zap.Error(err))
 	}
 
-	// TODO: Watch for deployment changes
+	// Watch for k8s deployment updates
+	err = c.Watch(&source.Kind{Type: &appsv1.Deployment{}},
+		&handler.EnqueueRequestsFromMapFunc{ToRequests: mapFn},
+		p)
+
+	if err != nil {
+		// Just log error.
+		log.Info("NoDeloyemntWatch", zap.Error(err))
+	}
 
 	return nil
 }
@@ -145,11 +157,11 @@ func (r *ReconcileCanary) Reconcile(request reconcile.Request) (reconcile.Result
 	log := log.WithValues("namespace", instance.Namespace, "name", instance.Name)
 	ctx = context.WithValue(ctx, "logger", log)
 	// // Stop right here if the experiment is completed.
-	// completed := instance.Status.GetCondition(iter8v1alpha1.CanaryConditionRolloutCompleted)
-	// if completed != nil && completed.Status == corev1.ConditionTrue {
-	// 	log.Info("rollout completed")
-	// 	return reconcile.Result{}, nil
-	// }
+	completed := instance.Status.GetCondition(iter8v1alpha1.CanaryConditionRolloutCompleted)
+	if completed != nil && completed.Status == corev1.ConditionTrue {
+		log.Info("rollout completed")
+		return reconcile.Result{}, nil
+	}
 
 	log.Info("reconciling")
 
@@ -174,13 +186,13 @@ func (r *ReconcileCanary) Reconcile(request reconcile.Request) (reconcile.Result
 	apiVersion := instance.Spec.TargetService.APIVersion
 
 	switch apiVersion {
-	case "":
-		fallthrough
-	case "serving.knative.dev/v1alpha1":
+	case KubernetesService:
+		return r.syncIstio(ctx, instance)
+	case KnativeServiceV1Alpha1:
 		return r.syncKnative(ctx, instance)
+	default:
+		instance.Status.MarkHasNotService("UnsupportedAPIVersion", "%s", apiVersion)
+		err := r.Status().Update(ctx, instance)
+		return reconcile.Result{}, err
 	}
-
-	instance.Status.MarkHasNotService("UnsupportedAPIVersion", "%s", apiVersion)
-	err = r.Status().Update(ctx, instance)
-	return reconcile.Result{}, err
 }
