@@ -36,6 +36,7 @@ import (
 
 	servingv1alpha1 "github.com/knative/serving/pkg/apis/serving/v1alpha1"
 	appsv1 "k8s.io/api/apps/v1"
+	corev1 "k8s.io/api/core/v1"
 
 	iter8v1alpha1 "github.ibm.com/istio-research/iter8-controller/pkg/apis/iter8/v1alpha1"
 )
@@ -156,11 +157,11 @@ func (r *ReconcileCanary) Reconcile(request reconcile.Request) (reconcile.Result
 	log := log.WithValues("namespace", instance.Namespace, "name", instance.Name)
 	ctx = context.WithValue(ctx, "logger", log)
 	// // Stop right here if the experiment is completed.
-	// completed := instance.Status.GetCondition(iter8v1alpha1.CanaryConditionRolloutCompleted)
-	// if completed != nil && completed.Status == corev1.ConditionTrue {
-	// 	log.Info("rollout completed")
-	// 	return reconcile.Result{}, nil
-	// }
+	completed := instance.Status.GetCondition(iter8v1alpha1.CanaryConditionRolloutCompleted)
+	if completed != nil && completed.Status == corev1.ConditionTrue {
+		log.Info("rollout completed")
+		return reconcile.Result{}, nil
+	}
 
 	log.Info("reconciling")
 

@@ -265,10 +265,10 @@ func (r *ReconcileCanary) syncIstio(context context.Context, canary *iter8v1alph
 			}
 			canary.Status.AnalysisState = runtime.RawExtension{Raw: lastState}
 			canary.Status.AssessmentSummary = response.Assessment.Summary
-			canary.Status.CurrentIteration++
-			log.Info("istio-sync", "new rollout iteration", canary.Status.CurrentIteration)
 		}
 
+		canary.Status.CurrentIteration++
+		log.Info("istio-sync", "new rollout iteration", canary.Status.CurrentIteration)
 		// Increase the traffic upto max traffic amount
 		if rolloutPercent <= traffic.GetMaxTrafficPercent() && getWeight(Candidate, vs) != int(rolloutPercent) {
 			// Update Traffic splitting rule
