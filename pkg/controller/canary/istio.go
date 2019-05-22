@@ -227,7 +227,6 @@ func (r *ReconcileCanary) syncIstio(context context.Context, canary *iter8v1alph
 				// TODO: Need new condition
 				canary.Status.MarkHasNotService("ErrorAnalytics", "%v", err)
 				err = r.Status().Update(context, canary)
-				// Should we delet the istio rules?
 				return reconcile.Result{}, err
 			}
 
@@ -316,9 +315,6 @@ func newDestinationRule(canary *iter8v1alpha1.Canary) *v1alpha3.DestinationRule 
 		ObjectMeta: metav1.ObjectMeta{
 			Name:      getDestinationRuleName(canary),
 			Namespace: canary.Namespace,
-			OwnerReferences: []metav1.OwnerReference{
-				*metav1.NewControllerRef(canary.GetObjectMeta(), canary.GroupVersionKind()),
-			},
 		},
 		Spec: v1alpha3.DestinationRuleSpec{
 			Host:    canary.Spec.TargetService.Name,
@@ -355,9 +351,6 @@ func makeVirtualService(rolloutPercent int, canary *iter8v1alpha1.Canary) *v1alp
 		ObjectMeta: metav1.ObjectMeta{
 			Name:      getVirtualServiceName(canary),
 			Namespace: canary.Namespace,
-			OwnerReferences: []metav1.OwnerReference{
-				*metav1.NewControllerRef(canary.GetObjectMeta(), canary.GroupVersionKind()),
-			},
 		},
 		Spec: v1alpha3.VirtualServiceSpec{
 			Hosts: []string{canary.Spec.TargetService.Name},
@@ -421,9 +414,6 @@ func newStableRules(d *appsv1.Deployment, canary *iter8v1alpha1.Canary) (*v1alph
 		ObjectMeta: metav1.ObjectMeta{
 			Name:      getStableName(canary),
 			Namespace: canary.Namespace,
-			OwnerReferences: []metav1.OwnerReference{
-				*metav1.NewControllerRef(canary.GetObjectMeta(), canary.GroupVersionKind()),
-			},
 		},
 		Spec: v1alpha3.DestinationRuleSpec{
 			Host: canary.Spec.TargetService.Name,
@@ -440,9 +430,6 @@ func newStableRules(d *appsv1.Deployment, canary *iter8v1alpha1.Canary) (*v1alph
 		ObjectMeta: metav1.ObjectMeta{
 			Name:      getStableName(canary),
 			Namespace: canary.Namespace,
-			OwnerReferences: []metav1.OwnerReference{
-				*metav1.NewControllerRef(canary.GetObjectMeta(), canary.GroupVersionKind()),
-			},
 		},
 		Spec: v1alpha3.VirtualServiceSpec{
 			Hosts: []string{canary.Spec.TargetService.Name},
