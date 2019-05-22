@@ -122,7 +122,7 @@ func (r *ReconcileCanary) syncIstio(context context.Context, canary *iter8v1alph
 			return reconcile.Result{}, err
 		}
 
-		return reconcile.Result{Requeue: true}, nil
+		return reconcile.Result{RequeueAfter: time.Second}, nil
 	}
 
 	log.Info("istio-sync", "baseline", baseline.GetName(), Candidate, candidate.GetName())

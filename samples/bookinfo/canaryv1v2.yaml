@@ -13,9 +13,9 @@ spec:
   trafficControl:
     strategy: check_and_increment
     interval: 30s
-    stepSize: 2
-    iterationCount: 20 #default value = 100
-    maxTrafficPercent: 25 #default value = 50
+    stepSize: 20
+    iterationCount: 8 #default value = 100
+    maxTrafficPercent: 99 #default value = 50
   analysis:
     analyticsService: "localhost:5555"
     metrics:
