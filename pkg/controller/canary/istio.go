@@ -127,7 +127,7 @@ func (r *ReconcileCanary) syncIstio(context context.Context, canary *iter8v1alph
 
 	log.Info("istio-sync", "baseline", baseline.GetName(), Candidate, candidate.GetName())
 
-	// Remove stable rules if there is any
+	// Remove stable rules if there is any related to the current service
 	stableName := getStableName(canary)
 	dr := &v1alpha3.DestinationRule{}
 	if err = r.Get(context, types.NamespacedName{Name: stableName, Namespace: canary.GetNamespace()}, dr); err == nil {
@@ -148,7 +148,6 @@ func (r *ReconcileCanary) syncIstio(context context.Context, canary *iter8v1alph
 
 	// Start Canary Process
 	// Setup Istio Routing Rules
-	// TODO: should include deployment info here
 	drName := getDestinationRuleName(canary, baseline, candidate)
 	dr = &v1alpha3.DestinationRule{}
 	if err = r.Get(context, types.NamespacedName{Name: drName, Namespace: canary.Namespace}, dr); err != nil {
@@ -480,5 +479,5 @@ func newStableRules(d *appsv1.Deployment, canary *iter8v1alpha1.Canary) (*v1alph
 }
 
 func getStableName(canary *iter8v1alpha1.Canary) string {
-	return canary.GetName() + ".iter8-stable"
+	return canary.Spec.TargetService.Name + ".iter8-stable"
 }
