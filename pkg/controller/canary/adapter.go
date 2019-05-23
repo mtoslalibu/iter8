@@ -71,6 +71,7 @@ func MakeRequest(instance *iter8v1alpha1.Canary, baseline, canary interface{}) *
 	}
 
 	return &checkandincrement.Request{
+		Name: instance.Name,
 		Baseline: checkandincrement.Window{
 			StartTime: instance.ObjectMeta.GetCreationTimestamp().Format(time.RFC3339),
 			EndTime:   now,

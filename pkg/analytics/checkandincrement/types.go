@@ -20,6 +20,9 @@ import (
 )
 
 type Request struct {
+	// Specifies the name of the experiment
+	Name string `json:"name"`
+
 	// Specifies a time interval and key-value pairs for retrieving and processing data pertaining to the baseline version
 	Baseline Window `json:"baseline"`
 
