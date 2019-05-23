@@ -48,6 +48,8 @@ const (
 
 	KubernetesService      = "v1"
 	KnativeServiceV1Alpha1 = "serving.knative.dev/v1alpha1"
+
+	Finalizer = "finalizer.iter8.ibm.com"
 )
 
 // Add creates a new Canary Controller and adds it to the Manager with default RBAC. The Manager will set fields on the Controller
@@ -149,9 +151,14 @@ func (r *ReconcileCanary) Reconcile(request reconcile.Request) (reconcile.Result
 		return reconcile.Result{}, err
 	}
 
+	// Add finalizer to the canary object
+	if err = addFinalizerIfAbsent(ctx, r, instance, Finalizer); err != nil {
+		return reconcile.Result{}, err
+	}
+
 	// Check whether object has been deleted
 	if instance.DeletionTimestamp != nil {
-		return reconcile.Result{}, nil
+		return r.finalize(ctx, instance)
 	}
 
 	log := log.WithValues("namespace", instance.Namespace, "name", instance.Name)
@@ -195,4 +202,45 @@ func (r *ReconcileCanary) Reconcile(request reconcile.Request) (reconcile.Result
 		err := r.Status().Update(ctx, instance)
 		return reconcile.Result{}, err
 	}
+}
+
+func (r *ReconcileCanary) finalize(context context.Context, instance *iter8v1alpha1.Canary) (reconcile.Result, error) {
+	log.Info("finalizing")
+
+	apiVersion := instance.Spec.TargetService.APIVersion
+	switch apiVersion {
+	case KubernetesService:
+		return r.finalizeIstio(context, instance)
+	}
+
+	return reconcile.Result{}, removeFinalizer(context, r, instance, Finalizer)
+}
+
+func addFinalizerIfAbsent(context context.Context, r *ReconcileCanary, instance *iter8v1alpha1.Canary, fName string) (err error) {
+	for _, finalizer := range instance.ObjectMeta.GetFinalizers() {
+		if finalizer == fName {
+			return
+		}
+	}
+
+	instance.SetFinalizers(append(instance.GetFinalizers(), Finalizer))
+	if err = r.Update(context, instance); err != nil {
+		log.Info("setting finalizer failed. (retrying)", "error", err)
+	}
+
+	return
+}
+
+func removeFinalizer(context context.Context, r *ReconcileCanary, instance *iter8v1alpha1.Canary, fName string) (err error) {
+	finalizers := make([]string, 0)
+	for _, f := range instance.GetFinalizers() {
+		if f != fName {
+			finalizers = append(finalizers, f)
+		}
+	}
+	instance.SetFinalizers(finalizers)
+	if err = r.Update(context, instance); err != nil {
+		log.Info("setting finalizer failed. (retrying)", "error", err)
+	}
+	return
 }

@@ -167,7 +167,7 @@ func (r *ReconcileCanary) syncIstio(context context.Context, canary *iter8v1alph
 			switch canary.Spec.TrafficControl.GetOnSuccess() {
 			case "baseline":
 				// delete routing rules
-				if err := deleteRules(context, r, canary, baseline, candidate); err != nil {
+				if err := deleteRules(context, r, canary); err != nil {
 					return reconcile.Result{}, err
 				}
 				// Set all traffic to baseline deployment
@@ -177,7 +177,7 @@ func (r *ReconcileCanary) syncIstio(context context.Context, canary *iter8v1alph
 				}
 			case "canary":
 				// delete routing rules
-				if err := deleteRules(context, r, canary, baseline, candidate); err != nil {
+				if err := deleteRules(context, r, canary); err != nil {
 					return reconcile.Result{}, err
 				}
 				// Set all traffic to candidate deployment
@@ -195,7 +195,7 @@ func (r *ReconcileCanary) syncIstio(context context.Context, canary *iter8v1alph
 			canary.Status.MarkRolloutCompleted()
 		} else {
 			// delete routing rules
-			if err := deleteRules(context, r, canary, baseline, candidate); err != nil {
+			if err := deleteRules(context, r, canary); err != nil {
 				return reconcile.Result{}, err
 			}
 			// Set all traffic to baseline deployment
@@ -283,7 +283,7 @@ func removeCanaryLabel(context context.Context, r *ReconcileCanary, d *appsv1.De
 	return
 }
 
-func deleteRules(context context.Context, r *ReconcileCanary, canary *iter8v1alpha1.Canary, baseline, candidate *appsv1.Deployment) (err error) {
+func deleteRules(context context.Context, r *ReconcileCanary, canary *iter8v1alpha1.Canary) (err error) {
 	drName := getDestinationRuleName(canary)
 	vsName := getVirtualServiceName(canary)
 
@@ -315,6 +315,7 @@ func newDestinationRule(canary *iter8v1alpha1.Canary) *v1alpha3.DestinationRule 
 		ObjectMeta: metav1.ObjectMeta{
 			Name:      getDestinationRuleName(canary),
 			Namespace: canary.Namespace,
+			Labels:    map[string]string{canaryLabel: canary.ObjectMeta.Name},
 		},
 		Spec: v1alpha3.DestinationRuleSpec{
 			Host:    canary.Spec.TargetService.Name,
@@ -351,6 +352,7 @@ func makeVirtualService(rolloutPercent int, canary *iter8v1alpha1.Canary) *v1alp
 		ObjectMeta: metav1.ObjectMeta{
 			Name:      getVirtualServiceName(canary),
 			Namespace: canary.Namespace,
+			Labels:    map[string]string{canaryLabel: canary.ObjectMeta.Name},
 		},
 		Spec: v1alpha3.VirtualServiceSpec{
 			Hosts: []string{canary.Spec.TargetService.Name},
@@ -414,6 +416,7 @@ func newStableRules(d *appsv1.Deployment, canary *iter8v1alpha1.Canary) (*v1alph
 		ObjectMeta: metav1.ObjectMeta{
 			Name:      getStableName(canary),
 			Namespace: canary.Namespace,
+			Labels:    map[string]string{canaryLabel: canary.ObjectMeta.Name},
 		},
 		Spec: v1alpha3.DestinationRuleSpec{
 			Host: canary.Spec.TargetService.Name,
@@ -430,6 +433,7 @@ func newStableRules(d *appsv1.Deployment, canary *iter8v1alpha1.Canary) (*v1alph
 		ObjectMeta: metav1.ObjectMeta{
 			Name:      getStableName(canary),
 			Namespace: canary.Namespace,
+			Labels:    map[string]string{canaryLabel: canary.ObjectMeta.Name},
 		},
 		Spec: v1alpha3.VirtualServiceSpec{
 			Hosts: []string{canary.Spec.TargetService.Name},
@@ -454,4 +458,35 @@ func newStableRules(d *appsv1.Deployment, canary *iter8v1alpha1.Canary) (*v1alph
 
 func getStableName(canary *iter8v1alpha1.Canary) string {
 	return canary.Spec.TargetService.Name + ".iter8-stable"
+}
+
+func (r *ReconcileCanary) finalizeIstio(context context.Context, canary *iter8v1alpha1.Canary) (reconcile.Result, error) {
+	completed := canary.Status.GetCondition(iter8v1alpha1.CanaryConditionRolloutCompleted)
+	if completed != nil && completed.Status != corev1.ConditionTrue {
+		// Do a rollback
+		// delete routing rules
+		if err := deleteRules(context, r, canary); err != nil {
+			return reconcile.Result{}, err
+		}
+		// Get baseline deployment
+		baselineName := canary.Spec.TargetService.Baseline
+		baseline := &appsv1.Deployment{}
+		serviceNamespace := canary.Spec.TargetService.Namespace
+		if serviceNamespace == "" {
+			serviceNamespace = canary.Namespace
+		}
+
+		if err := r.Get(context, types.NamespacedName{Name: baselineName, Namespace: serviceNamespace}, baseline); err != nil {
+			log.Info("istio sync", "Fail to get baseline deployment", baselineName)
+			return reconcile.Result{}, err
+		}
+
+		// Set all traffic to baseline deployment
+		// generate new rules to shift all traffic to baseline
+		if err := setStableRules(context, r, baseline, canary); err != nil {
+			return reconcile.Result{}, err
+		}
+	}
+
+	return reconcile.Result{}, removeFinalizer(context, r, canary, Finalizer)
 }
