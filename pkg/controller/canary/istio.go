@@ -225,9 +225,9 @@ func (r *ReconcileCanary) syncIstio(context context.Context, canary *iter8v1alph
 			response, err := checkandincrement.Invoke(log, canary.Spec.Analysis.AnalyticsService, payload)
 			if err != nil {
 				// TODO: Need new condition
-				canary.Status.MarkHasNotService("ErrorAnalytics", "%v", err)
+				canary.Status.MarkHasNotService("Istio Analytics Service is not reachable", "%v", err)
 				err = r.Status().Update(context, canary)
-				return reconcile.Result{}, err
+				return reconcile.Result{Requeue: true}, err
 			}
 
 			baselineTraffic := response.Baseline.TrafficPercentage
@@ -258,8 +258,10 @@ func (r *ReconcileCanary) syncIstio(context context.Context, canary *iter8v1alph
 			log.Info("istio-sync", "updated vs", *vs)
 			err := r.Update(context, vs)
 			if err != nil {
+				log.Info("istio-sync", "error in updating vs", vsName)
 				return reconcile.Result{}, err
 			}
+			canary.Status.RolloutPercent = int(rolloutPercent)
 		}
 
 		canary.Status.LastIncrementTime = metav1.NewTime(now)

@@ -90,6 +90,9 @@ type CanaryStatus struct {
 
 	// AssessmentSummary returned by the last analyis
 	AssessmentSummary Summary `json:"assessment,omitempty"`
+
+	// RolloutPercent tells the current traffic percentage for canary deployment
+	RolloutPercent int `json:"rolloutPercent,omitempty"`
 }
 
 type TrafficControl struct {
