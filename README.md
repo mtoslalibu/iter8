@@ -1,5 +1,7 @@
 # iter8-controller
 
+[![Build Status](https://travis.ibm.com/istio-research/iter8-controller.svg?token=bc6xtkRixk96zbXuAu7U&branch=master)](https://travis.ibm.com/istio-research/iter8-controller)
+
 ## Getting Started
 
 ### Prerequisites
