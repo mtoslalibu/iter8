@@ -19,6 +19,7 @@ import (
 	"context"
 	"time"
 
+	"github.com/go-logr/logr"
 	"go.uber.org/zap"
 	"k8s.io/apimachinery/pkg/api/errors"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
@@ -43,6 +44,8 @@ import (
 
 var log = logf.Log.WithName("canary-controller")
 
+type loggerKeyType string
+
 const (
 	canaryLabel = "iter8.ibm.com/canary"
 
@@ -50,6 +53,7 @@ const (
 	KnativeServiceV1Alpha1 = "serving.knative.dev/v1alpha1"
 
 	Finalizer = "finalizer.iter8.ibm.com"
+	loggerKey = loggerKeyType("logger")
 )
 
 // Add creates a new Canary Controller and adds it to the Manager with default RBAC. The Manager will set fields on the Controller
@@ -117,7 +121,7 @@ func add(mgr manager.Manager, r reconcile.Reconciler) error {
 
 	if err != nil {
 		// Just log error.
-		log.Info("NoDeloyemntWatch", zap.Error(err))
+		log.Info("NoDeployementWatch", zap.Error(err))
 	}
 
 	return nil
@@ -151,6 +155,9 @@ func (r *ReconcileCanary) Reconcile(request reconcile.Request) (reconcile.Result
 		return reconcile.Result{}, err
 	}
 
+	log := log.WithValues("namespace", instance.Namespace, "name", instance.Name)
+	ctx = context.WithValue(ctx, loggerKey, log)
+
 	// Add finalizer to the canary object
 	if err = addFinalizerIfAbsent(ctx, r, instance, Finalizer); err != nil {
 		return reconcile.Result{}, err
@@ -161,8 +168,6 @@ func (r *ReconcileCanary) Reconcile(request reconcile.Request) (reconcile.Result
 		return r.finalize(ctx, instance)
 	}
 
-	log := log.WithValues("namespace", instance.Namespace, "name", instance.Name)
-	ctx = context.WithValue(ctx, "logger", log)
 	// // Stop right here if the experiment is completed.
 	completed := instance.Status.GetCondition(iter8v1alpha1.CanaryConditionRolloutCompleted)
 	if completed != nil && completed.Status == corev1.ConditionTrue {
@@ -205,6 +210,7 @@ func (r *ReconcileCanary) Reconcile(request reconcile.Request) (reconcile.Result
 }
 
 func (r *ReconcileCanary) finalize(context context.Context, instance *iter8v1alpha1.Canary) (reconcile.Result, error) {
+	log := Logger(context)
 	log.Info("finalizing")
 
 	apiVersion := instance.Spec.TargetService.APIVersion
@@ -225,7 +231,7 @@ func addFinalizerIfAbsent(context context.Context, r *ReconcileCanary, instance 
 
 	instance.SetFinalizers(append(instance.GetFinalizers(), Finalizer))
 	if err = r.Update(context, instance); err != nil {
-		log.Info("setting finalizer failed. (retrying)", "error", err)
+		Logger(context).Info("setting finalizer failed. (retrying)", "error", err)
 	}
 
 	return
@@ -240,7 +246,12 @@ func removeFinalizer(context context.Context, r *ReconcileCanary, instance *iter
 	}
 	instance.SetFinalizers(finalizers)
 	if err = r.Update(context, instance); err != nil {
-		log.Info("setting finalizer failed. (retrying)", "error", err)
+		Logger(context).Info("setting finalizer failed. (retrying)", "error", err)
 	}
 	return
+}
+
+// Logger gets the logger from the context.
+func Logger(ctx context.Context) logr.Logger {
+	return ctx.Value(loggerKey).(logr.Logger)
 }
