@@ -13,6 +13,11 @@ spec:
     - iter8
     kind: Canary
     plural: canaries
+  additionalPrinterColumns:
+    - name: RolloutPercent
+      type: integer
+      description: The amount of traffic that has been directed to the canary deployment
+      JSONPath: .status.rolloutPercent
   scope: Namespaced
   subresources:
     status: {}
