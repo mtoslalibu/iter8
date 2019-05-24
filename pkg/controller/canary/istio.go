@@ -227,7 +227,7 @@ func (r *ReconcileCanary) syncIstio(context context.Context, canary *iter8v1alph
 				// TODO: Need new condition
 				canary.Status.MarkHasNotService("Istio Analytics Service is not reachable", "%v", err)
 				err = r.Status().Update(context, canary)
-				return reconcile.Result{Requeue: true}, err
+				return reconcile.Result{RequeueAfter: 5 * time.Second}, err
 			}
 
 			baselineTraffic := response.Baseline.TrafficPercentage
