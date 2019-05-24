@@ -286,6 +286,7 @@ func removeCanaryLabel(context context.Context, r *ReconcileCanary, d *appsv1.De
 }
 
 func deleteRules(context context.Context, r *ReconcileCanary, canary *iter8v1alpha1.Canary) (err error) {
+	log := Logger(context)
 	drName := getDestinationRuleName(canary)
 	vsName := getVirtualServiceName(canary)
 
@@ -409,7 +410,7 @@ func setStableRules(context context.Context, r *ReconcileCanary, d *appsv1.Deplo
 	if err = r.Create(context, stableVs); err != nil {
 		return
 	}
-	log.Info("istio-sync", "create stable dr rule", stableDr.GetName(), "stable vs rule", stableVs.GetName())
+	Logger(context).Info("istio-sync", "create stable dr rule", stableDr.GetName(), "stable vs rule", stableVs.GetName())
 	return
 }
 
@@ -479,7 +480,7 @@ func (r *ReconcileCanary) finalizeIstio(context context.Context, canary *iter8v1
 		}
 
 		if err := r.Get(context, types.NamespacedName{Name: baselineName, Namespace: serviceNamespace}, baseline); err != nil {
-			log.Info("istio sync", "Fail to get baseline deployment", baselineName)
+			Logger(context).Info("istio sync", "Fail to get baseline deployment", baselineName)
 			return reconcile.Result{}, err
 		}
 

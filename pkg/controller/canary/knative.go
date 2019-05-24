@@ -20,7 +20,6 @@ import (
 	"encoding/json"
 	"time"
 
-	"github.com/go-logr/logr"
 	servingv1alpha1 "github.com/knative/serving/pkg/apis/serving/v1alpha1"
 	corev1 "k8s.io/api/core/v1"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
@@ -33,7 +32,7 @@ import (
 )
 
 func (r *ReconcileCanary) syncKnative(context context.Context, instance *iter8v1alpha1.Canary) (reconcile.Result, error) {
-	log := context.Value("logger").(logr.Logger)
+	log := Logger(context)
 
 	// Get Knative service
 	serviceName := instance.Spec.TargetService.Name
