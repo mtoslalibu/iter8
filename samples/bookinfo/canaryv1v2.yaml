@@ -17,7 +17,7 @@ spec:
     iterationCount: 8 #default value = 100
     maxTrafficPercent: 99 #default value = 50
   analysis:
-    analyticsService: "localhost:5555"
+    analyticsService: "http://localhost:5555"
     metrics:
       - name: iter8_latency
         type: threshold
