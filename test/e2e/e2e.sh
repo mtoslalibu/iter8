@@ -24,6 +24,14 @@ function cleanup() {
   then
     header "deleting namespace $NAMESPACE"
     kubectl delete ns $NAMESPACE
+    unset NAMESPACE
+  fi
+
+  # let the controller remove the finalizer
+  if [ -n "$CONTROLLER_PID" ]
+  then
+    kill $CONTROLLER_PID
+    unset CONTROLLER_PID
   fi
 }
 
@@ -34,6 +42,7 @@ function traperr() {
 
 set -o errtrace
 trap traperr ERR
+trap traperr INT
 
 parse_flags $*
 
@@ -46,19 +55,21 @@ NAMESPACE=$(random_namespace)
 header "creating namespace $NAMESPACE"
 kubectl create ns $NAMESPACE
 
-header "install iter8"
+header "install iter8 CRDs"
 make install
 
+header "build iter8 controller"
+mkdir -p bin
+go build -o bin/manager ./cmd/manager/main.go
+chmod +x bin/manager
+
 header "run iter8 controller locally"
-go run ./cmd/manager/main.go &
+./bin/manager &
 CONTROLLER_PID=$!
 echo "controller started $CONTROLLER_PID"
 
+sleep 4 # wait for controller to start
+
 go test -v ./test/e2e/... -args -namespace ${NAMESPACE}
 
-kill $CONTROLLER_PID
-
 cleanup
-
-
-

@@ -1,7 +1,9 @@
 language: go
+sudo: required
 go:
   - "1.12"
-sudo: required
+services:
+  - docker
 
 go_import_path: github.ibm.com/istio-research/iter8-controller/
 

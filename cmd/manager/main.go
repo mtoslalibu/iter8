@@ -51,7 +51,7 @@ func main() {
 	log.Info("setting up manager")
 	options := manager.Options{MetricsBindAddress: metricsAddr}
 
-	if namespace := os.Getenv("WATCH_NAMESPACE"); namespace != "" {
+	if namespace := os.Getenv("NAMESPACE"); namespace != "" {
 		options.Namespace = namespace
 	}
 

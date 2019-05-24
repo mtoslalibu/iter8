@@ -19,10 +19,14 @@
 # to be used in test scripts and the like. It doesn't do anything when
 # called from command line.
 
+ISTIO_VERSION=1.1.7
+KNATIVE_VERSION=0.6.0
 
 function setup_knative() {
   if [ -z "$IC_API_ENDPOINT" ]
   then
+    # this is not working yet
+    install_istio
     install_knative
   else
     configure_cluster
@@ -37,28 +41,50 @@ function configure_cluster() {
   $(ibmcloud ks cluster-config "$CLUSTER_NAME" --export -s)
 }
 
-function install_knative() {
-  header "installing istio"
-  kubectl apply --filename https://raw.githubusercontent.com/knative/serving/v0.5.2/third_party/istio-1.0.7/istio-crds.yaml
-  curl -L https://raw.githubusercontent.com/knative/serving/v0.5.2/third_party/istio-1.0.7/istio.yaml \
-    | sed 's/LoadBalancer/NodePort/' \
-    | kubectl apply --filename -
 
-  # Label the default namespace with istio-injection=enabled.
-  kubectl label namespace default istio-injection=enabled --overwrite
+function install_istio() {
+  header "installing istio"
+
+  curl -L https://git.io/getLatestIstio | sh -
+  cd istio-${ISTIO_VERSION}
+  for i in install/kubernetes/helm/istio-init/files/crd*yaml; do kubectl apply -f $i; done
+
+  # A lighter template, with no sidecar injection.
+  helm template --namespace=istio-system \
+    --set global.proxy.autoInject=disabled \
+    --set global.omitSidecarInjectorConfigMap=true \
+    --set global.disablePolicyChecks=true \
+    --set prometheus.enabled=false \
+    --set mixer.adapters.prometheus.enabled=false \
+    --set global.disablePolicyChecks=true \
+    --set gateways.istio-ingressgateway.autoscaleMin=1 \
+    --set gateways.istio-ingressgateway.autoscaleMax=1 \
+    --set pilot.traceSampling=100 \
+    install/kubernetes/helm/istio \
+    > ./istio-lean.yaml
+
+  kubectl create ns istio-system
+  kubectl apply -f istio-lean.yaml
 
   wait_until_pods_running "istio-system"
+}
 
-  header "installing serving and monitoring CRDs"
+function install_knative() {
+  # Label the default namespace with istio-injection=enabled.
+  #kubectl label namespace default istio-injection=enabled --overwrite
+
+  header "installing serving CRDs"
   kubectl apply --selector knative.dev/crd-install=true \
-   -f https://github.com/knative/serving/releases/download/v0.5.2/serving.yaml \
-   -f https://raw.githubusercontent.com/knative/serving/v0.5.2/third_party/config/build/clusterrole.yaml
+   -f https://github.com/knative/serving/releases/download/v${KNATIVE_VERSION}/serving.yaml \
+   -f https://raw.githubusercontent.com/knative/serving/v${KNATIVE_VERSION}/third_party/config/build/clusterrole.yaml
 
-   header "installing serving and monitoring controllers"
-   kubectl apply -f https://github.com/knative/serving/releases/download/v0.5.2/serving.yaml \
-   -f https://raw.githubusercontent.com/knative/serving/v0.5.2/third_party/config/build/clusterrole.yaml
+  sleep 1
 
-   wait_until_pods_running "knative-serving"
+  header "installing serving controller"
+  kubectl apply -f https://github.com/knative/serving/releases/download/v${KNATIVE_VERSION}/serving.yaml --selector networking.knative.dev/certificate-provider!=cert-manager \
+  -f https://raw.githubusercontent.com/knative/serving/v${KNATIVE_VERSION}/third_party/config/build/clusterrole.yaml
+
+  wait_until_pods_running "knative-serving"
 }
 
 # Simple header for logging purposes.
