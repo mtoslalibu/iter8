@@ -12,23 +12,6 @@
 #   See the License for the specific language governing permissions and
 #   limitations under the License.
 ---
-##################################################################################################
-# reviews service
-##################################################################################################
-apiVersion: v1
-kind: Service
-metadata:
-  name: reviews
-  labels:
-    app: reviews
-    service: reviews
-spec:
-  ports:
-  - port: 9080
-    name: http
-  selector:
-    app: reviews
----
 apiVersion: apps/v1
 kind: Deployment
 metadata:
