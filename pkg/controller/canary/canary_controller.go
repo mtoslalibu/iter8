@@ -169,9 +169,9 @@ func (r *ReconcileCanary) Reconcile(request reconcile.Request) (reconcile.Result
 	}
 
 	// // Stop right here if the experiment is completed.
-	completed := instance.Status.GetCondition(iter8v1alpha1.CanaryConditionRolloutCompleted)
+	completed := instance.Status.GetCondition(iter8v1alpha1.CanaryConditionExperimentCompleted)
 	if completed != nil && completed.Status == corev1.ConditionTrue {
-		log.Info("rollout completed")
+		log.Info("RolloutCompleted", "Use a different name for canary object to trigger a new experiment", "")
 		return reconcile.Result{}, nil
 	}
 

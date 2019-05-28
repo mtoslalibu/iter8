@@ -42,6 +42,7 @@ const (
 )
 
 func (r *ReconcileCanary) syncIstio(context context.Context, canary *iter8v1alpha1.Canary) (reconcile.Result, error) {
+	log := Logger(context)
 	serviceName := canary.Spec.TargetService.Name
 	serviceNamespace := canary.Spec.TargetService.Namespace
 	if serviceNamespace == "" {
@@ -52,12 +53,13 @@ func (r *ReconcileCanary) syncIstio(context context.Context, canary *iter8v1alph
 	service := &corev1.Service{}
 	err := r.Get(context, types.NamespacedName{Name: serviceName, Namespace: serviceNamespace}, service)
 	if err != nil {
-		canary.Status.MarkHasNotService("NotFound", "")
+		log.Info("TargetServiceNotFound", "service", serviceName)
+		canary.Status.MarkHasNotService("Service Not Found", "")
 		err = r.Status().Update(context, canary)
 		if err != nil {
 			return reconcile.Result{}, err
 		}
-		return reconcile.Result{Requeue: true}, nil
+		return reconcile.Result{RequeueAfter: 5 * time.Second}, nil
 	}
 	canary.Status.MarkHasService()
 
@@ -65,13 +67,19 @@ func (r *ReconcileCanary) syncIstio(context context.Context, canary *iter8v1alph
 	stableName := getStableName(canary)
 	dr := &v1alpha3.DestinationRule{}
 	if err := r.Get(context, types.NamespacedName{Name: stableName, Namespace: canary.GetNamespace()}, dr); err == nil {
-		r.Delete(context, dr)
-		log.Info("istio sync", "delete stable dr", stableName)
+		if err := r.Delete(context, dr); err != nil {
+			// Retry
+			return reconcile.Result{}, err
+		}
+		log.Info("StableRuleDeleted", "dr", stableName)
 	}
 	vs := &v1alpha3.VirtualService{}
 	if err := r.Get(context, types.NamespacedName{Name: stableName, Namespace: canary.GetNamespace()}, vs); err == nil {
-		r.Delete(context, vs)
-		log.Info("istio sync", "delete stable vs", stableName)
+		if err := r.Delete(context, vs); err != nil {
+			// Retry
+			return reconcile.Result{}, err
+		}
+		log.Info("StableRuleDeleted", "vs", stableName)
 	}
 	// Set up vs and dr for experiment
 	drName := getDestinationRuleName(canary)
@@ -82,7 +90,7 @@ func (r *ReconcileCanary) syncIstio(context context.Context, canary *iter8v1alph
 		if err != nil {
 			return reconcile.Result{}, err
 		}
-		log.Info("istio-sync", "create destinationRule", drName)
+		log.Info("ExperimentRuleCreated", "dr", drName)
 	}
 	vsName := getVirtualServiceName(canary)
 	vs = &v1alpha3.VirtualService{}
@@ -92,7 +100,7 @@ func (r *ReconcileCanary) syncIstio(context context.Context, canary *iter8v1alph
 		if err != nil {
 			return reconcile.Result{}, err
 		}
-		log.Info("istio-sync", "create vs for experiment", vsName)
+		log.Info("ExperimentRuleCreated", "vs", vsName)
 	}
 
 	baselineName, candidateName := canary.Spec.TargetService.Baseline, canary.Spec.TargetService.Candidate
@@ -101,36 +109,36 @@ func (r *ReconcileCanary) syncIstio(context context.Context, canary *iter8v1alph
 	// Get current deployment and candidate deployment
 
 	if err = r.Get(context, types.NamespacedName{Name: baselineName, Namespace: serviceNamespace}, baseline); err == nil {
-		log.Info("istio sync", "Found baseline in canary", baselineName)
 		if updated := appendSubset(dr, baseline, Baseline); updated {
 			if err := r.Update(context, dr); err != nil {
-				log.Info("istio sync", "error in updating dr rule", drName)
+				log.Info("ExperimentRuleUpdateFailure", "dr", drName)
 				return reconcile.Result{}, err
 			}
-			log.Info("istio sync", "append subset labels to dr", dr)
+			log.Info("BaselineFound", "BaselineName", baselineName)
+			log.Info("ExperimentRuleUpdated", "dr", dr)
 		}
 	}
 
 	if err = r.Get(context, types.NamespacedName{Name: candidateName, Namespace: serviceNamespace}, candidate); err == nil {
-		log.Info("istio sync", "Found candidate in canary", candidateName)
 		if updated := appendSubset(dr, candidate, Candidate); updated {
 			if err := r.Update(context, dr); err != nil {
-				log.Info("istio sync", "error in updating dr rule", drName)
+				log.Info("ExperimentRuleUpdateFailure", "dr", drName)
 				return reconcile.Result{}, err
 			}
-			log.Info("istio sync", "append subset labels to dr", dr)
+			log.Info("CandidateFound", "CandidateName", candidateName)
+			log.Info("ExperimentRuleUpdated", "dr", dr)
 		}
 	}
 
 	if baseline.GetName() == "" || candidate.GetName() == "" {
 		if baseline.GetName() == "" && candidate.GetName() == "" {
-			log.Info("istio sync missing baseline and candidate")
+			log.Info("Missing Baseline and Candidate Deployments")
 			canary.Status.MarkHasNotService("Baseline and candidate deployment are missing", "")
 		} else if candidate.GetName() == "" {
-			log.Info("istio sync missing candidate")
+			log.Info("Missing Candidate Deployment")
 			canary.Status.MarkHasNotService("Candidate deployment is missing", "")
 		} else {
-			log.Info("istio sync missing baseline")
+			log.Info("Missing Baseline Deployment")
 			canary.Status.MarkHasNotService("Baseline deployment is missing", "")
 		}
 		err = r.Status().Update(context, canary)
@@ -141,8 +149,6 @@ func (r *ReconcileCanary) syncIstio(context context.Context, canary *iter8v1alph
 		return reconcile.Result{RequeueAfter: time.Second}, nil
 	}
 
-	log.Info("istio-sync", "baseline", baseline.GetName(), Candidate, candidate.GetName())
-
 	// Start Canary Process
 	// Get info on Canary
 	traffic := canary.Spec.TrafficControl
@@ -152,7 +158,7 @@ func (r *ReconcileCanary) syncIstio(context context.Context, canary *iter8v1alph
 
 	// check experiment is finished
 	if canary.Spec.TrafficControl.GetIterationCount() <= canary.Status.CurrentIteration {
-		log.Info("experiment completed.")
+		log.Info("ExperimentCompleted")
 		// remove canary labels
 		if err := removeCanaryLabel(context, r, baseline); err != nil {
 			return reconcile.Result{}, err
@@ -175,6 +181,7 @@ func (r *ReconcileCanary) syncIstio(context context.Context, canary *iter8v1alph
 				if err := setStableRules(context, r, baseline, canary); err != nil {
 					return reconcile.Result{}, err
 				}
+				canary.Status.MarkRollForwardNotSucceeded("Roll Back to Baseline", "")
 			case "canary":
 				// delete routing rules
 				if err := deleteRules(context, r, canary); err != nil {
@@ -185,14 +192,15 @@ func (r *ReconcileCanary) syncIstio(context context.Context, canary *iter8v1alph
 				if err := setStableRules(context, r, candidate, canary); err != nil {
 					return reconcile.Result{}, err
 				}
+				canary.Status.MarkRollForwardSucceeded()
 			case "both":
 				// Change name of the current vs rule as stable
 				vs.SetName(getStableName(canary))
 				if err := r.Update(context, vs); err != nil {
 					return reconcile.Result{}, err
 				}
+				canary.Status.MarkRollForwardNotSucceeded("Traffic is maintained as end of experiment", "")
 			}
-			canary.Status.MarkRolloutCompleted()
 		} else {
 			// delete routing rules
 			if err := deleteRules(context, r, canary); err != nil {
@@ -203,9 +211,10 @@ func (r *ReconcileCanary) syncIstio(context context.Context, canary *iter8v1alph
 			if err := setStableRules(context, r, baseline, canary); err != nil {
 				return reconcile.Result{}, err
 			}
-			canary.Status.MarkHasNotService("Experiment Failure", "")
+			canary.Status.MarkRollForwardNotSucceeded("Roll Back to Baseline", "")
 		}
 
+		canary.Status.MarkExperimentCompleted()
 		// End experiment
 		err = r.Status().Update(context, canary)
 		return reconcile.Result{}, err
@@ -213,7 +222,6 @@ func (r *ReconcileCanary) syncIstio(context context.Context, canary *iter8v1alph
 
 	// Check canary rollout status
 	rolloutPercent := float64(getWeight(Candidate, vs))
-	log.Info("istio-sync", "prev rollout percent", rolloutPercent, "max traffic percent", traffic.GetMaxTrafficPercent())
 	if now.After(canary.Status.LastIncrementTime.Add(interval)) {
 
 		switch canary.Spec.TrafficControl.Strategy {
@@ -224,21 +232,19 @@ func (r *ReconcileCanary) syncIstio(context context.Context, canary *iter8v1alph
 			payload := MakeRequest(canary, baseline, candidate)
 			response, err := checkandincrement.Invoke(log, canary.Spec.Analysis.AnalyticsService, payload)
 			if err != nil {
-				// TODO: Need new condition
-				canary.Status.MarkHasNotService("Istio Analytics Service is not reachable", "%v", err)
+				canary.Status.MarkExperimentNotCompleted("Istio Analytics Service is not reachable", "%v", err)
 				err = r.Status().Update(context, canary)
-				return reconcile.Result{Requeue: true}, err
+				return reconcile.Result{RequeueAfter: 5 * time.Second}, err
 			}
 
 			baselineTraffic := response.Baseline.TrafficPercentage
 			canaryTraffic := response.Canary.TrafficPercentage
-			log.Info("NewTraffic", "baseline", baselineTraffic, "canary", canaryTraffic)
+			log.Info("NewTraffic", "Baseline", baselineTraffic, "Canary", canaryTraffic)
 			rolloutPercent = canaryTraffic
 
 			lastState, err := json.Marshal(response.LastState)
 			if err != nil {
-				// TODO: Need new condition
-				canary.Status.MarkHasNotService("ErrorAnalyticsResponse", "%v", err)
+				canary.Status.MarkExperimentNotCompleted("ErrorAnalyticsResponse", "%v", err)
 				err = r.Status().Update(context, canary)
 				return reconcile.Result{}, err
 			}
@@ -247,29 +253,26 @@ func (r *ReconcileCanary) syncIstio(context context.Context, canary *iter8v1alph
 		}
 
 		canary.Status.CurrentIteration++
-		log.Info("istio-sync", "new rollout iteration", canary.Status.CurrentIteration)
+		log.Info("IterationUpdated", "count", canary.Status.CurrentIteration)
 		// Increase the traffic upto max traffic amount
 		if rolloutPercent <= traffic.GetMaxTrafficPercent() && getWeight(Candidate, vs) != int(rolloutPercent) {
 			// Update Traffic splitting rule
-			log.Info("istio-sync", "new rollout perccent", rolloutPercent)
+			log.Info("RolloutPercentUpdated", "NewWeight", rolloutPercent)
 			rv := vs.ObjectMeta.ResourceVersion
 			vs = makeVirtualService(int(rolloutPercent), canary)
 			setResourceVersion(rv, vs)
-			log.Info("istio-sync", "updated vs", *vs)
 			err := r.Update(context, vs)
 			if err != nil {
-				log.Info("istio-sync", "error in updating vs", vsName)
+				log.Info("RuleUpdateError", "vs", vsName)
 				return reconcile.Result{}, err
 			}
 			canary.Status.RolloutPercent = int(rolloutPercent)
+			canary.Status.LastIncrementTime = metav1.NewTime(now)
 		}
-
-		canary.Status.LastIncrementTime = metav1.NewTime(now)
 	}
 
-	canary.Status.MarkRolloutNotCompleted("Progressing", "")
+	canary.Status.MarkExperimentNotCompleted("Progressing", "")
 	err = r.Status().Update(context, canary)
-
 	return reconcile.Result{RequeueAfter: interval}, err
 }
 
@@ -281,7 +284,7 @@ func removeCanaryLabel(context context.Context, r *ReconcileCanary, d *appsv1.De
 	if err = r.Update(context, d); err != nil {
 		return
 	}
-	log.Info("istio sync", "remove canary label from", d.GetName())
+	Logger(context).Info("CanaryLabelRemoved", "deployment", d.GetName())
 	return
 }
 
@@ -295,9 +298,9 @@ func deleteRules(context context.Context, r *ReconcileCanary, canary *iter8v1alp
 		if err = r.Delete(context, dr); err != nil {
 			return
 		}
-		log.Info("istio sync", "delete dr", drName)
+		log.Info("RuleDeleted", "dr", drName)
 	} else {
-		return
+		log.Info("RuleNotFoundWhenDeleted", "dr", drName)
 	}
 
 	vs := &v1alpha3.VirtualService{}
@@ -305,9 +308,9 @@ func deleteRules(context context.Context, r *ReconcileCanary, canary *iter8v1alp
 		if err = r.Delete(context, vs); err != nil {
 			return
 		}
-		log.Info("istio sync", "delete vs", vsName)
+		log.Info("RuleDeleted", "vs", drName)
 	} else {
-		return
+		log.Info("RuleNotFoundWhenDeleted", "vs", vsName)
 	}
 
 	return
@@ -386,7 +389,7 @@ func makeVirtualService(rolloutPercent int, canary *iter8v1alpha1.Canary) *v1alp
 }
 
 func getVirtualServiceName(canary *iter8v1alpha1.Canary) string {
-	return canary.Spec.TargetService.Name + "-iter8.canary"
+	return canary.Spec.TargetService.Name + ".iter8-canary"
 }
 
 func getWeight(subset string, vs *v1alpha3.VirtualService) int {
@@ -410,7 +413,7 @@ func setStableRules(context context.Context, r *ReconcileCanary, d *appsv1.Deplo
 	if err = r.Create(context, stableVs); err != nil {
 		return
 	}
-	Logger(context).Info("istio-sync", "create stable dr rule", stableDr.GetName(), "stable vs rule", stableVs.GetName())
+	Logger(context).Info("StableRulesCreated", " dr", stableDr.GetName(), "vs", stableVs.GetName())
 	return
 }
 
@@ -464,7 +467,7 @@ func getStableName(canary *iter8v1alpha1.Canary) string {
 }
 
 func (r *ReconcileCanary) finalizeIstio(context context.Context, canary *iter8v1alpha1.Canary) (reconcile.Result, error) {
-	completed := canary.Status.GetCondition(iter8v1alpha1.CanaryConditionRolloutCompleted)
+	completed := canary.Status.GetCondition(iter8v1alpha1.CanaryConditionExperimentCompleted)
 	if completed != nil && completed.Status != corev1.ConditionTrue {
 		// Do a rollback
 		// delete routing rules
@@ -480,14 +483,13 @@ func (r *ReconcileCanary) finalizeIstio(context context.Context, canary *iter8v1
 		}
 
 		if err := r.Get(context, types.NamespacedName{Name: baselineName, Namespace: serviceNamespace}, baseline); err != nil {
-			Logger(context).Info("istio sync", "Fail to get baseline deployment", baselineName)
-			return reconcile.Result{}, err
-		}
-
-		// Set all traffic to baseline deployment
-		// generate new rules to shift all traffic to baseline
-		if err := setStableRules(context, r, baseline, canary); err != nil {
-			return reconcile.Result{}, err
+			Logger(context).Info("BaselineNotFoundWhenDeleted", "name", baselineName)
+		} else {
+			// Set all traffic to baseline deployment
+			// generate new rules to shift all traffic to baseline
+			if err := setStableRules(context, r, baseline, canary); err != nil {
+				return reconcile.Result{}, err
+			}
 		}
 	}
 

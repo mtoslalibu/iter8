@@ -250,13 +250,17 @@ const (
 	// CanaryConditionServiceProvided has status True when the Canary has been configured with a Knative service
 	CanaryConditionServiceProvided duckv1alpha1.ConditionType = "ServiceProvided"
 
-	// CanaryConditionRolloutCompleted has status True when the Canary rollout is completed
-	CanaryConditionRolloutCompleted duckv1alpha1.ConditionType = "RolloutCompleted"
+	// CanaryConditionExperimentCompleted has status True when the Canary rollout is completed
+	CanaryConditionExperimentCompleted duckv1alpha1.ConditionType = "ExperimentCompleted"
+
+	// CanaryConditionRollForwardSucceeded has status True when a Canary rollout forward is completed
+	CanaryConditionRollForwardSucceeded duckv1alpha1.ConditionType = "RollForwardSucceeded"
 )
 
 var canaryCondSet = duckv1alpha1.NewLivingConditionSet(
 	CanaryConditionServiceProvided,
-	CanaryConditionRolloutCompleted,
+	CanaryConditionExperimentCompleted,
+	CanaryConditionRollForwardSucceeded,
 )
 
 // InitializeConditions sets relevant unset conditions to Unknown state.
@@ -274,14 +278,24 @@ func (s *CanaryStatus) MarkHasNotService(reason, messageFormat string, messageA 
 	canaryCondSet.Manage(s).MarkFalse(CanaryConditionServiceProvided, reason, messageFormat, messageA...)
 }
 
-// MarkHasService sets the condition that the target service has been found
-func (s *CanaryStatus) MarkRolloutCompleted() {
-	canaryCondSet.Manage(s).MarkTrue(CanaryConditionRolloutCompleted)
+// MarkExperimentCompleted sets the condition that the experiemnt is completed
+func (s *CanaryStatus) MarkExperimentCompleted() {
+	canaryCondSet.Manage(s).MarkTrue(CanaryConditionExperimentCompleted)
 }
 
-// MarkHasNotService sets the condition that the target service hasn't been found.
-func (s *CanaryStatus) MarkRolloutNotCompleted(reason, messageFormat string, messageA ...interface{}) {
-	canaryCondSet.Manage(s).MarkFalse(CanaryConditionRolloutCompleted, reason, messageFormat, messageA...)
+// MarkExperimentNotCompleted sets the condition that the experiemnt is ongoing
+func (s *CanaryStatus) MarkExperimentNotCompleted(reason, messageFormat string, messageA ...interface{}) {
+	canaryCondSet.Manage(s).MarkFalse(CanaryConditionExperimentCompleted, reason, messageFormat, messageA...)
+}
+
+// MarkRollForwardSucceeded sets the condition that
+func (s *CanaryStatus) MarkRollForwardSucceeded() {
+	canaryCondSet.Manage(s).MarkTrue(CanaryConditionRollForwardSucceeded)
+}
+
+// MarkRollForwardNotSucceeded sets the condition that the experiemnt is ongoing
+func (s *CanaryStatus) MarkRollForwardNotSucceeded(reason, messageFormat string, messageA ...interface{}) {
+	canaryCondSet.Manage(s).MarkFalse(CanaryConditionRollForwardSucceeded, reason, messageFormat, messageA...)
 }
 
 func init() {

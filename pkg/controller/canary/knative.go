@@ -124,7 +124,7 @@ func (r *ReconcileCanary) syncKnative(context context.Context, instance *iter8v1
 			}
 		} else {
 			// latest == current. Canary is completed
-			instance.Status.MarkRolloutCompleted()
+			instance.Status.MarkExperimentCompleted()
 			err = r.Status().Update(context, instance)
 			return reconcile.Result{}, err
 		}
@@ -172,7 +172,7 @@ func (r *ReconcileCanary) syncKnative(context context.Context, instance *iter8v1
 		}
 
 		// End experiment
-		instance.Status.MarkRolloutCompleted()
+		instance.Status.MarkExperimentCompleted()
 		err = r.Status().Update(context, instance)
 		return reconcile.Result{}, err
 	}
@@ -261,7 +261,7 @@ func (r *ReconcileCanary) syncKnative(context context.Context, instance *iter8v1
 		instance.Status.LastIncrementTime = metav1.NewTime(now)
 	}
 
-	instance.Status.MarkRolloutNotCompleted("Progressing", "")
+	instance.Status.MarkExperimentNotCompleted("Progressing", "")
 	err = r.Status().Update(context, instance)
 	return reconcile.Result{RequeueAfter: interval}, err
 }
