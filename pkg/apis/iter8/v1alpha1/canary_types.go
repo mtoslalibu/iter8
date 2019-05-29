@@ -31,7 +31,7 @@ import (
 // +k8s:openapi-gen=true
 // +kubebuilder:subresource:status
 // +kubebuilder:categories=all,iter8
-// +kubebuilder:printcolumn:name="status",type="string",JSONPath=".status.conditions[0].reason",description="Status of the experiment",format="byte"
+// +kubebuilder:printcolumn:name="status",type="string",JSONPath=".status.conditions[?(@.type == 'Ready')].reason",description="Status of the experiment",format="byte"
 // +kubebuilder:printcolumn:name="baseline",type="string",JSONPath=".spec.targetService.baseline",description="Name of baseline",format="byte"
 // +kubebuilder:printcolumn:name="percentage",type="integer",JSONPath=".status.baselinePercent",description="Traffic percentage for baseline",format="int32"
 // +kubebuilder:printcolumn:name="canary",type="string",JSONPath=".spec.targetService.candidate",description="Name of canary",format="byte"
