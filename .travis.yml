@@ -9,4 +9,5 @@ before_install:
   - ./test/scripts/tools.sh
 
 script:
+  - go test ./test/.
   - ./test/e2e/e2e.sh

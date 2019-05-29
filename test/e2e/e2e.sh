@@ -20,10 +20,10 @@ ROOT=$(dirname $0)
 source $ROOT/../scripts/library.sh
 
 function cleanup() {
-  if [ -n "$WATCH_NAMESPACE" ]
+  if [ -n "$NAMESPACE" ]
   then
-    header "deleting namespace $WATCH_NAMESPACE"
-    kubectl delete ns $WATCH_NAMESPACE
+    header "deleting namespace $NAMESPACE"
+    kubectl delete ns $NAMESPACE
   fi
 }
 
@@ -42,9 +42,9 @@ then
     setup_knative
 fi
 
-WATCH_NAMESPACE=$(random_namespace)
-header "creating namespace $WATCH_NAMESPACE"
-kubectl create ns $WATCH_NAMESPACE
+NAMESPACE=$(random_namespace)
+header "creating namespace $NAMESPACE"
+kubectl create ns $NAMESPACE
 
 header "install iter8"
 make install
@@ -54,8 +54,9 @@ go run ./cmd/manager/main.go &
 CONTROLLER_PID=$!
 echo "controller started $CONTROLLER_PID"
 
-kill $CONTROLLER_PID
+go test -v ./test/e2e/... -args -namespace ${NAMESPACE}
 
+kill $CONTROLLER_PID
 
 cleanup
 

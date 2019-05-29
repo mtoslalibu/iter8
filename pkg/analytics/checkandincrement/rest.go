@@ -24,15 +24,20 @@ import (
 	"github.com/go-logr/logr"
 )
 
+const (
+	// Path of the service
+	Path = "/api/v1/analytics/canary/check_and_increment"
+)
+
 func Invoke(log logr.Logger, endpoint string, payload *Request) (*Response, error) {
 	data, err := json.Marshal(payload)
 	if err != nil {
 		return nil, err
 	}
 
-	log.Info("post", "endpoint", "check_and_increment", "request", string(data))
+	log.Info("post", "URL", endpoint+Path, "request", string(data))
 
-	raw, err := http.Post(endpoint+"/api/v1/analytics/canary/check_and_increment", "application/json", bytes.NewBuffer(data))
+	raw, err := http.Post(endpoint+Path, "application/json", bytes.NewBuffer(data))
 	if err != nil {
 		return nil, err
 	}
@@ -40,7 +45,7 @@ func Invoke(log logr.Logger, endpoint string, payload *Request) (*Response, erro
 	defer raw.Body.Close()
 	body, err := ioutil.ReadAll(raw.Body)
 
-	log.Info("post", "endpoint", "check_and_increment", "response", string(body))
+	log.Info("post", "URL", endpoint+Path, "response", string(body))
 
 	if raw.StatusCode >= 400 {
 		return nil, fmt.Errorf("%v", string(body))
