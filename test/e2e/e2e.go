@@ -1,0 +1,37 @@
+/*
+
+Licensed under the Apache License, Version 2.0 (the "License");
+you may not use this file except in compliance with the License.
+You may obtain a copy of the License at
+
+    http://www.apache.org/licenses/LICENSE-2.0
+
+Unless required by applicable law or agreed to in writing, software
+distributed under the License is distributed on an "AS IS" BASIS,
+WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+See the License for the specific language governing permissions and
+limitations under the License.
+*/
+package e2e
+
+import (
+	"flag"
+)
+
+// Flags holds the command line flags or defaults for settings in the user's environment.
+// See EnvironmentFlags for a list of supported fields.
+var Flags = initializeFlags()
+
+// EnvironmentFlags define the flags that are needed to run the e2e tests.
+type EnvironmentFlags struct {
+	Namespace string // K8s namespace (blank by default, to be overwritten by test suite)
+}
+
+func initializeFlags() *EnvironmentFlags {
+	var f EnvironmentFlags
+
+	flag.StringVar(&f.Namespace, "namespace", "",
+		"Provide the namespace you would like to use for these tests.")
+
+	return &f
+}
