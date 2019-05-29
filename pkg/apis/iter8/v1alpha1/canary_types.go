@@ -33,9 +33,9 @@ import (
 // +kubebuilder:categories=all,iter8
 // +kubebuilder:printcolumn:name="status",type="string",JSONPath=".status.conditions[?(@.type == 'Ready')].reason",description="Status of the experiment",format="byte"
 // +kubebuilder:printcolumn:name="baseline",type="string",JSONPath=".spec.targetService.baseline",description="Name of baseline",format="byte"
-// +kubebuilder:printcolumn:name="percentage",type="integer",JSONPath=".status.baselinePercent",description="Traffic percentage for baseline",format="int32"
+// +kubebuilder:printcolumn:name="percentage",type="integer",JSONPath=".status.trafficSplitPercentage.baseline",description="Traffic percentage for baseline",format="int32"
 // +kubebuilder:printcolumn:name="canary",type="string",JSONPath=".spec.targetService.candidate",description="Name of canary",format="byte"
-// +kubebuilder:printcolumn:name="percentage",type="integer",JSONPath=".status.canaryPercent",description="Traffic percentage for canary",format="int32"
+// +kubebuilder:printcolumn:name="percentage",type="integer",JSONPath=".status.trafficSplitPercentage.canary",description="Traffic percentage for canary",format="int32"
 type Canary struct {
 	metav1.TypeMeta   `json:",inline"`
 	metav1.ObjectMeta `json:"metadata,omitempty"`
@@ -96,11 +96,13 @@ type CanaryStatus struct {
 	// AssessmentSummary returned by the last analyis
 	AssessmentSummary Summary `json:"assessment,omitempty"`
 
-	// BaselinePercent tells the current traffic percentage for baseline deployment
-	BaselinePercent int `json:"baselinePercent,omitempty"`
+	// TrafficSplit tells the current traffic spliting between baseline and canary
+	TrafficSplit TrafficSplit `json:"trafficSplitPercentage,omitempty"`
+}
 
-	// CanaryPercent tells the current traffic percentage for canary deployment
-	CanaryPercent int `json:"canaryPercent,omitempty"`
+type TrafficSplit struct {
+	Baseline int `json:"baseline"`
+	Canary   int `json:"canary"`
 }
 
 type TrafficControl struct {

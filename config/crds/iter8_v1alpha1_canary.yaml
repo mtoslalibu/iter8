@@ -17,7 +17,7 @@ spec:
     format: byte
     name: baseline
     type: string
-  - JSONPath: .status.baselinePercent
+  - JSONPath: .status.trafficSplitPercentage.baseline
     description: Traffic percentage for baseline
     format: int32
     name: percentage
@@ -27,7 +27,7 @@ spec:
     format: byte
     name: canary
     type: string
-  - JSONPath: .status.canaryPercent
+  - JSONPath: .status.trafficSplitPercentage.canary
     description: Traffic percentage for canary
     format: int32
     name: percentage
@@ -133,12 +133,6 @@ spec:
                     type: string
                   type: array
               type: object
-            baselinePercent:
-              format: int64
-              type: integer
-            canaryPercent:
-              format: int64
-              type: integer
             conditions:
               items:
                 properties:
@@ -168,6 +162,18 @@ spec:
             observedGeneration:
               format: int64
               type: integer
+            trafficSplitPercentage:
+              properties:
+                baseline:
+                  format: int64
+                  type: integer
+                canary:
+                  format: int64
+                  type: integer
+              required:
+              - baseline
+              - canary
+              type: object
           type: object
   version: v1alpha1
 status:
