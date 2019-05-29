@@ -6,6 +6,32 @@ metadata:
     controller-tools.k8s.io: "1.0"
   name: canaries.iter8.ibm.com
 spec:
+  additionalPrinterColumns:
+  - JSONPath: .status.conditions[0].reason
+    description: Status of the experiment
+    format: byte
+    name: status
+    type: string
+  - JSONPath: .spec.targetService.baseline
+    description: Name of baseline
+    format: byte
+    name: baseline
+    type: string
+  - JSONPath: .status.baselinePercent
+    description: Traffic percentage for baseline
+    format: int32
+    name: percentage
+    type: integer
+  - JSONPath: .spec.targetService.candidate
+    description: Name of canary
+    format: byte
+    name: canary
+    type: string
+  - JSONPath: .status.canaryPercent
+    description: Traffic percentage for canary
+    format: int32
+    name: percentage
+    type: integer
   group: iter8.ibm.com
   names:
     categories:
@@ -13,11 +39,6 @@ spec:
     - iter8
     kind: Canary
     plural: canaries
-  additionalPrinterColumns:
-    - name: RolloutPercent
-      type: integer
-      description: The amount of traffic that has been directed to the canary deployment
-      JSONPath: .status.rolloutPercent
   scope: Namespaced
   subresources:
     status: {}
@@ -112,6 +133,12 @@ spec:
                     type: string
                   type: array
               type: object
+            baselinePercent:
+              format: int64
+              type: integer
+            canaryPercent:
+              format: int64
+              type: integer
             conditions:
               items:
                 properties:

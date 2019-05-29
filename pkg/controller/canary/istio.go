@@ -266,7 +266,8 @@ func (r *ReconcileCanary) syncIstio(context context.Context, canary *iter8v1alph
 				log.Info("RuleUpdateError", "vs", vsName)
 				return reconcile.Result{}, err
 			}
-			canary.Status.RolloutPercent = int(rolloutPercent)
+			canary.Status.BaselinePercent = 100 - int(rolloutPercent)
+			canary.Status.CanaryPercent = int(rolloutPercent)
 			canary.Status.LastIncrementTime = metav1.NewTime(now)
 		}
 	}
