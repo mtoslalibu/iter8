@@ -34,19 +34,19 @@ import (
 )
 
 const (
-	Baseline  = "baseline"
-	Candidate = "candidate"
-	Stable    = "stable"
+	Baseline = "baseline"
+	Canary   = "canary"
+	Stable   = "stable"
 
 	canaryRole = "iter8.ibm.com/role"
 )
 
-func (r *ReconcileCanary) syncIstio(context context.Context, canary *iter8v1alpha1.Canary) (reconcile.Result, error) {
+func (r *ReconcileCanary) syncIstio(context context.Context, instance *iter8v1alpha1.Canary) (reconcile.Result, error) {
 	log := Logger(context)
-	serviceName := canary.Spec.TargetService.Name
-	serviceNamespace := canary.Spec.TargetService.Namespace
+	serviceName := instance.Spec.TargetService.Name
+	serviceNamespace := instance.Spec.TargetService.Namespace
 	if serviceNamespace == "" {
-		serviceNamespace = canary.Namespace
+		serviceNamespace = instance.Namespace
 	}
 
 	// Get k8s service
@@ -54,19 +54,19 @@ func (r *ReconcileCanary) syncIstio(context context.Context, canary *iter8v1alph
 	err := r.Get(context, types.NamespacedName{Name: serviceName, Namespace: serviceNamespace}, service)
 	if err != nil {
 		log.Info("TargetServiceNotFound", "service", serviceName)
-		canary.Status.MarkHasNotService("Service Not Found", "")
-		err = r.Status().Update(context, canary)
+		instance.Status.MarkHasNotService("Service Not Found", "")
+		err = r.Status().Update(context, instance)
 		if err != nil {
 			return reconcile.Result{}, err
 		}
 		return reconcile.Result{RequeueAfter: 5 * time.Second}, nil
 	}
-	canary.Status.MarkHasService()
+	instance.Status.MarkHasService()
 
 	// Remove stable rules if there is any related to the current service
-	stableName := getStableName(canary)
+	stableName := getStableName(instance)
 	dr := &v1alpha3.DestinationRule{}
-	if err := r.Get(context, types.NamespacedName{Name: stableName, Namespace: canary.GetNamespace()}, dr); err == nil {
+	if err := r.Get(context, types.NamespacedName{Name: stableName, Namespace: instance.GetNamespace()}, dr); err == nil {
 		if err := r.Delete(context, dr); err != nil {
 			// Retry
 			return reconcile.Result{}, err
@@ -74,7 +74,7 @@ func (r *ReconcileCanary) syncIstio(context context.Context, canary *iter8v1alph
 		log.Info("StableRuleDeleted", "dr", stableName)
 	}
 	vs := &v1alpha3.VirtualService{}
-	if err := r.Get(context, types.NamespacedName{Name: stableName, Namespace: canary.GetNamespace()}, vs); err == nil {
+	if err := r.Get(context, types.NamespacedName{Name: stableName, Namespace: instance.GetNamespace()}, vs); err == nil {
 		if err := r.Delete(context, vs); err != nil {
 			// Retry
 			return reconcile.Result{}, err
@@ -82,20 +82,20 @@ func (r *ReconcileCanary) syncIstio(context context.Context, canary *iter8v1alph
 		log.Info("StableRuleDeleted", "vs", stableName)
 	}
 	// Set up vs and dr for experiment
-	drName := getDestinationRuleName(canary)
+	drName := getDestinationRuleName(instance)
 	dr = &v1alpha3.DestinationRule{}
-	if err = r.Get(context, types.NamespacedName{Name: drName, Namespace: canary.Namespace}, dr); err != nil {
-		dr = newDestinationRule(canary)
+	if err = r.Get(context, types.NamespacedName{Name: drName, Namespace: instance.Namespace}, dr); err != nil {
+		dr = newDestinationRule(instance)
 		err := r.Create(context, dr)
 		if err != nil {
 			return reconcile.Result{}, err
 		}
 		log.Info("ExperimentRuleCreated", "dr", drName)
 	}
-	vsName := getVirtualServiceName(canary)
+	vsName := getVirtualServiceName(instance)
 	vs = &v1alpha3.VirtualService{}
-	if err = r.Get(context, types.NamespacedName{Name: vsName, Namespace: canary.Namespace}, vs); err != nil {
-		vs = makeVirtualService(0, canary)
+	if err = r.Get(context, types.NamespacedName{Name: vsName, Namespace: instance.Namespace}, vs); err != nil {
+		vs = makeVirtualService(0, instance)
 		err := r.Create(context, vs)
 		if err != nil {
 			return reconcile.Result{}, err
@@ -103,10 +103,10 @@ func (r *ReconcileCanary) syncIstio(context context.Context, canary *iter8v1alph
 		log.Info("ExperimentRuleCreated", "vs", vsName)
 	}
 
-	baselineName, candidateName := canary.Spec.TargetService.Baseline, canary.Spec.TargetService.Candidate
+	baselineName, canaryName := instance.Spec.TargetService.Baseline, instance.Spec.TargetService.Canary
 
-	baseline, candidate := &appsv1.Deployment{}, &appsv1.Deployment{}
-	// Get current deployment and candidate deployment
+	baseline, canary := &appsv1.Deployment{}, &appsv1.Deployment{}
+	// Get current deployment and canary deployment
 
 	if err = r.Get(context, types.NamespacedName{Name: baselineName, Namespace: serviceNamespace}, baseline); err == nil {
 		if updated := appendSubset(dr, baseline, Baseline); updated {
@@ -114,34 +114,34 @@ func (r *ReconcileCanary) syncIstio(context context.Context, canary *iter8v1alph
 				log.Info("ExperimentRuleUpdateFailure", "dr", drName)
 				return reconcile.Result{}, err
 			}
-			log.Info("BaselineFound", "BaselineName", baselineName)
+			log.Info("BaselineDeploymentFound", "Name", baselineName)
 			log.Info("ExperimentRuleUpdated", "dr", dr)
 		}
 	}
 
-	if err = r.Get(context, types.NamespacedName{Name: candidateName, Namespace: serviceNamespace}, candidate); err == nil {
-		if updated := appendSubset(dr, candidate, Candidate); updated {
+	if err = r.Get(context, types.NamespacedName{Name: canaryName, Namespace: serviceNamespace}, canary); err == nil {
+		if updated := appendSubset(dr, canary, Canary); updated {
 			if err := r.Update(context, dr); err != nil {
 				log.Info("ExperimentRuleUpdateFailure", "dr", drName)
 				return reconcile.Result{}, err
 			}
-			log.Info("CandidateFound", "CandidateName", candidateName)
+			log.Info("CanaryDeploymentFound", "Name", canaryName)
 			log.Info("ExperimentRuleUpdated", "dr", dr)
 		}
 	}
 
-	if baseline.GetName() == "" || candidate.GetName() == "" {
-		if baseline.GetName() == "" && candidate.GetName() == "" {
-			log.Info("Missing Baseline and Candidate Deployments")
-			canary.Status.MarkHasNotService("Baseline and candidate deployment are missing", "")
-		} else if candidate.GetName() == "" {
-			log.Info("Missing Candidate Deployment")
-			canary.Status.MarkHasNotService("Candidate deployment is missing", "")
+	if baseline.GetName() == "" || canary.GetName() == "" {
+		if baseline.GetName() == "" && canary.GetName() == "" {
+			log.Info("Missing Baseline and Canary Deployments")
+			instance.Status.MarkHasNotService("Baseline and canary deployment are missing", "")
+		} else if canary.GetName() == "" {
+			log.Info("Missing Canary Deployment")
+			instance.Status.MarkHasNotService("Canary deployment is missing", "")
 		} else {
 			log.Info("Missing Baseline Deployment")
-			canary.Status.MarkHasNotService("Baseline deployment is missing", "")
+			instance.Status.MarkHasNotService("Baseline deployment is missing", "")
 		}
-		err = r.Status().Update(context, canary)
+		err = r.Status().Update(context, instance)
 		if err != nil {
 			return reconcile.Result{}, err
 		}
@@ -151,89 +151,89 @@ func (r *ReconcileCanary) syncIstio(context context.Context, canary *iter8v1alph
 
 	// Start Canary Process
 	// Get info on Canary
-	traffic := canary.Spec.TrafficControl
+	traffic := instance.Spec.TrafficControl
 	now := time.Now()
 	// TODO: check err in getting the time value
 	interval, _ := traffic.GetIntervalDuration()
 
 	// check experiment is finished
-	if canary.Spec.TrafficControl.GetIterationCount() <= canary.Status.CurrentIteration {
+	if instance.Spec.TrafficControl.GetIterationCount() <= instance.Status.CurrentIteration {
 		log.Info("ExperimentCompleted")
 		// remove canary labels
 		if err := removeCanaryLabel(context, r, baseline); err != nil {
 			return reconcile.Result{}, err
 		}
-		if err := removeCanaryLabel(context, r, candidate); err != nil {
+		if err := removeCanaryLabel(context, r, canary); err != nil {
 			return reconcile.Result{}, err
 		}
 
-		if canary.Status.AssessmentSummary.AllSuccessCriteriaMet ||
-			canary.Spec.TrafficControl.Strategy == "manual" {
+		if instance.Status.AssessmentSummary.AllSuccessCriteriaMet ||
+			instance.Spec.TrafficControl.Strategy == "manual" {
 			// experiment is successful
-			switch canary.Spec.TrafficControl.GetOnSuccess() {
+			switch instance.Spec.TrafficControl.GetOnSuccess() {
 			case "baseline":
 				// delete routing rules
-				if err := deleteRules(context, r, canary); err != nil {
+				if err := deleteRules(context, r, instance); err != nil {
 					return reconcile.Result{}, err
 				}
 				// Set all traffic to baseline deployment
 				// generate new rules to shift all traffic to baseline
-				if err := setStableRules(context, r, baseline, canary); err != nil {
+				if err := setStableRules(context, r, baseline, instance); err != nil {
 					return reconcile.Result{}, err
 				}
-				canary.Status.MarkRollForwardNotSucceeded("Roll Back to Baseline", "")
+				instance.Status.MarkRollForwardNotSucceeded("Roll Back to Baseline", "")
 			case "canary":
 				// delete routing rules
-				if err := deleteRules(context, r, canary); err != nil {
+				if err := deleteRules(context, r, instance); err != nil {
 					return reconcile.Result{}, err
 				}
-				// Set all traffic to candidate deployment
+				// Set all traffic to canary deployment
 				// generate new rules to shift all traffic to candidate
-				if err := setStableRules(context, r, candidate, canary); err != nil {
+				if err := setStableRules(context, r, canary, instance); err != nil {
 					return reconcile.Result{}, err
 				}
-				canary.Status.MarkRollForwardSucceeded()
+				instance.Status.MarkRollForwardSucceeded()
 			case "both":
 				// Change name of the current vs rule as stable
-				vs.SetName(getStableName(canary))
+				vs.SetName(getStableName(instance))
 				if err := r.Update(context, vs); err != nil {
 					return reconcile.Result{}, err
 				}
-				canary.Status.MarkRollForwardNotSucceeded("Traffic is maintained as end of experiment", "")
+				instance.Status.MarkRollForwardNotSucceeded("Traffic is maintained as end of experiment", "")
 			}
 		} else {
 			// delete routing rules
-			if err := deleteRules(context, r, canary); err != nil {
+			if err := deleteRules(context, r, instance); err != nil {
 				return reconcile.Result{}, err
 			}
 			// Set all traffic to baseline deployment
 			// generate new rules to shift all traffic to baseline
-			if err := setStableRules(context, r, baseline, canary); err != nil {
+			if err := setStableRules(context, r, baseline, instance); err != nil {
 				return reconcile.Result{}, err
 			}
-			canary.Status.MarkRollForwardNotSucceeded("Roll Back to Baseline", "")
+			instance.Status.MarkRollForwardNotSucceeded("Roll Back to Baseline", "")
 		}
 
-		canary.Status.MarkExperimentCompleted()
+		instance.Status.MarkExperimentCompleted()
 		// End experiment
-		err = r.Status().Update(context, canary)
+		err = r.Status().Update(context, instance)
 		return reconcile.Result{}, err
 	}
 
 	// Check canary rollout status
-	rolloutPercent := float64(getWeight(Candidate, vs))
-	if now.After(canary.Status.LastIncrementTime.Add(interval)) {
+	rolloutPercent := float64(getWeight(Canary, vs))
+	if now.After(instance.Status.LastIncrementTime.Add(interval)) {
 
-		switch canary.Spec.TrafficControl.Strategy {
+		switch instance.Spec.TrafficControl.Strategy {
 		case "manual":
 			rolloutPercent += traffic.GetStepSize()
 		case "check_and_increment":
 			// Get latest analysis
-			payload := MakeRequest(canary, baseline, candidate)
-			response, err := checkandincrement.Invoke(log, canary.Spec.Analysis.AnalyticsService, payload)
+			payload := MakeRequest(instance, baseline, canary)
+			response, err := checkandincrement.Invoke(log, instance.Spec.Analysis.AnalyticsService, payload)
 			if err != nil {
-				canary.Status.MarkExperimentNotCompleted("Istio Analytics Service is not reachable", "%v", err)
-				err = r.Status().Update(context, canary)
+				instance.Status.MarkExperimentNotCompleted("Istio Analytics Service is not reachable", "%v", err)
+				err = r.Status().Update(context, instance)
 				return reconcile.Result{RequeueAfter: 5 * time.Second}, err
 			}
 
@@ -244,36 +244,36 @@ func (r *ReconcileCanary) syncIstio(context context.Context, canary *iter8v1alph
 
 			lastState, err := json.Marshal(response.LastState)
 			if err != nil {
-				canary.Status.MarkExperimentNotCompleted("ErrorAnalyticsResponse", "%v", err)
-				err = r.Status().Update(context, canary)
+				instance.Status.MarkExperimentNotCompleted("ErrorAnalyticsResponse", "%v", err)
+				err = r.Status().Update(context, instance)
 				return reconcile.Result{}, err
 			}
-			canary.Status.AnalysisState = runtime.RawExtension{Raw: lastState}
-			canary.Status.AssessmentSummary = response.Assessment.Summary
+			instance.Status.AnalysisState = runtime.RawExtension{Raw: lastState}
+			instance.Status.AssessmentSummary = response.Assessment.Summary
 		}
 
-		canary.Status.CurrentIteration++
-		log.Info("IterationUpdated", "count", canary.Status.CurrentIteration)
+		instance.Status.CurrentIteration++
+		log.Info("IterationUpdated", "count", instance.Status.CurrentIteration)
 		// Increase the traffic upto max traffic amount
-		if rolloutPercent <= traffic.GetMaxTrafficPercent() && getWeight(Candidate, vs) != int(rolloutPercent) {
+		if rolloutPercent <= traffic.GetMaxTrafficPercent() && getWeight(Canary, vs) != int(rolloutPercent) {
 			// Update Traffic splitting rule
 			log.Info("RolloutPercentUpdated", "NewWeight", rolloutPercent)
 			rv := vs.ObjectMeta.ResourceVersion
-			vs = makeVirtualService(int(rolloutPercent), canary)
+			vs = makeVirtualService(int(rolloutPercent), instance)
 			setResourceVersion(rv, vs)
 			err := r.Update(context, vs)
 			if err != nil {
 				log.Info("RuleUpdateError", "vs", vsName)
 				return reconcile.Result{}, err
 			}
-			canary.Status.TrafficSplit.Baseline = 100 - int(rolloutPercent)
-			canary.Status.TrafficSplit.Canary = int(rolloutPercent)
-			canary.Status.LastIncrementTime = metav1.NewTime(now)
+			instance.Status.TrafficSplit.Baseline = 100 - int(rolloutPercent)
+			instance.Status.TrafficSplit.Canary = int(rolloutPercent)
+			instance.Status.LastIncrementTime = metav1.NewTime(now)
 		}
 	}
 
-	canary.Status.MarkExperimentNotCompleted("Progressing", "")
-	err = r.Status().Update(context, canary)
+	instance.Status.MarkExperimentNotCompleted("Progressing", "")
+	err = r.Status().Update(context, instance)
 	return reconcile.Result{RequeueAfter: interval}, err
 }
 
@@ -289,13 +289,13 @@ func removeCanaryLabel(context context.Context, r *ReconcileCanary, d *appsv1.De
 	return
 }
 
-func deleteRules(context context.Context, r *ReconcileCanary, canary *iter8v1alpha1.Canary) (err error) {
+func deleteRules(context context.Context, r *ReconcileCanary, instance *iter8v1alpha1.Canary) (err error) {
 	log := Logger(context)
-	drName := getDestinationRuleName(canary)
-	vsName := getVirtualServiceName(canary)
+	drName := getDestinationRuleName(instance)
+	vsName := getVirtualServiceName(instance)
 
 	dr := &v1alpha3.DestinationRule{}
-	if err = r.Get(context, types.NamespacedName{Name: drName, Namespace: canary.Namespace}, dr); err == nil {
+	if err = r.Get(context, types.NamespacedName{Name: drName, Namespace: instance.Namespace}, dr); err == nil {
 		if err = r.Delete(context, dr); err != nil {
 			return
 		}
@@ -305,7 +305,7 @@ func deleteRules(context context.Context, r *ReconcileCanary, canary *iter8v1alp
 	}
 
 	vs := &v1alpha3.VirtualService{}
-	if err = r.Get(context, types.NamespacedName{Name: vsName, Namespace: canary.Namespace}, vs); err == nil {
+	if err = r.Get(context, types.NamespacedName{Name: vsName, Namespace: instance.Namespace}, vs); err == nil {
 		if err = r.Delete(context, vs); err != nil {
 			return
 		}
@@ -317,15 +317,15 @@ func deleteRules(context context.Context, r *ReconcileCanary, canary *iter8v1alp
 	return
 }
 
-func newDestinationRule(canary *iter8v1alpha1.Canary) *v1alpha3.DestinationRule {
+func newDestinationRule(instance *iter8v1alpha1.Canary) *v1alpha3.DestinationRule {
 	dr := &v1alpha3.DestinationRule{
 		ObjectMeta: metav1.ObjectMeta{
-			Name:      getDestinationRuleName(canary),
-			Namespace: canary.Namespace,
-			Labels:    map[string]string{canaryLabel: canary.ObjectMeta.Name},
+			Name:      getDestinationRuleName(instance),
+			Namespace: instance.Namespace,
+			Labels:    map[string]string{canaryLabel: instance.ObjectMeta.Name},
 		},
 		Spec: v1alpha3.DestinationRuleSpec{
-			Host:    canary.Spec.TargetService.Name,
+			Host:    instance.Spec.TargetService.Name,
 			Subsets: []v1alpha3.Subset{},
 		},
 	}
@@ -350,33 +350,33 @@ func appendSubset(dr *v1alpha3.DestinationRule, d *appsv1.Deployment, name strin
 	return update
 }
 
-func getDestinationRuleName(canary *iter8v1alpha1.Canary) string {
-	return canary.Spec.TargetService.Name + ".iter8-canary"
+func getDestinationRuleName(instance *iter8v1alpha1.Canary) string {
+	return instance.Spec.TargetService.Name + ".iter8-canary"
 }
 
-func makeVirtualService(rolloutPercent int, canary *iter8v1alpha1.Canary) *v1alpha3.VirtualService {
+func makeVirtualService(rolloutPercent int, instance *iter8v1alpha1.Canary) *v1alpha3.VirtualService {
 	vs := &v1alpha3.VirtualService{
 		ObjectMeta: metav1.ObjectMeta{
-			Name:      getVirtualServiceName(canary),
-			Namespace: canary.Namespace,
-			Labels:    map[string]string{canaryLabel: canary.ObjectMeta.Name},
+			Name:      getVirtualServiceName(instance),
+			Namespace: instance.Namespace,
+			Labels:    map[string]string{canaryLabel: instance.ObjectMeta.Name},
 		},
 		Spec: v1alpha3.VirtualServiceSpec{
-			Hosts: []string{canary.Spec.TargetService.Name},
+			Hosts: []string{instance.Spec.TargetService.Name},
 			HTTP: []v1alpha3.HTTPRoute{
 				{
 					Route: []v1alpha3.HTTPRouteDestination{
 						{
 							Destination: v1alpha3.Destination{
-								Host:   canary.Spec.TargetService.Name,
+								Host:   instance.Spec.TargetService.Name,
 								Subset: Baseline,
 							},
 							Weight: 100 - rolloutPercent,
 						},
 						{
 							Destination: v1alpha3.Destination{
-								Host:   canary.Spec.TargetService.Name,
-								Subset: Candidate,
+								Host:   instance.Spec.TargetService.Name,
+								Subset: Canary,
 							},
 							Weight: rolloutPercent,
 						},
@@ -389,8 +389,8 @@ func makeVirtualService(rolloutPercent int, canary *iter8v1alpha1.Canary) *v1alp
 	return vs
 }
 
-func getVirtualServiceName(canary *iter8v1alpha1.Canary) string {
-	return canary.Spec.TargetService.Name + ".iter8-canary"
+func getVirtualServiceName(instance *iter8v1alpha1.Canary) string {
+	return instance.Spec.TargetService.Name + ".iter8-canary"
 }
 
 func getWeight(subset string, vs *v1alpha3.VirtualService) int {
@@ -406,8 +406,8 @@ func setResourceVersion(rv string, vs *v1alpha3.VirtualService) {
 	vs.ObjectMeta.ResourceVersion = rv
 }
 
-func setStableRules(context context.Context, r *ReconcileCanary, d *appsv1.Deployment, canary *iter8v1alpha1.Canary) (err error) {
-	stableDr, stableVs := newStableRules(d, canary)
+func setStableRules(context context.Context, r *ReconcileCanary, d *appsv1.Deployment, instance *iter8v1alpha1.Canary) (err error) {
+	stableDr, stableVs := newStableRules(d, instance)
 	if err = r.Create(context, stableDr); err != nil {
 		return
 	}
@@ -418,15 +418,15 @@ func setStableRules(context context.Context, r *ReconcileCanary, d *appsv1.Deplo
 	return
 }
 
-func newStableRules(d *appsv1.Deployment, canary *iter8v1alpha1.Canary) (*v1alpha3.DestinationRule, *v1alpha3.VirtualService) {
+func newStableRules(d *appsv1.Deployment, instance *iter8v1alpha1.Canary) (*v1alpha3.DestinationRule, *v1alpha3.VirtualService) {
 	dr := &v1alpha3.DestinationRule{
 		ObjectMeta: metav1.ObjectMeta{
-			Name:      getStableName(canary),
-			Namespace: canary.Namespace,
-			Labels:    map[string]string{canaryLabel: canary.ObjectMeta.Name},
+			Name:      getStableName(instance),
+			Namespace: instance.Namespace,
+			Labels:    map[string]string{canaryLabel: instance.ObjectMeta.Name},
 		},
 		Spec: v1alpha3.DestinationRuleSpec{
-			Host: canary.Spec.TargetService.Name,
+			Host: instance.Spec.TargetService.Name,
 			Subsets: []v1alpha3.Subset{
 				v1alpha3.Subset{
 					Name:   Stable,
@@ -438,18 +438,18 @@ func newStableRules(d *appsv1.Deployment, canary *iter8v1alpha1.Canary) (*v1alph
 
 	vs := &v1alpha3.VirtualService{
 		ObjectMeta: metav1.ObjectMeta{
-			Name:      getStableName(canary),
-			Namespace: canary.Namespace,
-			Labels:    map[string]string{canaryLabel: canary.ObjectMeta.Name},
+			Name:      getStableName(instance),
+			Namespace: instance.Namespace,
+			Labels:    map[string]string{canaryLabel: instance.ObjectMeta.Name},
 		},
 		Spec: v1alpha3.VirtualServiceSpec{
-			Hosts: []string{canary.Spec.TargetService.Name},
+			Hosts: []string{instance.Spec.TargetService.Name},
 			HTTP: []v1alpha3.HTTPRoute{
 				{
 					Route: []v1alpha3.HTTPRouteDestination{
 						{
 							Destination: v1alpha3.Destination{
-								Host:   canary.Spec.TargetService.Name,
+								Host:   instance.Spec.TargetService.Name,
 								Subset: Stable,
 							},
 							Weight: 100,
@@ -463,24 +463,24 @@ func newStableRules(d *appsv1.Deployment, canary *iter8v1alpha1.Canary) (*v1alph
 	return dr, vs
 }
 
-func getStableName(canary *iter8v1alpha1.Canary) string {
-	return canary.Spec.TargetService.Name + ".iter8-stable"
+func getStableName(instance *iter8v1alpha1.Canary) string {
+	return instance.Spec.TargetService.Name + ".iter8-stable"
 }
 
-func (r *ReconcileCanary) finalizeIstio(context context.Context, canary *iter8v1alpha1.Canary) (reconcile.Result, error) {
-	completed := canary.Status.GetCondition(iter8v1alpha1.CanaryConditionExperimentCompleted)
+func (r *ReconcileCanary) finalizeIstio(context context.Context, instance *iter8v1alpha1.Canary) (reconcile.Result, error) {
+	completed := instance.Status.GetCondition(iter8v1alpha1.CanaryConditionExperimentCompleted)
 	if completed != nil && completed.Status != corev1.ConditionTrue {
 		// Do a rollback
 		// delete routing rules
-		if err := deleteRules(context, r, canary); err != nil {
+		if err := deleteRules(context, r, instance); err != nil {
 			return reconcile.Result{}, err
 		}
 		// Get baseline deployment
-		baselineName := canary.Spec.TargetService.Baseline
+		baselineName := instance.Spec.TargetService.Baseline
 		baseline := &appsv1.Deployment{}
-		serviceNamespace := canary.Spec.TargetService.Namespace
+		serviceNamespace := instance.Spec.TargetService.Namespace
 		if serviceNamespace == "" {
-			serviceNamespace = canary.Namespace
+			serviceNamespace = instance.Namespace
 		}
 
 		if err := r.Get(context, types.NamespacedName{Name: baselineName, Namespace: serviceNamespace}, baseline); err != nil {
@@ -488,11 +488,11 @@ func (r *ReconcileCanary) finalizeIstio(context context.Context, canary *iter8v1
 		} else {
 			// Set all traffic to baseline deployment
 			// generate new rules to shift all traffic to baseline
-			if err := setStableRules(context, r, baseline, canary); err != nil {
+			if err := setStableRules(context, r, baseline, instance); err != nil {
 				return reconcile.Result{}, err
 			}
 		}
 	}
 
-	return reconcile.Result{}, removeFinalizer(context, r, canary, Finalizer)
+	return reconcile.Result{}, removeFinalizer(context, r, instance, Finalizer)
 }

@@ -34,7 +34,7 @@ import (
 // +kubebuilder:printcolumn:name="status",type="string",JSONPath=".status.conditions[?(@.type == 'Ready')].reason",description="Status of the experiment",format="byte"
 // +kubebuilder:printcolumn:name="baseline",type="string",JSONPath=".spec.targetService.baseline",description="Name of baseline",format="byte"
 // +kubebuilder:printcolumn:name="percentage",type="integer",JSONPath=".status.trafficSplitPercentage.baseline",description="Traffic percentage for baseline",format="int32"
-// +kubebuilder:printcolumn:name="canary",type="string",JSONPath=".spec.targetService.candidate",description="Name of canary",format="byte"
+// +kubebuilder:printcolumn:name="canary",type="string",JSONPath=".spec.targetService.canary",description="Name of canary",format="byte"
 // +kubebuilder:printcolumn:name="percentage",type="integer",JSONPath=".status.trafficSplitPercentage.canary",description="Traffic percentage for canary",format="int32"
 type Canary struct {
 	metav1.TypeMeta   `json:",inline"`
@@ -73,8 +73,8 @@ type TargetService struct {
 	// Baseline tells the name of baseline
 	Baseline string `json:"baseline,omitempty"`
 
-	// Candidate tells the name of candidate
-	Candidate string `json:"candidate,omitempty"`
+	// Canary tells the name of candidate
+	Canary string `json:"canary,omitempty"`
 }
 
 // CanaryStatus defines the observed state of Canary

@@ -22,7 +22,7 @@ spec:
     format: int32
     name: percentage
     type: integer
-  - JSONPath: .spec.targetService.candidate
+  - JSONPath: .spec.targetService.canary
     description: Name of canary
     format: byte
     name: canary
@@ -91,7 +91,7 @@ spec:
               properties:
                 baseline:
                   type: string
-                candidate:
+                canary:
                   type: string
               type: object
             trafficControl:

@@ -9,7 +9,7 @@ spec:
     name: reviews
     apiVersion: v1 
     baseline: reviews-v2
-    candidate: reviews-v3
+    canary: reviews-v3
   trafficControl:
     strategy: check_and_increment
     interval: 30s
