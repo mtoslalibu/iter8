@@ -182,6 +182,8 @@ func (r *ReconcileCanary) syncIstio(context context.Context, instance *iter8v1al
 					return reconcile.Result{}, err
 				}
 				instance.Status.MarkRollForwardNotSucceeded("Roll Back to Baseline", "")
+				instance.Status.TrafficSplit.Baseline = 100
+				instance.Status.TrafficSplit.Canary = 0
 			case "canary":
 				// delete routing rules
 				if err := deleteRules(context, r, instance); err != nil {
@@ -193,6 +195,8 @@ func (r *ReconcileCanary) syncIstio(context context.Context, instance *iter8v1al
 					return reconcile.Result{}, err
 				}
 				instance.Status.MarkRollForwardSucceeded()
+				instance.Status.TrafficSplit.Baseline = 0
+				instance.Status.TrafficSplit.Canary = 100
 			case "both":
 				// Change name of the current vs rule as stable
 				vs.SetName(getStableName(instance))
@@ -212,6 +216,8 @@ func (r *ReconcileCanary) syncIstio(context context.Context, instance *iter8v1al
 				return reconcile.Result{}, err
 			}
 			instance.Status.MarkRollForwardNotSucceeded("Roll Back to Baseline", "")
+			instance.Status.TrafficSplit.Baseline = 100
+			instance.Status.TrafficSplit.Canary = 0
 		}
 
 		instance.Status.MarkExperimentCompleted()
