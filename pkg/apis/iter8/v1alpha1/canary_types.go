@@ -31,6 +31,7 @@ import (
 // +k8s:openapi-gen=true
 // +kubebuilder:subresource:status
 // +kubebuilder:categories=all,iter8
+// +kubebuilder:printcolumn:name="completed",type="string",JSONPath=".status.conditions[?(@.type == 'ExperimentCompleted')].status",description="Whether experiment is completed",format="byte"
 // +kubebuilder:printcolumn:name="status",type="string",JSONPath=".status.conditions[?(@.type == 'Ready')].reason",description="Status of the experiment",format="byte"
 // +kubebuilder:printcolumn:name="baseline",type="string",JSONPath=".spec.targetService.baseline",description="Name of baseline",format="byte"
 // +kubebuilder:printcolumn:name="percentage",type="integer",JSONPath=".status.trafficSplitPercentage.baseline",description="Traffic percentage for baseline",format="int32"
@@ -263,14 +264,14 @@ const (
 	// CanaryConditionExperimentCompleted has status True when the Canary rollout is completed
 	CanaryConditionExperimentCompleted duckv1alpha1.ConditionType = "ExperimentCompleted"
 
-	// CanaryConditionRollForwardSucceeded has status True when a Canary rollout forward is completed
-	CanaryConditionRollForwardSucceeded duckv1alpha1.ConditionType = "RollForwardSucceeded"
+	// CanaryConditionRollForward has status True when a Canary rollout forward is completed
+	CanaryConditionRollForward duckv1alpha1.ConditionType = "RollForward"
 )
 
 var canaryCondSet = duckv1alpha1.NewLivingConditionSet(
 	CanaryConditionServiceProvided,
 	CanaryConditionExperimentCompleted,
-	CanaryConditionRollForwardSucceeded,
+	CanaryConditionRollForward,
 )
 
 // InitializeConditions sets relevant unset conditions to Unknown state.
@@ -298,14 +299,14 @@ func (s *CanaryStatus) MarkExperimentNotCompleted(reason, messageFormat string, 
 	canaryCondSet.Manage(s).MarkFalse(CanaryConditionExperimentCompleted, reason, messageFormat, messageA...)
 }
 
-// MarkRollForwardSucceeded sets the condition that
-func (s *CanaryStatus) MarkRollForwardSucceeded() {
-	canaryCondSet.Manage(s).MarkTrue(CanaryConditionRollForwardSucceeded)
+// MarkRollForward sets the condition that all traffic is set to canary
+func (s *CanaryStatus) MarkRollForward() {
+	canaryCondSet.Manage(s).MarkTrue(CanaryConditionRollForward)
 }
 
-// MarkRollForwardNotSucceeded sets the condition that the experiemnt is ongoing
-func (s *CanaryStatus) MarkRollForwardNotSucceeded(reason, messageFormat string, messageA ...interface{}) {
-	canaryCondSet.Manage(s).MarkFalse(CanaryConditionRollForwardSucceeded, reason, messageFormat, messageA...)
+// MarkNotRollForward sets the condition that the traffic is not all set to canary
+func (s *CanaryStatus) MarkNotRollForward(reason, messageFormat string, messageA ...interface{}) {
+	canaryCondSet.Manage(s).MarkFalse(CanaryConditionRollForward, reason, messageFormat, messageA...)
 }
 
 func init() {

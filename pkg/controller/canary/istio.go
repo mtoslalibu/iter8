@@ -183,7 +183,7 @@ func (r *ReconcileCanary) syncIstio(context context.Context, instance *iter8v1al
 				if err := setStableRules(context, r, baseline, instance); err != nil {
 					return reconcile.Result{}, err
 				}
-				instance.Status.MarkRollForwardNotSucceeded("Roll Back to Baseline", "")
+				instance.Status.MarkNotRollForward("Roll Back to Baseline", "")
 				instance.Status.TrafficSplit.Baseline = 100
 				instance.Status.TrafficSplit.Canary = 0
 			case "canary":
@@ -196,7 +196,7 @@ func (r *ReconcileCanary) syncIstio(context context.Context, instance *iter8v1al
 				if err := setStableRules(context, r, canary, instance); err != nil {
 					return reconcile.Result{}, err
 				}
-				instance.Status.MarkRollForwardSucceeded()
+				instance.Status.MarkRollForward()
 				instance.Status.TrafficSplit.Baseline = 0
 				instance.Status.TrafficSplit.Canary = 100
 			case "both":
@@ -205,10 +205,11 @@ func (r *ReconcileCanary) syncIstio(context context.Context, instance *iter8v1al
 				if err := r.Update(context, vs); err != nil {
 					return reconcile.Result{}, err
 				}
-				instance.Status.MarkRollForwardNotSucceeded("Traffic is maintained as end of experiment", "")
+				instance.Status.MarkNotRollForward("Traffic is maintained as end of experiment", "")
 			}
 		} else {
 			log.Info("ExperimentFailure: NotAllSuccessCriteriaMet")
+
 			// delete routing rules
 			if err := deleteRules(context, r, instance); err != nil {
 				return reconcile.Result{}, err
@@ -218,7 +219,7 @@ func (r *ReconcileCanary) syncIstio(context context.Context, instance *iter8v1al
 			if err := setStableRules(context, r, baseline, instance); err != nil {
 				return reconcile.Result{}, err
 			}
-			instance.Status.MarkRollForwardNotSucceeded("Roll Back to Baseline", "ExperimentFailure, Not all success criteria are met")
+			instance.Status.MarkNotRollForward("ExperimentFailure: Roll Back to Baseline", "")
 			instance.Status.TrafficSplit.Baseline = 100
 			instance.Status.TrafficSplit.Canary = 0
 		}

@@ -7,6 +7,11 @@ metadata:
   name: canaries.iter8.ibm.com
 spec:
   additionalPrinterColumns:
+  - JSONPath: .status.conditions[?(@.type == 'ExperimentCompleted')].status
+    description: Whether experiment is completed
+    format: byte
+    name: completed
+    type: string
   - JSONPath: .status.conditions[?(@.type == 'Ready')].reason
     description: Status of the experiment
     format: byte

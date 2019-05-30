@@ -248,6 +248,8 @@ func removeFinalizer(context context.Context, r *ReconcileCanary, instance *iter
 	if err = r.Update(context, instance); err != nil {
 		Logger(context).Info("setting finalizer failed. (retrying)", "error", err)
 	}
+
+	Logger(context).Info("FinalizerRemoved")
 	return
 }
 
