@@ -61,7 +61,6 @@ func (r *ReconcileCanary) syncIstio(context context.Context, instance *iter8v1al
 		}
 		return reconcile.Result{RequeueAfter: 5 * time.Second}, nil
 	}
-	instance.Status.MarkHasService()
 
 	// Remove stable rules if there is any related to the current service
 	stableName := getStableName(instance)
@@ -149,6 +148,8 @@ func (r *ReconcileCanary) syncIstio(context context.Context, instance *iter8v1al
 		return reconcile.Result{RequeueAfter: time.Second}, nil
 	}
 
+	instance.Status.MarkHasService()
+
 	// Start Canary Process
 	// Get info on Canary
 	traffic := instance.Spec.TrafficControl
@@ -170,6 +171,7 @@ func (r *ReconcileCanary) syncIstio(context context.Context, instance *iter8v1al
 		if instance.Status.AssessmentSummary.AllSuccessCriteriaMet ||
 			instance.Spec.TrafficControl.Strategy == "manual" {
 			// experiment is successful
+			log.Info("ExperimentSucceeded: AllSuccessCriteriaMet")
 			switch instance.Spec.TrafficControl.GetOnSuccess() {
 			case "baseline":
 				// delete routing rules
@@ -206,6 +208,7 @@ func (r *ReconcileCanary) syncIstio(context context.Context, instance *iter8v1al
 				instance.Status.MarkRollForwardNotSucceeded("Traffic is maintained as end of experiment", "")
 			}
 		} else {
+			log.Info("ExperimentFailure: NotAllSuccessCriteriaMet")
 			// delete routing rules
 			if err := deleteRules(context, r, instance); err != nil {
 				return reconcile.Result{}, err
@@ -215,7 +218,7 @@ func (r *ReconcileCanary) syncIstio(context context.Context, instance *iter8v1al
 			if err := setStableRules(context, r, baseline, instance); err != nil {
 				return reconcile.Result{}, err
 			}
-			instance.Status.MarkRollForwardNotSucceeded("Roll Back to Baseline", "")
+			instance.Status.MarkRollForwardNotSucceeded("Roll Back to Baseline", "ExperimentFailure, Not all success criteria are met")
 			instance.Status.TrafficSplit.Baseline = 100
 			instance.Status.TrafficSplit.Canary = 0
 		}
@@ -320,7 +323,7 @@ func deleteRules(context context.Context, r *ReconcileCanary, instance *iter8v1a
 		log.Info("RuleNotFoundWhenDeleted", "vs", vsName)
 	}
 
-	return
+	return nil
 }
 
 func newDestinationRule(instance *iter8v1alpha1.Canary) *v1alpha3.DestinationRule {
