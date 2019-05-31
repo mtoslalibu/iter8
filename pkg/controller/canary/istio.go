@@ -278,9 +278,10 @@ func (r *ReconcileCanary) syncIstio(context context.Context, instance *iter8v1al
 			}
 			instance.Status.TrafficSplit.Baseline = 100 - int(rolloutPercent)
 			instance.Status.TrafficSplit.Canary = int(rolloutPercent)
-			instance.Status.LastIncrementTime = metav1.NewTime(now)
 		}
 	}
+
+	instance.Status.LastIncrementTime = metav1.NewTime(now)
 
 	instance.Status.MarkExperimentNotCompleted("Progressing", "")
 	err = r.Status().Update(context, instance)
