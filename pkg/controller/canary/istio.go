@@ -491,10 +491,7 @@ func getStableName(instance *iter8v1alpha1.Canary) string {
 func (r *ReconcileCanary) finalizeIstio(context context.Context, instance *iter8v1alpha1.Canary) (reconcile.Result, error) {
 	completed := instance.Status.GetCondition(iter8v1alpha1.CanaryConditionExperimentCompleted)
 	if completed != nil && completed.Status != corev1.ConditionTrue {
-		// delete routing rules
-		if err := deleteRules(context, r, instance); err != nil {
-			return reconcile.Result{}, err
-		}
+
 		// Get baseline deployment
 		baselineName := instance.Spec.TargetService.Baseline
 		baseline := &appsv1.Deployment{}
@@ -508,6 +505,10 @@ func (r *ReconcileCanary) finalizeIstio(context context.Context, instance *iter8
 			Logger(context).Info("BaselineNotFoundWhenDeleted", "name", baselineName)
 		} else {
 			// Do a rollback
+			// delete routing rules
+			if err := deleteRules(context, r, instance); err != nil {
+				return reconcile.Result{}, err
+			}
 			// Set all traffic to baseline deployment
 			// generate new rules to shift all traffic to baseline
 			if err := setStableRules(context, r, baseline, instance); err != nil {
