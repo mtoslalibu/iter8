@@ -24,11 +24,12 @@ import (
 
 func TestMockAnalytics(t *testing.T) {
 	logger := Logger(t)
-	service := StartAnalytics("8081")
+	service := StartAnalytics()
+	defer service.Close()
 	want := dummyResponse()
 	service.Mock("test-0", want)
 
-	got, err := cai.Invoke(logger, service.Endpoint, dummyRequest())
+	got, err := cai.Invoke(logger, service.GetURL(), dummyRequest())
 	if err != nil {
 		t.Fatalf("%v", err)
 	}

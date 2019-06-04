@@ -20,6 +20,7 @@ import (
 	"fmt"
 	"io/ioutil"
 	"net/http"
+	"net/http/httptest"
 
 	"github.ibm.com/istio-research/iter8-controller/pkg/analytics/checkandincrement"
 )
@@ -31,26 +32,33 @@ const (
 
 // AnalyticsService with mock response
 type AnalyticsService struct {
-	// The service endpoint
-	Endpoint string
+	// The underlying server
+	server *httptest.Server
 
 	// mock maps request to response. The key maps to request.name
 	mock map[string]checkandincrement.Response
 }
 
 // StartAnalytics starts fake analytics service
-func StartAnalytics(port string) *AnalyticsService {
+func StartAnalytics() *AnalyticsService {
 	service := &AnalyticsService{
-		mock:     make(map[string]checkandincrement.Response),
-		Endpoint: "http://localhost:" + port}
-
-	http.HandleFunc(checkandincrement.Path, service.handler)
-	go http.ListenAndServe(":"+port, nil)
-
+		mock: make(map[string]checkandincrement.Response),
+	}
+	service.server = httptest.NewServer(service)
 	return service
 }
 
-func (s *AnalyticsService) handler(w http.ResponseWriter, r *http.Request) {
+// GetURL returns the service URL
+func (s *AnalyticsService) GetURL() string {
+	return s.server.URL
+}
+
+// Close the service
+func (s *AnalyticsService) Close() {
+	s.server.Close()
+}
+
+func (s *AnalyticsService) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 	defer r.Body.Close()
 	b, err := ioutil.ReadAll(r.Body)
 	if err != nil {

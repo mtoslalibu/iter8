@@ -41,3 +41,4 @@ kustomize version
 echo "installing idt"
 curl -sL https://ibm.biz/idt-installer | bash
 
+
