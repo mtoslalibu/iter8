@@ -174,6 +174,10 @@ func (r *ReconcileCanary) syncIstio(context context.Context, instance *iter8v1al
 			return reconcile.Result{}, err
 		}
 
+		// clear AnalysisState
+		instance.Status.AnalysisState = runtime.RawExtension{}
+		log.Info("AnalysisStateCleared")
+
 		if instance.Status.AssessmentSummary.AllSuccessCriteriaMet ||
 			instance.Spec.TrafficControl.Strategy == "manual" {
 			// experiment is successful
