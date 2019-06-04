@@ -178,6 +178,7 @@ func (r *ReconcileCanary) Reconcile(request reconcile.Request) (reconcile.Result
 	log.Info("reconciling")
 
 	instance.Status.InitializeConditions()
+	instance.Status.MarkExperimentNotCompleted("Progressing", "")
 
 	// TODO: not sure why this is needed
 	if instance.Status.LastIncrementTime.IsZero() {

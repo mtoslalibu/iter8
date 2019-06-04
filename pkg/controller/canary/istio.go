@@ -132,7 +132,7 @@ func (r *ReconcileCanary) syncIstio(context context.Context, instance *iter8v1al
 	if baseline.GetName() == "" || canary.GetName() == "" {
 		if baseline.GetName() == "" && canary.GetName() == "" {
 			log.Info("Missing Baseline and Canary Deployments")
-			instance.Status.MarkHasNotService("Baseline and canary deployment are missing", "")
+			instance.Status.MarkHasNotService("Baseline and canary deployments are missing", "")
 		} else if canary.GetName() == "" {
 			log.Info("Missing Canary Deployment")
 			instance.Status.MarkHasNotService("Canary deployment is missing", "")
