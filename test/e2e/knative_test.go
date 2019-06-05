@@ -60,6 +60,7 @@ func getDoNotExistCanary() *v1alpha1.Canary {
 
 func getDoNotExistCanaryReconciled() *v1alpha1.Canary {
 	canary := getDoNotExistCanary()
+	canary.Status.MarkExperimentNotCompleted("Progressing", "")
 	canary.Status.MarkHasNotService("NotFound", "")
 	return canary
 }
