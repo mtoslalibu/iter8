@@ -53,7 +53,7 @@ func initializeFlags() *EnvironmentFlags {
 	return &f
 }
 
-// GetClient returns generic Kube client configure with canary scheme
+// GetClient returns generic Kube client configure with experiment scheme
 func GetClient() client.Client {
 	// Get a config to talk to the apiserver
 

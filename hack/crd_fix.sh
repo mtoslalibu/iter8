@@ -4,9 +4,9 @@
 
 SCRIPTDIR=$( cd "$( dirname "${BASH_SOURCE[0]}" )" && pwd )
 echo $SCRIPTDIR
-FILE_PATH=$SCRIPTDIR"/../config/crds/iter8_v1alpha1_canary.yaml"
+FILE_PATH=$SCRIPTDIR"/../config/crds/iter8_v1alpha1_experiment.yaml"
 suffix=".original"
-line=$(grep 'lastTransitionTime' -n config/crds/iter8_v1alpha1_canary.yaml | sed 's/:.*//')
+line=$(grep 'lastTransitionTime' -n config/crds/iter8_v1alpha1_experiment.yaml | sed 's/:.*//')
 line=$(( $line + 1 ))
 
 sed -i$suffix  "${line}s/object/string/" $FILE_PATH

@@ -51,7 +51,7 @@ func TestInvoke(t *testing.T) {
 			SuccessCriteria: []SuccessCriterion{
 				SuccessCriterion{
 					MetricName: "iter8_latency",
-					Type:       iter8v1alpha1.SuccessCriterionDelta,
+					Type:       iter8v1alpha1.ToleranceTypeDelta,
 					Value:      0.02,
 				},
 			},

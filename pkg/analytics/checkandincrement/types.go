@@ -76,7 +76,7 @@ type SuccessCriterion struct {
 	// 	Criterion type. Options:
 	// "delta": compares the canary against the baseline version with respect to the metric;
 	// "threshold": checks the canary with respect to the metric
-	Type iter8v1alpha1.SuccessCriterionType `json:"type"`
+	Type iter8v1alpha1.ToleranceType `json:"type"`
 
 	// Value to check
 	Value float64 `json:"value"`

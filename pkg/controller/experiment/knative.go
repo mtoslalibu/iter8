@@ -13,7 +13,7 @@ See the License for the specific language governing permissions and
 limitations under the License.
 */
 
-package canary
+package experiment
 
 import (
 	"context"
@@ -31,7 +31,7 @@ import (
 	iter8v1alpha1 "github.ibm.com/istio-research/iter8-controller/pkg/apis/iter8/v1alpha1"
 )
 
-func (r *ReconcileCanary) syncKnative(context context.Context, instance *iter8v1alpha1.Canary) (reconcile.Result, error) {
+func (r *ReconcileExperiment) syncKnative(context context.Context, instance *iter8v1alpha1.Experiment) (reconcile.Result, error) {
 	log := Logger(context)
 
 	// Get Knative service
@@ -58,10 +58,10 @@ func (r *ReconcileCanary) syncKnative(context context.Context, instance *iter8v1
 		return reconcile.Result{}, err
 	}
 
-	// link service to this canary. Only one canary can control a service
+	// link service to this experiment. Only one experiment can control a service
 	labels := kservice.GetLabels()
-	if canary, found := labels[canaryLabel]; found && canary != instance.GetName() {
-		instance.Status.MarkHasNotService("ExistingCanary", "service is already controlled by %v", canary)
+	if experiment, found := labels[experimentLabel]; found && experiment != instance.GetName() {
+		instance.Status.MarkHasNotService("ExistingExperiment", "service is already controlled by %v", experiment)
 		err = r.Status().Update(context, instance)
 		return reconcile.Result{}, err
 	}
@@ -70,8 +70,8 @@ func (r *ReconcileCanary) syncKnative(context context.Context, instance *iter8v1
 		labels = make(map[string]string)
 	}
 
-	if _, ok := labels[canaryLabel]; !ok {
-		labels[canaryLabel] = instance.GetName()
+	if _, ok := labels[experimentLabel]; !ok {
+		labels[experimentLabel] = instance.GetName()
 		kservice.SetLabels(labels)
 		if err = r.Update(context, kservice); err != nil {
 			return reconcile.Result{}, err
@@ -123,7 +123,7 @@ func (r *ReconcileCanary) syncKnative(context context.Context, instance *iter8v1
 				return reconcile.Result{}, err
 			}
 		} else {
-			// latest == current. Canary is completed
+			// latest == current. Experiment is completed
 			instance.Status.MarkExperimentCompleted()
 			err = r.Status().Update(context, instance)
 			return reconcile.Result{}, err
@@ -131,7 +131,7 @@ func (r *ReconcileCanary) syncKnative(context context.Context, instance *iter8v1
 	}
 
 	// check experiment is finished
-	if instance.Spec.TrafficControl.GetIterationCount() <= instance.Status.CurrentIteration {
+	if instance.Spec.TrafficControl.GetMaxIterations() <= instance.Status.CurrentIteration {
 		log.Info("experiment completed.")
 		update := false
 		if instance.Status.AssessmentSummary.AllSuccessCriteriaMet {
@@ -142,8 +142,8 @@ func (r *ReconcileCanary) syncKnative(context context.Context, instance *iter8v1
 					kservice.Spec.Release.RolloutPercent = 0
 					update = true
 				}
-			case "canary":
-				// Promote canary to baseline
+			case "candidate":
+				// Promote candidate to baseline
 				kservice.Spec.Release.Revisions = []string{kservice.Spec.Release.Revisions[1]}
 				kservice.Spec.Release.RolloutPercent = 0
 				update = true
@@ -159,9 +159,9 @@ func (r *ReconcileCanary) syncKnative(context context.Context, instance *iter8v1
 		}
 
 		labels := kservice.GetLabels()
-		_, has := labels[canaryLabel]
+		_, has := labels[experimentLabel]
 		if has {
-			delete(labels, canaryLabel)
+			delete(labels, experimentLabel)
 		}
 
 		if has || update {
@@ -187,8 +187,8 @@ func (r *ReconcileCanary) syncKnative(context context.Context, instance *iter8v1
 		log.Info("process iteration.")
 
 		newRolloutPercent := float64(release.RolloutPercent)
-		switch instance.Spec.TrafficControl.Strategy {
-		case "manual":
+		switch instance.Spec.TrafficControl.GetStrategy() {
+		case "increment_without_check":
 			newRolloutPercent += traffic.GetStepSize()
 		case "check_and_increment":
 			// Get underlying k8s services
@@ -199,7 +199,7 @@ func (r *ReconcileCanary) syncKnative(context context.Context, instance *iter8v1
 				err = r.Status().Update(context, instance)
 				return reconcile.Result{}, err
 			}
-			canaryService, err := r.getServiceForRevision(context, kservice, kservice.Spec.Release.Revisions[1])
+			candidateService, err := r.getServiceForRevision(context, kservice, kservice.Spec.Release.Revisions[1])
 			if err != nil {
 				// TODO: maybe we want another condition
 				instance.Status.MarkHasNotService("MissingCoreService", "%v", err)
@@ -208,8 +208,8 @@ func (r *ReconcileCanary) syncKnative(context context.Context, instance *iter8v1
 			}
 
 			// Get latest analysis
-			payload := MakeRequest(instance, baselineService, canaryService)
-			response, err := checkandincrement.Invoke(log, instance.Spec.Analysis.AnalyticsService, payload)
+			payload := MakeRequest(instance, baselineService, candidateService)
+			response, err := checkandincrement.Invoke(log, instance.Spec.Analysis.GetServiceEndpoint(), payload)
 			if err != nil {
 				// TODO: Need new condition
 				instance.Status.MarkHasNotService("ErrorAnalytics", "%v", err)
@@ -230,9 +230,9 @@ func (r *ReconcileCanary) syncKnative(context context.Context, instance *iter8v1
 			}
 
 			baselineTraffic := response.Baseline.TrafficPercentage
-			canaryTraffic := response.Canary.TrafficPercentage
-			log.Info("NewTraffic", "baseline", baselineTraffic, "canary", canaryTraffic)
-			newRolloutPercent = canaryTraffic
+			candidateTraffic := response.Canary.TrafficPercentage
+			log.Info("NewTraffic", "baseline", baselineTraffic, "candidate", candidateTraffic)
+			newRolloutPercent = candidateTraffic
 
 			lastState, err := json.Marshal(response.LastState)
 			if err != nil {
@@ -247,7 +247,7 @@ func (r *ReconcileCanary) syncKnative(context context.Context, instance *iter8v1
 			instance.Status.CurrentIteration++
 		}
 
-		if newRolloutPercent <= traffic.GetMaxTrafficPercent() && release.RolloutPercent != int(newRolloutPercent) {
+		if newRolloutPercent <= traffic.GetMaxTrafficPercentage() && release.RolloutPercent != int(newRolloutPercent) {
 			log.Info("set traffic", "rolloutPercent", newRolloutPercent)
 			release.RolloutPercent = int(newRolloutPercent)
 
@@ -275,7 +275,7 @@ func getTrafficByName(service *servingv1alpha1.Service, name string) *servingv1a
 	return nil
 }
 
-func (r *ReconcileCanary) getServiceForRevision(context context.Context, ksvc *servingv1alpha1.Service, revisionName string) (*corev1.Service, error) {
+func (r *ReconcileExperiment) getServiceForRevision(context context.Context, ksvc *servingv1alpha1.Service, revisionName string) (*corev1.Service, error) {
 	revision := &servingv1alpha1.Revision{}
 	err := r.Get(context, types.NamespacedName{Name: revisionName, Namespace: ksvc.GetNamespace()}, revision)
 	if err != nil {

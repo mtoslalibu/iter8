@@ -13,7 +13,7 @@ See the License for the specific language governing permissions and
 limitations under the License.
 */
 
-package canary
+package experiment
 
 import (
 	"time"
@@ -25,49 +25,46 @@ import (
 	iter8v1alpha1 "github.ibm.com/istio-research/iter8-controller/pkg/apis/iter8/v1alpha1"
 )
 
-func MakeRequest(instance *iter8v1alpha1.Canary, baseline, canary interface{}) *checkandincrement.Request {
+func MakeRequest(instance *iter8v1alpha1.Experiment, baseline, experiment interface{}) *checkandincrement.Request {
 	spec := instance.Spec
 
 	metrics := make([]checkandincrement.SuccessCriterion, len(spec.Analysis.Metrics))
 	for i, metric := range spec.Analysis.Metrics {
 		metrics[i] = checkandincrement.SuccessCriterion{
 			MetricName: metric.Name,
-			Type:       metric.Type,
-			Value:      metric.Value,
+			Type:       metric.ToleranceType,
+			Value:      metric.Tolerance,
 		}
-		if metric.SampleSize != nil {
-			metrics[i].SampleSize = *metric.SampleSize
-		}
-		if metric.StopOnFailure != nil {
-			metrics[i].StopOnFailure = *metric.StopOnFailure
-		}
-		if metric.EnableTrafficControl != nil {
-			metrics[i].EnableTrafficControl = *metric.EnableTrafficControl
-		}
-		if metric.Confidence != nil {
-			metrics[i].Confidence = *metric.Confidence
-		}
+
+		metrics[i].SampleSize = metric.GetSampleSize()
+		metrics[i].StopOnFailure = metric.GetStopOnFailure()
 	}
 	now := time.Now().Format(time.RFC3339)
-	destinationKey, namespaceKey, baseVal, canaryVal, baseNsVal, canaryNsVal := "", "", "", "", "", ""
+	destinationKey, namespaceKey, baseVal, experimentVal, baseNsVal, experimentNsVal := "", "", "", "", "", ""
 	switch instance.Spec.TargetService.APIVersion {
 	case KubernetesService:
 		destinationKey = "destination_workload"
 		namespaceKey = "destination_service_namespace"
 		baseVal = baseline.(*appsv1.Deployment).GetName()
-		canaryVal = canary.(*appsv1.Deployment).GetName()
+		experimentVal = experiment.(*appsv1.Deployment).GetName()
 		baseNsVal = baseline.(*appsv1.Deployment).GetNamespace()
-		canaryNsVal = canary.(*appsv1.Deployment).GetNamespace()
+		experimentNsVal = experiment.(*appsv1.Deployment).GetNamespace()
 	case KnativeServiceV1Alpha1:
 		destinationKey = "destination_service_name"
 		namespaceKey = "destination_service_namespace"
 		baseVal = baseline.(*corev1.Service).GetName()
-		canaryVal = canary.(*corev1.Service).GetName()
+		experimentVal = experiment.(*corev1.Service).GetName()
 		baseNsVal = baseline.(*corev1.Service).GetNamespace()
-		canaryNsVal = canary.(*corev1.Service).GetNamespace()
+		experimentNsVal = experiment.(*corev1.Service).GetNamespace()
 	default:
 		// TODO: add err information
 		return &checkandincrement.Request{}
+	}
+
+	// TODO: change analytics server API to modify "canary" to "candidate"
+	onSuccess := instance.Spec.TrafficControl.GetOnSuccess()
+	if onSuccess == "candidate" {
+		onSuccess = "canary"
 	}
 
 	return &checkandincrement.Request{
@@ -84,14 +81,14 @@ func MakeRequest(instance *iter8v1alpha1.Canary, baseline, canary interface{}) *
 			StartTime: instance.ObjectMeta.GetCreationTimestamp().Format(time.RFC3339),
 			EndTime:   now,
 			Tags: map[string]string{
-				destinationKey: canaryVal,
-				namespaceKey:   canaryNsVal,
+				destinationKey: experimentVal,
+				namespaceKey:   experimentNsVal,
 			},
 		},
 		TrafficControl: checkandincrement.TrafficControl{
-			MaxTrafficPercent: instance.Spec.TrafficControl.GetMaxTrafficPercent(),
+			MaxTrafficPercent: instance.Spec.TrafficControl.GetMaxTrafficPercentage(),
 			StepSize:          instance.Spec.TrafficControl.GetStepSize(),
-			OnSuccess:         instance.Spec.TrafficControl.GetOnSuccess(),
+			OnSuccess:         onSuccess,
 			SuccessCriteria:   metrics,
 		},
 		LastState: instance.Status.AnalysisState,

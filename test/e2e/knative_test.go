@@ -24,16 +24,16 @@ import (
 	"github.ibm.com/istio-research/iter8-controller/test"
 )
 
-// TestKnativeCanary tests various canary experiment scenarios
-func TestKnativeCanary(t *testing.T) {
+// TestKnativeExperiment tests various experiment scenarios on Knative platform
+func TestKnativeExperiment(t *testing.T) {
 	//logger := test.Logger(t)
 	service := test.StartAnalytics()
 	defer service.Close()
 
 	testCases := map[string]testCase{
 		"missingservice": testCase{
-			object:      getDoNotExistCanary(),
-			wantResults: []runtime.Object{getDoNotExistCanaryReconciled()},
+			object:      getDoNotExistExperiment(),
+			wantResults: []runtime.Object{getDoNotExistExperimentReconciled()},
 		},
 	}
 	client := GetClient()
@@ -52,15 +52,15 @@ func TestKnativeCanary(t *testing.T) {
 	}
 }
 
-func getDoNotExistCanary() *v1alpha1.Canary {
-	return test.NewCanary("canary-missing-service", Flags.Namespace).
+func getDoNotExistExperiment() *v1alpha1.Experiment {
+	return test.NewExperiment("experiment-missing-service", Flags.Namespace).
 		WithKNativeService("doesnotexist").
 		Build()
 }
 
-func getDoNotExistCanaryReconciled() *v1alpha1.Canary {
-	canary := getDoNotExistCanary()
-	canary.Status.MarkExperimentNotCompleted("Progressing", "")
-	canary.Status.MarkHasNotService("NotFound", "")
-	return canary
+func getDoNotExistExperimentReconciled() *v1alpha1.Experiment {
+	experiment := getDoNotExistExperiment()
+	experiment.Status.MarkExperimentNotCompleted("Progressing", "")
+	experiment.Status.MarkHasNotService("NotFound", "")
+	return experiment
 }

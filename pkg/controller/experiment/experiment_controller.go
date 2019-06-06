@@ -13,7 +13,7 @@ See the License for the specific language governing permissions and
 limitations under the License.
 */
 
-package canary
+package experiment
 
 import (
 	"context"
@@ -42,12 +42,12 @@ import (
 	iter8v1alpha1 "github.ibm.com/istio-research/iter8-controller/pkg/apis/iter8/v1alpha1"
 )
 
-var log = logf.Log.WithName("canary-controller")
+var log = logf.Log.WithName("experiment-controller")
 
 type loggerKeyType string
 
 const (
-	canaryLabel = "iter8.ibm.com/canary"
+	experimentLabel = "iter8.ibm.com/experiment"
 
 	KubernetesService      = "v1"
 	KnativeServiceV1Alpha1 = "serving.knative.dev/v1alpha1"
@@ -56,7 +56,7 @@ const (
 	loggerKey = loggerKeyType("logger")
 )
 
-// Add creates a new Canary Controller and adds it to the Manager with default RBAC. The Manager will set fields on the Controller
+// Add creates a new Experiment Controller and adds it to the Manager with default RBAC. The Manager will set fields on the Controller
 // and Start it when the Manager is Started.
 func Add(mgr manager.Manager) error {
 	return add(mgr, newReconciler(mgr))
@@ -64,32 +64,32 @@ func Add(mgr manager.Manager) error {
 
 // newReconciler returns a new reconcile.Reconciler
 func newReconciler(mgr manager.Manager) reconcile.Reconciler {
-	return &ReconcileCanary{Client: mgr.GetClient(), scheme: mgr.GetScheme()}
+	return &ReconcileExperiment{Client: mgr.GetClient(), scheme: mgr.GetScheme()}
 }
 
 // add adds a new Controller to mgr with r as the reconcile.Reconciler
 func add(mgr manager.Manager, r reconcile.Reconciler) error {
 	// Create a new controller
-	c, err := controller.New("canary-controller", mgr, controller.Options{Reconciler: r})
+	c, err := controller.New("experiment-controller", mgr, controller.Options{Reconciler: r})
 	if err != nil {
 		return err
 	}
 
-	// Watch for changes to Canary
-	err = c.Watch(&source.Kind{Type: &iter8v1alpha1.Canary{}}, &handler.EnqueueRequestForObject{})
+	// Watch for changes to Experiment
+	err = c.Watch(&source.Kind{Type: &iter8v1alpha1.Experiment{}}, &handler.EnqueueRequestForObject{})
 	if err != nil {
 		return err
 	}
 
 	p := predicate.Funcs{
 		UpdateFunc: func(e event.UpdateEvent) bool {
-			if _, ok := e.MetaOld.GetLabels()[canaryLabel]; !ok {
+			if _, ok := e.MetaOld.GetLabels()[experimentLabel]; !ok {
 				return false
 			}
 			return e.ObjectOld != e.ObjectNew
 		},
 		CreateFunc: func(e event.CreateEvent) bool {
-			_, ok := e.Meta.GetLabels()[canaryLabel]
+			_, ok := e.Meta.GetLabels()[experimentLabel]
 			return ok
 		},
 	}
@@ -97,10 +97,10 @@ func add(mgr manager.Manager, r reconcile.Reconciler) error {
 	// Watch for Knative services changes
 	mapFn := handler.ToRequestsFunc(
 		func(a handler.MapObject) []reconcile.Request {
-			canary := a.Meta.GetLabels()[canaryLabel]
+			experiment := a.Meta.GetLabels()[experimentLabel]
 			return []reconcile.Request{
 				{NamespacedName: types.NamespacedName{
-					Name:      canary,
+					Name:      experiment,
 					Namespace: a.Meta.GetNamespace(),
 				}},
 			}
@@ -127,23 +127,23 @@ func add(mgr manager.Manager, r reconcile.Reconciler) error {
 	return nil
 }
 
-var _ reconcile.Reconciler = &ReconcileCanary{}
+var _ reconcile.Reconciler = &ReconcileExperiment{}
 
-// ReconcileCanary reconciles a Canary object
-type ReconcileCanary struct {
+// ReconcileExperiment reconciles a Experiment object
+type ReconcileExperiment struct {
 	client.Client
 	scheme *runtime.Scheme
 }
 
-// Reconcile reads that state of the cluster for a Canary object and makes changes based on the state read
-// and what is in the Canary.Spec
-// +kubebuilder:rbac:groups=iter8.ibm.com,resources=canaries,verbs=get;list;watch;create;update;patch;delete
-// +kubebuilder:rbac:groups=iter8.ibm.com,resources=canaries/status,verbs=get;update;patch
-func (r *ReconcileCanary) Reconcile(request reconcile.Request) (reconcile.Result, error) {
+// Reconcile reads that state of the cluster for a Experiment object and makes changes based on the state read
+// and what is in the Experiment.Spec
+// +kubebuilder:rbac:groups=iter8.ibm.com,resources=experiments,verbs=get;list;watch;create;update;patch;delete
+// +kubebuilder:rbac:groups=iter8.ibm.com,resources=experiments/status,verbs=get;update;patch
+func (r *ReconcileExperiment) Reconcile(request reconcile.Request) (reconcile.Result, error) {
 	ctx := context.Background()
 
-	// Fetch the Canary instance
-	instance := &iter8v1alpha1.Canary{}
+	// Fetch the Experiment instance
+	instance := &iter8v1alpha1.Experiment{}
 	err := r.Get(ctx, request.NamespacedName, instance)
 	if err != nil {
 		if errors.IsNotFound(err) {
@@ -158,7 +158,7 @@ func (r *ReconcileCanary) Reconcile(request reconcile.Request) (reconcile.Result
 	log := log.WithValues("namespace", instance.Namespace, "name", instance.Name)
 	ctx = context.WithValue(ctx, loggerKey, log)
 
-	// Add finalizer to the canary object
+	// Add finalizer to the experiment object
 	if err = addFinalizerIfAbsent(ctx, r, instance, Finalizer); err != nil {
 		return reconcile.Result{}, err
 	}
@@ -169,9 +169,9 @@ func (r *ReconcileCanary) Reconcile(request reconcile.Request) (reconcile.Result
 	}
 
 	// // Stop right here if the experiment is completed.
-	completed := instance.Status.GetCondition(iter8v1alpha1.CanaryConditionExperimentCompleted)
+	completed := instance.Status.GetCondition(iter8v1alpha1.ExperimentConditionExperimentCompleted)
 	if completed != nil && completed.Status == corev1.ConditionTrue {
-		log.Info("RolloutCompleted", "Use a different name for canary object to trigger a new experiment", "")
+		log.Info("RolloutCompleted", "Use a different name for experiment object to trigger a new experiment", "")
 		return reconcile.Result{}, nil
 	}
 
@@ -210,7 +210,7 @@ func (r *ReconcileCanary) Reconcile(request reconcile.Request) (reconcile.Result
 	}
 }
 
-func (r *ReconcileCanary) finalize(context context.Context, instance *iter8v1alpha1.Canary) (reconcile.Result, error) {
+func (r *ReconcileExperiment) finalize(context context.Context, instance *iter8v1alpha1.Experiment) (reconcile.Result, error) {
 	log := Logger(context)
 	log.Info("finalizing")
 
@@ -223,7 +223,7 @@ func (r *ReconcileCanary) finalize(context context.Context, instance *iter8v1alp
 	return reconcile.Result{}, removeFinalizer(context, r, instance, Finalizer)
 }
 
-func addFinalizerIfAbsent(context context.Context, r *ReconcileCanary, instance *iter8v1alpha1.Canary, fName string) (err error) {
+func addFinalizerIfAbsent(context context.Context, r *ReconcileExperiment, instance *iter8v1alpha1.Experiment, fName string) (err error) {
 	for _, finalizer := range instance.ObjectMeta.GetFinalizers() {
 		if finalizer == fName {
 			return
@@ -238,7 +238,7 @@ func addFinalizerIfAbsent(context context.Context, r *ReconcileCanary, instance 
 	return
 }
 
-func removeFinalizer(context context.Context, r *ReconcileCanary, instance *iter8v1alpha1.Canary, fName string) (err error) {
+func removeFinalizer(context context.Context, r *ReconcileExperiment, instance *iter8v1alpha1.Experiment, fName string) (err error) {
 	finalizers := make([]string, 0)
 	for _, f := range instance.GetFinalizers() {
 		if f != fName {

@@ -1,0 +1,25 @@
+apiVersion: iter8.ibm.com/v1alpha1
+kind: Experiment 
+metadata:
+  name: reviews
+  labels:
+    app.kubernetes.io/name: reviews
+spec:
+  targetService:
+    name: reviews
+    apiVersion: v1 
+    baseline: reviews-v1
+    candidate: reviews-v2
+  trafficControl:
+    strategy: check_and_increment
+    interval: 30s
+    trafficStepSize: 20
+    maxIterations: 8 #default value = 100
+    maxTrafficPercentage: 99 #default value = 50
+  analysis:
+    analyticsService: "http://localhost:5555"
+    metrics:
+      - name: iter8_latency
+        toleranceType: threshold
+        tolerance: 0.2
+        sampleSize: 10
