@@ -1,9 +1,0 @@
-apiVersion: iter8.ibm.com/v1alpha1
-kind: Canary
-metadata:
-  name: canary-sample
-spec:
-  targetService:
-    name: notexist
-  trafficControl:
-    strategy: manual
