@@ -1,0 +1,13 @@
+apiVersion: iter8.ibm.com/v1alpha1
+kind: Experiment
+metadata:
+  name: stock-experiment-example
+  labels:
+    app.kubernetes.io/name: stock-experiment-example
+spec:
+  targetService:
+    name: stock-experiment-example
+  trafficControl:
+    strategy: increment_without_check
+    interval: 10s
+

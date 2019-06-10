@@ -39,7 +39,7 @@ Make sure `$ITER8_ANALYTICS_METRICS_BACKEND_URL` is set (see above)
 2. Get the stock service endpoint and curl it:
 
 ```sh
-DOMAIN=$(kubectl get ksvc stock-canary-example -o=jsonpath='{.status.domain}')
+DOMAIN=$(kubectl get ksvc stock-experiment-example -o=jsonpath='{.status.domain}')
 curl $DOMAIN
 
 Welcome to the stock app!
@@ -53,24 +53,24 @@ Welcome to the stock app!
 kubectl apply -f stock-share-svc.yaml
 ```
 
-5. Configure the canary:
+5. Configure the experiment:
 
 ```sh
-kubectl apply -f canary.yaml
+kubectl apply -f experiment.yaml
 ```
 
 Wait a bit and get the service:
 
 ```sh
-kubectl get ksvc stock-canary-example -oyaml
+kubectl get ksvc stock-experiment-example -oyaml
 ```
 
 You should see `runLatest` has been replaced by `release`.
 
-The canary condition `Ready` is `True` as the service traffic is 100% directed to the current revision.
+The experiment condition `Ready` is `True` as the service traffic is 100% directed to the current revision.
 
 ```sh
-kubectl get canary.iter8.ibm.com stock-canary-example -oyaml
+kubectl get experiment.iter8.ibm.com stock-experiment-example -oyaml
 ```
 
 6. Generate some load
@@ -79,7 +79,7 @@ kubectl get canary.iter8.ibm.com stock-canary-example -oyaml
 fortio load -t 10m -qps 100  http://$DOMAIN
 ```
 
-The canary controller automatically promotes the latest revision to candidate.
+The experiment controller automatically promotes the latest revision to candidate.
 
 Observe the traffic shifting by invoking the service multiple times:
 
@@ -102,7 +102,7 @@ kubectl port-forward --namespace knative-monitoring $(kubectl get pods --namespa
 ## Cleaning up
 
 ```sh
-kubectl delete all,serviceentry -l 'app.kubernetes.io/name=stock-canary-example'
+kubectl delete all,serviceentry -l 'app.kubernetes.io/name=stock-experiment-example'
 ```
 
 ## Common issues

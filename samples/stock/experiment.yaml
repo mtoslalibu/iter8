@@ -1,12 +1,12 @@
 apiVersion: iter8.ibm.com/v1alpha1
-kind: Canary
+kind: Experiment
 metadata:
-  name: stock-canary-example
+  name: stock-experiment-example
   labels:
-    app.kubernetes.io/name: stock-canary-example
+    app.kubernetes.io/name: stock-experiment-example
 spec:
   targetService:
-    name: stock-canary-example
+    name: stock-experiment-example
   trafficControl:
     strategy: check_and_increment
     interval: 20s

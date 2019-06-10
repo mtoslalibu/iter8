@@ -1,9 +1,9 @@
 apiVersion: serving.knative.dev/v1alpha1
 kind: Service
 metadata:
-  name: stock-canary-example
+  name: stock-experiment-example
   labels:
-    app.kubernetes.io/name: stock-canary-example
+    app.kubernetes.io/name: stock-experiment-example
 spec:
   runLatest:
     configuration:
@@ -25,7 +25,7 @@ kind: ServiceEntry
 metadata:
   name: external-iex-https
   labels:
-    app.kubernetes.io/name: stock-canary-example
+    app.kubernetes.io/name: stock-experiment-example
 spec:
   hosts:
   - api.iextrading.com
