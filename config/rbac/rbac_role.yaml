@@ -7,7 +7,7 @@ rules:
 - apiGroups:
   - iter8.ibm.com
   resources:
-  - canaries
+  - experiments
   verbs:
   - get
   - list
@@ -19,7 +19,7 @@ rules:
 - apiGroups:
   - iter8.ibm.com
   resources:
-  - canaries/status
+  - experiments/status
   verbs:
   - get
   - update

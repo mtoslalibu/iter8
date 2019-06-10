@@ -35,14 +35,14 @@ type AnalyticsService struct {
 	// The underlying server
 	server *httptest.Server
 
-	// mock maps request to response. The key maps to request.name
-	mock map[string]checkandincrement.Response
+	// Mock maps request to response. The key maps to request.name
+	Mock map[string]checkandincrement.Response
 }
 
 // StartAnalytics starts fake analytics service
 func StartAnalytics() *AnalyticsService {
 	service := &AnalyticsService{
-		mock: make(map[string]checkandincrement.Response),
+		Mock: make(map[string]checkandincrement.Response),
 	}
 	service.server = httptest.NewServer(service)
 	return service
@@ -81,7 +81,7 @@ func (s *AnalyticsService) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	response, ok := s.mock[name]
+	response, ok := s.Mock[name]
 	if !ok {
 		w.Write([]byte("missing response for test " + name))
 		w.WriteHeader(400)
@@ -99,6 +99,6 @@ func (s *AnalyticsService) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 }
 
 // Mock adds response for testid
-func (s *AnalyticsService) Mock(name string, response checkandincrement.Response) {
-	s.mock[name] = response
+func (s *AnalyticsService) AddMock(name string, response checkandincrement.Response) {
+	s.Mock[name] = response
 }

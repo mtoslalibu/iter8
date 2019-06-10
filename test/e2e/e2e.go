@@ -22,6 +22,7 @@ import (
 
 	"github.com/google/go-cmp/cmp"
 	"github.com/google/go-cmp/cmp/cmpopts"
+	servingalpha1 "github.com/knative/serving/pkg/apis/serving/v1alpha1"
 	"k8s.io/apimachinery/pkg/api/meta"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/apimachinery/pkg/runtime"
@@ -32,6 +33,7 @@ import (
 
 	"github.ibm.com/istio-research/iter8-controller/pkg/analytics/checkandincrement"
 	"github.ibm.com/istio-research/iter8-controller/pkg/apis/iter8/v1alpha1"
+	"github.ibm.com/istio-research/iter8-controller/test"
 )
 
 // Flags holds the command line flags or defaults for settings in the user's environment.
@@ -66,6 +68,9 @@ func GetClient() client.Client {
 	if err := v1alpha1.AddToScheme(sch); err != nil {
 		panic(fmt.Errorf("unable to add scheme (%v)", err))
 	}
+	if err := servingalpha1.AddToScheme(sch); err != nil {
+		panic(fmt.Errorf("unable to add scheme (%v)", err))
+	}
 
 	cl, err := client.New(cfg, client.Options{Scheme: sch})
 	if err != nil {
@@ -76,38 +81,66 @@ func GetClient() client.Client {
 }
 
 type testCase struct {
-	mocks []mocks
+	mocks map[string]checkandincrement.Response
+
+	// Initial set of objects,
+	initObjects []runtime.Object
+
+	// Pre-reconcile hook
+	preHook test.Hook
 
 	// Object to reconcile
 	object runtime.Object
 
+	// Wait for object state before checking results
+	wantState test.InStateFunc
+
+	// Objects to freeze and should not change after postHook
+	frozenObjects []runtime.Object
+
+	// Post-reconcile hook
+	postHook test.Hook
+
+	// Want the results
 	wantResults []runtime.Object
 }
 
-type mocks struct {
-	request  checkandincrement.Request
-	response checkandincrement.Response
+func (tc *testCase) createInitObjects(ctx context.Context, cl client.Client) error {
+	for _, obj := range tc.initObjects {
+		err := cl.Create(ctx, obj)
+		if err != nil {
+			return err
+		}
+	}
+	return nil
 }
 
 func (tc *testCase) createObject(ctx context.Context, cl client.Client) error {
+	if tc.object == nil {
+		return nil
+	}
 	return cl.Create(ctx, tc.object)
+}
+
+func (tc *testCase) runPreHook(ctx context.Context, cl client.Client) error {
+	if tc.preHook == nil {
+		return nil
+	}
+	return tc.preHook(ctx, cl)
+}
+
+func (tc *testCase) runPostHook(ctx context.Context, cl client.Client) error {
+	if tc.postHook == nil {
+		return nil
+	}
+	return tc.postHook(ctx, cl)
 }
 
 func (tc *testCase) checkHasResults(ctx context.Context, cl client.Client) error {
 	for _, result := range tc.wantResults {
 		retries := 5
 		for {
-			accessor, err := meta.Accessor(result)
-			if err != nil {
-				return err
-			}
-
-			obj, err := scheme.Scheme.New(result.GetObjectKind().GroupVersionKind())
-			if err != nil {
-				return err
-			}
-
-			err = cl.Get(ctx, client.ObjectKey{Namespace: accessor.GetNamespace(), Name: accessor.GetName()}, obj)
+			obj, err := getObject(ctx, cl, result)
 			if err != nil {
 				return err
 			}
@@ -126,4 +159,45 @@ func (tc *testCase) checkHasResults(ctx context.Context, cl client.Client) error
 		}
 	}
 	return nil
+}
+
+func (tc *testCase) freezeObjects(ctx context.Context, cl client.Client) error {
+	if tc.frozenObjects == nil {
+		return nil
+	}
+	for _, obj := range tc.frozenObjects {
+		frozen, err := getObject(ctx, cl, obj)
+		if err != nil {
+			return err
+		}
+
+		tc.wantResults = append(tc.wantResults, frozen)
+	}
+	return nil
+}
+
+func (tc *testCase) checkHasState(ctx context.Context, cl client.Client) error {
+	if tc.wantState == nil {
+		return nil
+	}
+	return test.WaitForState(ctx, cl, tc.object, tc.wantState)
+}
+
+func getObject(ctx context.Context, cl client.Client, obj runtime.Object) (runtime.Object, error) {
+	accessor, err := meta.Accessor(obj)
+	if err != nil {
+		return nil, err
+	}
+
+	nobj, err := scheme.Scheme.New(obj.GetObjectKind().GroupVersionKind())
+	if err != nil {
+		return nil, err
+	}
+
+	err = cl.Get(ctx, client.ObjectKey{Namespace: accessor.GetNamespace(), Name: accessor.GetName()}, nobj)
+	if err != nil {
+		return nil, err
+	}
+	nobj.GetObjectKind().SetGroupVersionKind(obj.GetObjectKind().GroupVersionKind())
+	return nobj, nil
 }

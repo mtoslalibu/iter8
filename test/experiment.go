@@ -16,6 +16,8 @@ limitations under the License.
 package test
 
 import (
+	"fmt"
+
 	corev1 "k8s.io/api/core/v1"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/apimachinery/pkg/runtime"
@@ -24,9 +26,7 @@ import (
 )
 
 // ExperimentBuilder builds experiment object
-type ExperimentBuilder struct {
-	experiment *v1alpha1.Experiment
-}
+type ExperimentBuilder v1alpha1.Experiment
 
 // NewExperiment create a new miminal experiment object
 func NewExperiment(name string, namespace string) *ExperimentBuilder {
@@ -44,17 +44,17 @@ func NewExperiment(name string, namespace string) *ExperimentBuilder {
 		},
 	}
 	experiment.Status.InitializeConditions()
-	return &ExperimentBuilder{experiment: experiment}
+	return (*ExperimentBuilder)(experiment)
 }
 
 // Build the experiment object
 func (b *ExperimentBuilder) Build() *v1alpha1.Experiment {
-	return b.experiment
+	return (*v1alpha1.Experiment)(b)
 }
 
 // WithKNativeService adds KNative target service
 func (b *ExperimentBuilder) WithKNativeService(name string) *ExperimentBuilder {
-	b.experiment.Spec.TargetService = v1alpha1.TargetService{
+	b.Spec.TargetService = v1alpha1.TargetService{
 		ObjectReference: &corev1.ObjectReference{
 			APIVersion: "serving.knative.dev/v1alpha1",
 			Name:       name,
@@ -74,6 +74,19 @@ func (b *ExperimentBuilder) WithDummySuccessCriterion() *ExperimentBuilder {
 
 // WithSuccessCriterion adds a success criterion
 func (b *ExperimentBuilder) WithSuccessCriterion(sc v1alpha1.SuccessCriterion) *ExperimentBuilder {
-	b.experiment.Spec.Analysis.Metrics = append(b.experiment.Spec.Analysis.Metrics, sc)
+	b.Spec.Analysis.Metrics = append(b.Spec.Analysis.Metrics, sc)
 	return b
+}
+
+func CheckExperimentFinished(obj runtime.Object) (bool, error) {
+	exp, ok := obj.(*v1alpha1.Experiment)
+	if !ok {
+		return false, fmt.Errorf("Expected an experiment service (got: %v)", obj)
+	}
+
+	return exp.Status.GetCondition(v1alpha1.ExperimentConditionExperimentCompleted).IsTrue(), nil
+}
+
+func DeleteExperiment(name string, namespace string) Hook {
+	return DeleteObject(NewExperiment(name, namespace).Build())
 }

@@ -27,7 +27,7 @@ func TestMockAnalytics(t *testing.T) {
 	service := StartAnalytics()
 	defer service.Close()
 	want := dummyResponse()
-	service.Mock("test-0", want)
+	service.AddMock("test-0", want)
 
 	got, err := cai.Invoke(logger, service.GetURL(), dummyRequest())
 	if err != nil {
