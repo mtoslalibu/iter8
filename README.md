@@ -1,6 +1,6 @@
 # iter8-controller
 
-[![Build Status](https://travis.ibm.com/istio-research/iter8-controller.svg?token=bc6xtkRixk96zbXuAu7U&branch=master)](https://travis.ibm.com/istio-research/iter8-controller)
+[![Build Status](https://travis.ibm.com/istio-research/iter8-controller.svg?token=bc6xtkRixk96zbXuAu7U&branch=master)](https://travis.ibm.com/istio-research/iter8-controller) [![License](https://img.shields.io/badge/License-Apache%202.0-blue.svg)](LICENSE)
 
 ## Getting Started
 
