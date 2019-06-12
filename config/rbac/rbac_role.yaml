@@ -5,7 +5,7 @@ metadata:
   name: manager-role
 rules:
 - apiGroups:
-  - iter8.ibm.com
+  - iter8.io
   resources:
   - experiments
   verbs:
@@ -17,7 +17,7 @@ rules:
   - patch
   - delete
 - apiGroups:
-  - iter8.ibm.com
+  - iter8.io
   resources:
   - experiments/status
   verbs:

@@ -38,7 +38,7 @@ const (
 	Candidate = "candidate"
 	Stable    = "stable"
 
-	experimentRole = "iter8.ibm.com/role"
+	experimentRole = "iter8.io/role"
 )
 
 func (r *ReconcileExperiment) syncIstio(context context.Context, instance *iter8v1alpha1.Experiment) (reconcile.Result, error) {

@@ -47,12 +47,12 @@ var log = logf.Log.WithName("experiment-controller")
 type loggerKeyType string
 
 const (
-	experimentLabel = "iter8.ibm.com/experiment"
+	experimentLabel = "iter8.io/experiment"
 
 	KubernetesService      = "v1"
 	KnativeServiceV1Alpha1 = "serving.knative.dev/v1alpha1"
 
-	Finalizer = "finalizer.iter8.ibm.com"
+	Finalizer = "finalizer.iter8.io"
 	loggerKey = loggerKeyType("logger")
 )
 
@@ -137,8 +137,8 @@ type ReconcileExperiment struct {
 
 // Reconcile reads that state of the cluster for a Experiment object and makes changes based on the state read
 // and what is in the Experiment.Spec
-// +kubebuilder:rbac:groups=iter8.ibm.com,resources=experiments,verbs=get;list;watch;create;update;patch;delete
-// +kubebuilder:rbac:groups=iter8.ibm.com,resources=experiments/status,verbs=get;update;patch
+// +kubebuilder:rbac:groups=iter8.io,resources=experiments,verbs=get;list;watch;create;update;patch;delete
+// +kubebuilder:rbac:groups=iter8.io,resources=experiments/status,verbs=get;update;patch
 func (r *ReconcileExperiment) Reconcile(request reconcile.Request) (reconcile.Result, error) {
 	ctx := context.Background()
 

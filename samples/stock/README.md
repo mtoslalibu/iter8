@@ -70,7 +70,7 @@ You should see `runLatest` has been replaced by `release`.
 The experiment condition `Ready` is `True` as the service traffic is 100% directed to the current revision.
 
 ```sh
-kubectl get experiment.iter8.ibm.com stock-experiment-example -oyaml
+kubectl get experiment.iter8.io stock-experiment-example -oyaml
 ```
 
 6. Generate some load

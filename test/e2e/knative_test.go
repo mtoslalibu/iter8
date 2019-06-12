@@ -31,6 +31,7 @@ import (
 // TestKnativeExperiment tests various experiment scenarios on Knative platform
 func TestKnativeExperiment(t *testing.T) {
 	//logger := test.Logger(t)
+	t.Skip("skipping test in short mode.")
 	service := test.StartAnalytics()
 	defer service.Close()
 
