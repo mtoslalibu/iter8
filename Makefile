@@ -19,11 +19,15 @@ install: manifests
 # Deploy controller in the configured Kubernetes cluster in ~/.kube/config
 deploy: manifests
 	kubectl apply -f config/crds
-	kustomize build config/default | kubectl apply -f -
+	kubectl apply -f config/rbac
+	kubectl apply -f config/default
 
 # Generate manifests e.g. CRD, RBAC etc.
 manifests:
 	go run vendor/sigs.k8s.io/controller-tools/cmd/controller-gen/main.go all
+	sed -i'' -e 's@namespace: .*@namespace: iter8@' ./config/rbac/rbac_role_binding.yaml
+	sed -i'' -e 's@name: default.*@name: controller-manager@' ./config/rbac/rbac_role_binding.yaml
+	rm -f ./config/rbac/rbac_role_binding.yaml-e
 	./hack/crd_fix.sh
 
 # Run go fmt against code
@@ -44,8 +48,8 @@ endif
 # Build the docker image
 docker-build:
 	docker build . -t ${IMG}
-	@echo "updating kustomize image patch file for manager resource"
-	sed -i'' -e 's@image: .*@image: '"${IMG}"'@' ./config/default/manager_image_patch.yaml
+	sed -i'' -e 's@image: .*@image: '"${IMG}"'@' ./config/default/manager.yaml
+	rm -f ./config/default/manager.yaml-e
 
 # Push the docker image
 docker-push:
