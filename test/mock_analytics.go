@@ -22,7 +22,8 @@ import (
 	"net/http"
 	"net/http/httptest"
 
-	"github.ibm.com/istio-research/iter8-controller/pkg/analytics/checkandincrement"
+	cai "github.ibm.com/istio-research/iter8-controller/pkg/analytics/checkandincrement"
+	iter8v1alpha1 "github.ibm.com/istio-research/iter8-controller/pkg/apis/iter8/v1alpha1"
 )
 
 const (
@@ -36,13 +37,13 @@ type AnalyticsService struct {
 	server *httptest.Server
 
 	// Mock maps request to response. The key maps to request.name
-	Mock map[string]checkandincrement.Response
+	Mock map[string]cai.Response
 }
 
 // StartAnalytics starts fake analytics service
 func StartAnalytics() *AnalyticsService {
 	service := &AnalyticsService{
-		Mock: make(map[string]checkandincrement.Response),
+		Mock: make(map[string]cai.Response),
 	}
 	service.server = httptest.NewServer(service)
 	return service
@@ -66,7 +67,7 @@ func (s *AnalyticsService) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	var request checkandincrement.Request
+	var request cai.Request
 	err = json.Unmarshal(b, &request)
 	if err != nil {
 		w.Write([]byte(err.Error()))
@@ -99,6 +100,54 @@ func (s *AnalyticsService) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 }
 
 // Mock adds response for testid
-func (s *AnalyticsService) AddMock(name string, response checkandincrement.Response) {
+func (s *AnalyticsService) AddMock(name string, response cai.Response) {
 	s.Mock[name] = response
+}
+
+func GetDefaultMockResponse() cai.Response {
+	return cai.Response{
+		Baseline: cai.MetricsTraffic{
+			TrafficPercentage: 50,
+		},
+		Canary: cai.MetricsTraffic{
+			TrafficPercentage: 50,
+		},
+		Assessment: cai.Assessment{
+			Summary: iter8v1alpha1.Summary{
+				AbortExperiment: false,
+			},
+		},
+	}
+}
+
+func GetSuccessMockResponse() cai.Response {
+	return cai.Response{
+		Baseline: cai.MetricsTraffic{
+			TrafficPercentage: 50,
+		},
+		Canary: cai.MetricsTraffic{
+			TrafficPercentage: 50,
+		},
+		Assessment: cai.Assessment{
+			Summary: iter8v1alpha1.Summary{
+				AllSuccessCriteriaMet: true,
+			},
+		},
+	}
+}
+
+func GetFailureMockResponse() cai.Response {
+	return cai.Response{
+		Baseline: cai.MetricsTraffic{
+			TrafficPercentage: 50,
+		},
+		Canary: cai.MetricsTraffic{
+			TrafficPercentage: 50,
+		},
+		Assessment: cai.Assessment{
+			Summary: iter8v1alpha1.Summary{
+				AllSuccessCriteriaMet: false,
+			},
+		},
+	}
 }

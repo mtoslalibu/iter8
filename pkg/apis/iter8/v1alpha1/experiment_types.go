@@ -86,11 +86,11 @@ type ExperimentStatus struct {
 	// * Conditions - the latest available observations of a resource's current state.
 	duckv1alpha1.Status `json:",inline"`
 
-	// StartTime is the time experiment started
-	StartTime metav1.Time `json:"startTime,omitempty"`
+	// StartTimestamp is the timestamp when the experiment starts
+	StartTimestamp string `json:"startTimestamp,omitempty"`
 
-	// EndTime is the time experiment completed
-	EndTime metav1.Time `json:"endTime,omitempty"`
+	// EndTimestamp is the timestamp when experiment completes
+	EndTimestamp string `json:"endTimestamp,omitempty"`
 
 	// LastIncrementTime is the last time the traffic has been incremented
 	LastIncrementTime metav1.Time `json:"lastIncrementTime,omitempty"`

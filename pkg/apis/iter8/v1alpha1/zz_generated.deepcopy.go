@@ -130,8 +130,6 @@ func (in *ExperimentSpec) DeepCopy() *ExperimentSpec {
 func (in *ExperimentStatus) DeepCopyInto(out *ExperimentStatus) {
 	*out = *in
 	in.Status.DeepCopyInto(&out.Status)
-	in.StartTime.DeepCopyInto(&out.StartTime)
-	in.EndTime.DeepCopyInto(&out.EndTime)
 	in.LastIncrementTime.DeepCopyInto(&out.LastIncrementTime)
 	in.AnalysisState.DeepCopyInto(&out.AnalysisState)
 	in.AssessmentSummary.DeepCopyInto(&out.AssessmentSummary)

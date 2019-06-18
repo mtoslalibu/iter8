@@ -63,6 +63,19 @@ func (b *ExperimentBuilder) WithKNativeService(name string) *ExperimentBuilder {
 	return b
 }
 
+// WithKubernetesTargetService adds Kubernetes targetService
+func (b *ExperimentBuilder) WithKubernetesTargetService(name, baseline, candidate string) *ExperimentBuilder {
+	b.Spec.TargetService = v1alpha1.TargetService{
+		ObjectReference: &corev1.ObjectReference{
+			APIVersion: "v1",
+			Name:       name,
+		},
+		Baseline:  baseline,
+		Candidate: candidate,
+	}
+	return b
+}
+
 // WithDummySuccessCriterion adds a dummy success criterion
 func (b *ExperimentBuilder) WithDummySuccessCriterion() *ExperimentBuilder {
 	return b.WithSuccessCriterion(v1alpha1.SuccessCriterion{
@@ -70,6 +83,11 @@ func (b *ExperimentBuilder) WithDummySuccessCriterion() *ExperimentBuilder {
 		ToleranceType: v1alpha1.ToleranceTypeDelta,
 		Tolerance:     0.02,
 	})
+}
+
+func (b *ExperimentBuilder) WithAnalyticsHost(host string) *ExperimentBuilder {
+	b.Spec.Analysis.AnalyticsService = host
+	return b
 }
 
 // WithSuccessCriterion adds a success criterion

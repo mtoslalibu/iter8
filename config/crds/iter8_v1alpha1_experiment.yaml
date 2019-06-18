@@ -62,6 +62,8 @@ spec:
               properties:
                 analyticsService:
                   type: string
+                grafanaEndpoint:
+                  type: string
                 successCriteria:
                   items:
                     properties:
@@ -160,12 +162,18 @@ spec:
             currentIteration:
               format: int64
               type: integer
+            endTs:
+              type: string
+            grafanaURL:
+              type: string
             lastIncrementTime:
               format: date-time
               type: string
             observedGeneration:
               format: int64
               type: integer
+            startTs:
+              type: string
             trafficSplitPercentage:
               properties:
                 baseline:

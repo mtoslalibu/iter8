@@ -23,8 +23,8 @@ import (
 	"sigs.k8s.io/controller-runtime/pkg/client"
 
 	cai "github.ibm.com/istio-research/iter8-controller/pkg/analytics/checkandincrement"
+
 	"github.ibm.com/istio-research/iter8-controller/pkg/apis/iter8/v1alpha1"
-	iter8v1alpha1 "github.ibm.com/istio-research/iter8-controller/pkg/apis/iter8/v1alpha1"
 	"github.ibm.com/istio-research/iter8-controller/test"
 )
 
@@ -34,7 +34,6 @@ func TestKnativeExperiment(t *testing.T) {
 	t.Skip("skipping test in short mode.")
 	service := test.StartAnalytics()
 	defer service.Close()
-
 	testCases := map[string]testCase{
 		"missingService": testCase{
 			object:      getDoNotExistExperiment(),
@@ -42,7 +41,7 @@ func TestKnativeExperiment(t *testing.T) {
 		},
 		"deleteExperimentAfterCompleted": testCase{
 			mocks: map[string]cai.Response{
-				"stock-1": getDefaultMockResponse(),
+				"stock-1": test.GetDefaultMockResponse(),
 			},
 			initObjects: []runtime.Object{
 				getBaseStockService("stock-1"),
@@ -56,42 +55,8 @@ func TestKnativeExperiment(t *testing.T) {
 			postHook: test.DeleteExperiment("stock-1", Flags.Namespace),
 		},
 	}
-	client := GetClient()
-	ctx := context.Background()
 
-	for n, tc := range testCases {
-		t.Run(n, func(t *testing.T) {
-			service.Mock = tc.mocks
-
-			if err := tc.createInitObjects(ctx, client); err != nil {
-				t.Fatal(err)
-			}
-
-			if err := tc.runPreHook(ctx, client); err != nil {
-				t.Fatal(err)
-			}
-
-			if err := tc.createObject(ctx, client); err != nil {
-				t.Fatal(err)
-			}
-
-			if err := tc.checkHasState(ctx, client); err != nil {
-				t.Fatal(err)
-			}
-
-			if err := tc.freezeObjects(ctx, client); err != nil {
-				t.Fatal(err)
-			}
-
-			if err := tc.runPostHook(ctx, client); err != nil {
-				t.Fatal(err)
-			}
-
-			if err := tc.checkHasResults(ctx, client); err != nil {
-				t.Fatal(err)
-			}
-		})
-	}
+	runTestCases(t, service, testCases)
 }
 
 func getDoNotExistExperiment() *v1alpha1.Experiment {
@@ -149,21 +114,5 @@ func newStockServiceRevision(name string) test.Hook {
 		}
 
 		return test.WaitForState(ctx, cl, candidate.Build(), test.CheckServiceReady)
-	}
-}
-
-func getDefaultMockResponse() cai.Response {
-	return cai.Response{
-		Baseline: cai.MetricsTraffic{
-			TrafficPercentage: 50,
-		},
-		Canary: cai.MetricsTraffic{
-			TrafficPercentage: 50,
-		},
-		Assessment: cai.Assessment{
-			Summary: iter8v1alpha1.Summary{
-				AbortExperiment: false,
-			},
-		},
 	}
 }

@@ -18,10 +18,12 @@ import (
 	"context"
 	"flag"
 	"fmt"
+	"testing"
 	"time"
 
 	"github.com/google/go-cmp/cmp"
 	"github.com/google/go-cmp/cmp/cmpopts"
+	istiov1alpha3 "github.com/knative/pkg/apis/istio/v1alpha3"
 	servingalpha1 "github.com/knative/serving/pkg/apis/serving/v1alpha1"
 	"k8s.io/apimachinery/pkg/api/meta"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
@@ -71,6 +73,9 @@ func GetClient() client.Client {
 	if err := servingalpha1.AddToScheme(sch); err != nil {
 		panic(fmt.Errorf("unable to add scheme (%v)", err))
 	}
+	if err := istiov1alpha3.AddToScheme(sch); err != nil {
+		panic(fmt.Errorf("unable to add scheme (%v)", err))
+	}
 
 	cl, err := client.New(cfg, client.Options{Scheme: sch})
 	if err != nil {
@@ -107,9 +112,11 @@ type testCase struct {
 
 func (tc *testCase) createInitObjects(ctx context.Context, cl client.Client) error {
 	for _, obj := range tc.initObjects {
-		err := cl.Create(ctx, obj)
-		if err != nil {
-			return err
+		if _, err := getObject(ctx, cl, obj); err != nil {
+			err = cl.Create(ctx, obj)
+			if err != nil {
+				return err
+			}
 		}
 	}
 	return nil
@@ -117,6 +124,9 @@ func (tc *testCase) createInitObjects(ctx context.Context, cl client.Client) err
 
 func (tc *testCase) createObject(ctx context.Context, cl client.Client) error {
 	if tc.object == nil {
+		return nil
+	}
+	if _, err := getObject(ctx, cl, tc.object); err == nil {
 		return nil
 	}
 	return cl.Create(ctx, tc.object)
@@ -200,4 +210,44 @@ func getObject(ctx context.Context, cl client.Client, obj runtime.Object) (runti
 	}
 	nobj.GetObjectKind().SetGroupVersionKind(obj.GetObjectKind().GroupVersionKind())
 	return nobj, nil
+}
+
+func runTestCases(t *testing.T, service *test.AnalyticsService, testCases map[string]testCase) {
+
+	client := GetClient()
+	ctx := context.Background()
+
+	for n, tc := range testCases {
+		t.Run(n, func(t *testing.T) {
+			service.Mock = tc.mocks
+
+			if err := tc.createInitObjects(ctx, client); err != nil {
+				t.Fatal(err)
+			}
+
+			if err := tc.runPreHook(ctx, client); err != nil {
+				t.Fatal(err)
+			}
+
+			if err := tc.createObject(ctx, client); err != nil {
+				t.Fatal(err)
+			}
+
+			if err := tc.checkHasState(ctx, client); err != nil {
+				t.Fatal(err)
+			}
+
+			if err := tc.freezeObjects(ctx, client); err != nil {
+				t.Fatal(err)
+			}
+
+			if err := tc.runPostHook(ctx, client); err != nil {
+				t.Fatal(err)
+			}
+
+			if err := tc.checkHasResults(ctx, client); err != nil {
+				t.Fatal(err)
+			}
+		})
+	}
 }

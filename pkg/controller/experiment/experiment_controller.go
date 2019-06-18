@@ -47,8 +47,6 @@ var log = logf.Log.WithName("experiment-controller")
 type loggerKeyType string
 
 const (
-	experimentLabel = "iter8.io/experiment"
-
 	KubernetesService      = "v1"
 	KnativeServiceV1Alpha1 = "serving.knative.dev/v1alpha1"
 
@@ -204,7 +202,7 @@ func (r *ReconcileExperiment) Reconcile(request reconcile.Request) (reconcile.Re
 
 	switch apiVersion {
 	case KubernetesService:
-		return r.syncIstio(ctx, instance)
+		return r.syncKubernetes(ctx, instance)
 	case KnativeServiceV1Alpha1:
 		return r.syncKnative(ctx, instance)
 	default:
