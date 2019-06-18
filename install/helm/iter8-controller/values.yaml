@@ -1,0 +1,10 @@
+# Default values for iter8-controller.
+# This is a YAML-formatted file.
+# Declare variables to be passed into your templates.
+
+image:
+  repository: fabolive/iter8-controller
+  tag: 0.1.0
+  pullPolicy: Always
+
+namespace: iter8
