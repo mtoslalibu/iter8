@@ -74,7 +74,7 @@ spec:
                 successCriteria: # optional section -- the controller can run without any successCriteria
                   items:
                     properties:
-                      name: 
+                      metricName:
                         enum:
                         - iter8_latency # mean latency of the service 
                         - iter8_error_rate # mean error rate (~5** HTTP Status codes) of the service
