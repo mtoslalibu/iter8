@@ -86,6 +86,12 @@ type ExperimentStatus struct {
 	// * Conditions - the latest available observations of a resource's current state.
 	duckv1alpha1.Status `json:",inline"`
 
+	// StartTime is the time experiment started
+	StartTime metav1.Time `json:"startTime,omitempty"`
+
+	// EndTime is the time experiment completed
+	EndTime metav1.Time `json:"endTime,omitempty"`
+
 	// LastIncrementTime is the last time the traffic has been incremented
 	LastIncrementTime metav1.Time `json:"lastIncrementTime,omitempty"`
 
@@ -94,6 +100,9 @@ type ExperimentStatus struct {
 
 	// AnalysisState is the last analysis state
 	AnalysisState runtime.RawExtension `json:"analysisState,omitempty"`
+
+	// GrafanaURL is the url to the Grafana Dashboard
+	GrafanaURL string `json:"grafanaURL,omitempty"`
 
 	// AssessmentSummary returned by the last analyis
 	AssessmentSummary Summary `json:"assessment,omitempty"`
@@ -145,8 +154,11 @@ type Analysis struct {
 	// AnalyticsService endpoint
 	AnalyticsService string `json:"analyticsService,omitempty"`
 
+	// Grafana Dashboard endpoint
+	GrafanaEndpoint string `json:"grafanaEndpoint,omitempty"`
+
 	// List of criteria for assessing the candidate version
-	Metrics []SuccessCriterion `json:"metrics,omitempty"`
+	SuccessCriteria []SuccessCriterion `json:"successCriteria,omitempty"`
 }
 
 type Summary struct {
@@ -175,7 +187,7 @@ type SuccessCriterion struct {
 	// "iter8_error_rate": mean error rate (~5** HTTP Status codes) of the service
 	// "iter8_error_count": total error count (~5** HTTP Status codes) of the service
 	//+kubebuilder:validation:Enum=iter8_latency,iter8_error_rate,iter8_error_count
-	Name string `json:"name"`
+	MetricName string `json:"metricName"`
 
 	// 	Criterion type. Options:
 	// "delta": compares the candidate against the baseline version with respect to the metric;
@@ -269,6 +281,16 @@ func (a *Analysis) GetServiceEndpoint() string {
 	endpoint := a.AnalyticsService
 	if len(endpoint) == 0 {
 		endpoint = "http://iter8analytics:5555"
+	}
+
+	return endpoint
+}
+
+// GetGrafanaEndpoint returns the grafana endpoint; Default is "http://localhost:3000".
+func (a *Analysis) GetGrafanaEndpoint() string {
+	endpoint := a.GrafanaEndpoint
+	if len(endpoint) == 0 {
+		endpoint = "http://localhost:3000"
 	}
 
 	return endpoint

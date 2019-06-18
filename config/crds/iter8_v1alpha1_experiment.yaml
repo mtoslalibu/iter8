@@ -62,10 +62,10 @@ spec:
               properties:
                 analyticsService:
                   type: string
-                metrics:
+                successCriteria:
                   items:
                     properties:
-                      name:
+                      metricName:
                         enum:
                         - iter8_latency
                         - iter8_error_rate
@@ -85,7 +85,7 @@ spec:
                         - delta
                         type: string
                     required:
-                    - name
+                    - metricName
                     - toleranceType
                     - tolerance
                     type: object

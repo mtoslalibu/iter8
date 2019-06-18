@@ -18,6 +18,7 @@ package experiment
 import (
 	"context"
 	"encoding/json"
+	"strconv"
 	"time"
 
 	"github.ibm.com/istio-research/iter8-controller/pkg/analytics/checkandincrement"
@@ -172,6 +173,11 @@ func (r *ReconcileExperiment) syncIstio(context context.Context, instance *iter8
 	// TODO: check err in getting the time value
 	interval, _ := traffic.GetIntervalDuration()
 
+	if instance.Status.StartTime.IsZero() {
+		instance.Status.StartTime = metav1.NewTime(now)
+		updateGrafanaURL(instance, serviceNamespace)
+	}
+
 	// check experiment is finished
 	if instance.Spec.TrafficControl.GetMaxIterations() <= instance.Status.CurrentIteration {
 		log.Info("ExperimentCompleted")
@@ -190,6 +196,8 @@ func (r *ReconcileExperiment) syncIstio(context context.Context, instance *iter8
 			instance.Spec.TrafficControl.GetStrategy() == "increment_without_check" {
 			// experiment is successful
 			log.Info("ExperimentSucceeded: AllSuccessCriteriaMet")
+			instance.Status.EndTime = metav1.NewTime(now)
+			updateGrafanaURL(instance, serviceNamespace)
 			switch instance.Spec.TrafficControl.GetOnSuccess() {
 			case "baseline":
 				// delete routing rules
@@ -304,6 +312,21 @@ func (r *ReconcileExperiment) syncIstio(context context.Context, instance *iter8
 	instance.Status.MarkExperimentNotCompleted("Progressing", "")
 	err = r.Status().Update(context, instance)
 	return reconcile.Result{RequeueAfter: interval}, err
+}
+
+func updateGrafanaURL(instance *iter8v1alpha1.Experiment, namespace string) {
+	endTs := "now"
+	if !instance.Status.EndTime.IsZero() {
+		endTs = strconv.FormatInt(instance.Status.EndTime.UTC().Unix(), 10)
+	}
+	instance.Status.GrafanaURL = instance.Spec.Analysis.GetGrafanaEndpoint() +
+		"/d/eXPEaNnZz/iter8-application-metrics?" +
+		"var-namespace=" + namespace +
+		"&var-service=" + instance.Spec.TargetService.Name +
+		"&var-baseline-version=" + instance.Spec.TargetService.Baseline +
+		"&var-candidate-version=" + instance.Spec.TargetService.Candidate +
+		"&from=" + strconv.FormatInt(instance.Status.StartTime.UTC().Unix(), 10) +
+		"&to=" + endTs
 }
 
 func removeExperimentLabel(context context.Context, r *ReconcileExperiment, d *appsv1.Deployment) (err error) {

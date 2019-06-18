@@ -28,16 +28,16 @@ import (
 func MakeRequest(instance *iter8v1alpha1.Experiment, baseline, experiment interface{}) *checkandincrement.Request {
 	spec := instance.Spec
 
-	metrics := make([]checkandincrement.SuccessCriterion, len(spec.Analysis.Metrics))
-	for i, metric := range spec.Analysis.Metrics {
-		metrics[i] = checkandincrement.SuccessCriterion{
-			MetricName: metric.Name,
-			Type:       metric.ToleranceType,
-			Value:      metric.Tolerance,
+	criteria := make([]checkandincrement.SuccessCriterion, len(spec.Analysis.SuccessCriteria))
+	for i, criterion := range spec.Analysis.SuccessCriteria {
+		criteria[i] = checkandincrement.SuccessCriterion{
+			MetricName: criterion.MetricName,
+			Type:       criterion.ToleranceType,
+			Value:      criterion.Tolerance,
 		}
 
-		metrics[i].SampleSize = metric.GetSampleSize()
-		metrics[i].StopOnFailure = metric.GetStopOnFailure()
+		criteria[i].SampleSize = criterion.GetSampleSize()
+		criteria[i].StopOnFailure = criterion.GetStopOnFailure()
 	}
 	now := time.Now().Format(time.RFC3339)
 	destinationKey, namespaceKey, baseVal, experimentVal, baseNsVal, experimentNsVal := "", "", "", "", "", ""
@@ -89,7 +89,7 @@ func MakeRequest(instance *iter8v1alpha1.Experiment, baseline, experiment interf
 			MaxTrafficPercent: instance.Spec.TrafficControl.GetMaxTrafficPercentage(),
 			StepSize:          instance.Spec.TrafficControl.GetStepSize(),
 			OnSuccess:         onSuccess,
-			SuccessCriteria:   metrics,
+			SuccessCriteria:   criteria,
 		},
 		LastState: instance.Status.AnalysisState,
 	}

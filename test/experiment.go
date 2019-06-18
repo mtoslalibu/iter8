@@ -66,7 +66,7 @@ func (b *ExperimentBuilder) WithKNativeService(name string) *ExperimentBuilder {
 // WithDummySuccessCriterion adds a dummy success criterion
 func (b *ExperimentBuilder) WithDummySuccessCriterion() *ExperimentBuilder {
 	return b.WithSuccessCriterion(v1alpha1.SuccessCriterion{
-		Name:          "iter8_latency",
+		MetricName:    "iter8_latency",
 		ToleranceType: v1alpha1.ToleranceTypeDelta,
 		Tolerance:     0.02,
 	})
@@ -74,7 +74,7 @@ func (b *ExperimentBuilder) WithDummySuccessCriterion() *ExperimentBuilder {
 
 // WithSuccessCriterion adds a success criterion
 func (b *ExperimentBuilder) WithSuccessCriterion(sc v1alpha1.SuccessCriterion) *ExperimentBuilder {
-	b.Spec.Analysis.Metrics = append(b.Spec.Analysis.Metrics, sc)
+	b.Spec.Analysis.SuccessCriteria = append(b.Spec.Analysis.SuccessCriteria, sc)
 	return b
 }
 
