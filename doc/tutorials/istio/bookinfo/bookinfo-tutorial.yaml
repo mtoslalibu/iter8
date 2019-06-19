@@ -101,25 +101,25 @@ spec:
 apiVersion: apps/v1
 kind: Deployment
 metadata:
-  name: reviews-v1
+  name: reviews-v2
   labels:
     app: reviews
-    version: v1
+    version: v2
 spec:
   replicas: 1
   selector:
     matchLabels:
       app: reviews
-      version: v1
+      version: v2
   template:
     metadata:
       labels:
         app: reviews
-        version: v1
+        version: v2
     spec:
       containers:
       - name: reviews
-        image: istio/examples-bookinfo-reviews-v1:1.8.0
+        image: istio/examples-bookinfo-reviews-v2:1.11.0
         imagePullPolicy: IfNotPresent
         ports:
         - containerPort: 9080
