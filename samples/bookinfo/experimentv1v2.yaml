@@ -18,8 +18,8 @@ spec:
     maxTrafficPercentage: 99 #default value = 50
   analysis:
     analyticsService: "http://localhost:5555"
-    metrics:
-      - name: iter8_latency
+    successCriteria:
+      - metricName: iter8_latency
         toleranceType: threshold
         tolerance: 0.2
         sampleSize: 10

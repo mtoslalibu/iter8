@@ -13,8 +13,8 @@ spec:
     stepSize: 5
   analysis:
     analyticsService: "http://localhost:5555"
-    metrics:
-      - name: iter8_latency
+    successCriteria:
+      - metricName: iter8_latency
         type: delta
         value: 1.0
         sampleSize: 10

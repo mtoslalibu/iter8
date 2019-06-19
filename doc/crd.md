@@ -70,6 +70,10 @@ spec:
               properties:
                 analyticsService: # optional; default value = http://iter8analytics:5555
                   type: string
+                # The endpoint to grafana dashboard; 
+                # optional; default value = http://localhost:3000
+                grafanaEndpoint:
+                  type: string
                 # list of criteria which determines if experiment succeeds
                 successCriteria: # optional section -- the controller can run without any successCriteria
                   items:
@@ -188,14 +192,23 @@ spec:
             currentIteration: 
               format: int64
               type: integer
+            # timestamp when experiment is completed
+            endTs:
+              type: string
+            # the url to the grafana dashboard
+            grafanaURL:
+              type: string
             # time at which the last iteration completed
             lastIterationCompletionTime: 
               format: date-time
               type: string
             # to be resolved... ???
-            # observedGeneration:
-            #   format: int64
-            #   type: integer
+            observedGeneration:
+              format: int64
+              type: integer
+            # timestamp when experiment is started
+            startTs:
+              type: string
             # current traffic split between baseline and candidate
             trafficSplitPercentage: 
               properties:
