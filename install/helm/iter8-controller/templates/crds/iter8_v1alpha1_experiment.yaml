@@ -62,10 +62,12 @@ spec:
               properties:
                 analyticsService:
                   type: string
-                metrics:
+                grafanaEndpoint:
+                  type: string
+                successCriteria:
                   items:
                     properties:
-                      name:
+                      metricName:
                         enum:
                         - iter8_latency
                         - iter8_error_rate
@@ -85,7 +87,7 @@ spec:
                         - delta
                         type: string
                     required:
-                    - name
+                    - metricName
                     - toleranceType
                     - tolerance
                     type: object
@@ -160,12 +162,18 @@ spec:
             currentIteration:
               format: int64
               type: integer
+            endTs:
+              type: string
+            grafanaURL:
+              type: string
             lastIncrementTime:
               format: date-time
               type: string
             observedGeneration:
               format: int64
               type: integer
+            startTs:
+              type: string
             trafficSplitPercentage:
               properties:
                 baseline:
