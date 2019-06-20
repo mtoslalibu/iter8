@@ -252,7 +252,8 @@ func (r *ReconcileExperiment) syncKubernetes(context context.Context, instance *
 	interval, _ := traffic.GetIntervalDuration()
 
 	if instance.Status.StartTimestamp == "" {
-		instance.Status.StartTimestamp = strconv.FormatInt(metav1.NewTime(now).UTC().UnixNano(), 10)
+		ts := strconv.FormatInt(metav1.NewTime(now).UTC().UnixNano(), 10)
+		instance.Status.StartTimestamp = ts[:len(ts)-3]
 		updateGrafanaURL(instance, serviceNamespace)
 	}
 
@@ -270,7 +271,8 @@ func (r *ReconcileExperiment) syncKubernetes(context context.Context, instance *
 		// Clear analysis state
 		instance.Status.AnalysisState.Raw = []byte("{}")
 
-		instance.Status.EndTimestamp = strconv.FormatInt(metav1.NewTime(now).UTC().UnixNano(), 10)
+		ts := strconv.FormatInt(metav1.NewTime(now).UTC().UnixNano(), 10)
+		instance.Status.EndTimestamp = ts[:len(ts)-3]
 		updateGrafanaURL(instance, serviceNamespace)
 
 		if instance.Status.AssessmentSummary.AllSuccessCriteriaMet ||
