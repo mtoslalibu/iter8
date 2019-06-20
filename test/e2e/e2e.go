@@ -25,6 +25,7 @@ import (
 	"github.com/google/go-cmp/cmp/cmpopts"
 	istiov1alpha3 "github.com/knative/pkg/apis/istio/v1alpha3"
 	servingalpha1 "github.com/knative/serving/pkg/apis/serving/v1alpha1"
+	corev1 "k8s.io/api/core/v1"
 	"k8s.io/apimachinery/pkg/api/meta"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/apimachinery/pkg/runtime"
@@ -41,7 +42,7 @@ import (
 // Flags holds the command line flags or defaults for settings in the user's environment.
 // See EnvironmentFlags for a list of supported fields.
 var Flags = initializeFlags()
-var compoptions = cmpopts.IgnoreTypes(metav1.TypeMeta{}, metav1.ObjectMeta{}, metav1.Time{})
+var compoptions = cmpopts.IgnoreTypes(metav1.TypeMeta{}, metav1.ObjectMeta{}, metav1.Time{}, corev1.ResourceRequirements{})
 
 // EnvironmentFlags define the flags that are needed to run the e2e tests.
 type EnvironmentFlags struct {
