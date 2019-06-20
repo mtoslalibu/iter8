@@ -252,7 +252,7 @@ func (r *ReconcileExperiment) syncKubernetes(context context.Context, instance *
 	interval, _ := traffic.GetIntervalDuration()
 
 	if instance.Status.StartTimestamp == "" {
-		instance.Status.StartTimestamp = strconv.FormatInt(metav1.NewTime(now).UTC().Unix(), 10)
+		instance.Status.StartTimestamp = strconv.FormatInt(metav1.NewTime(now).UTC().UnixNano(), 10)
 		updateGrafanaURL(instance, serviceNamespace)
 	}
 
@@ -270,7 +270,7 @@ func (r *ReconcileExperiment) syncKubernetes(context context.Context, instance *
 		// Clear analysis state
 		instance.Status.AnalysisState.Raw = []byte("{}")
 
-		instance.Status.EndTimestamp = strconv.FormatInt(metav1.NewTime(now).UTC().Unix(), 10)
+		instance.Status.EndTimestamp = strconv.FormatInt(metav1.NewTime(now).UTC().UnixNano(), 10)
 		updateGrafanaURL(instance, serviceNamespace)
 
 		if instance.Status.AssessmentSummary.AllSuccessCriteriaMet ||
@@ -413,8 +413,8 @@ func updateGrafanaURL(instance *iter8v1alpha1.Experiment, namespace string) {
 		"/d/eXPEaNnZz/iter8-application-metrics?" +
 		"var-namespace=" + namespace +
 		"&var-service=" + instance.Spec.TargetService.Name +
-		"&var-baseline-version=" + instance.Spec.TargetService.Baseline +
-		"&var-candidate-version=" + instance.Spec.TargetService.Candidate +
+		"&var-baseline=" + instance.Spec.TargetService.Baseline +
+		"&var-candidate=" + instance.Spec.TargetService.Candidate +
 		"&from=" + instance.Status.StartTimestamp +
 		"&to=" + endTs
 }
