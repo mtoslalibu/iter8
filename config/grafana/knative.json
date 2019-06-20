@@ -47,7 +47,7 @@
   "gnetId": null,
   "graphTooltip": 0,
   "id": null,
-  "iteration": 1561057344064,
+  "iteration": 1561057344067,
   "links": [],
   "panels": [
     {
@@ -206,7 +206,7 @@
           "expr": "sum(increase(istio_request_duration_seconds_sum{source_workload_namespace!='knative-serving', destination_service_name=~'[[candidate]]', destination_service_namespace='$namespace', reporter='source'}[$window_size])) / sum(increase(istio_requests_total{destination_service_name=~'[[candidate]]', destination_service_namespace='$namespace', reporter = 'source'}[$window_size]))",
           "format": "time_series",
           "intervalFactor": 1,
-          "legendFormat": "$baseline",
+          "legendFormat": "$candidate",
           "refId": "B"
         }
       ],

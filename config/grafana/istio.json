@@ -16,8 +16,8 @@
   "editable": true,
   "gnetId": null,
   "graphTooltip": 0,
-  "id": 15,
-  "iteration": 1561056761883,
+  "id": 17,
+  "iteration": 1561057163257,
   "links": [],
   "panels": [
     {
@@ -173,7 +173,7 @@
           "expr": "sum(increase(istio_request_duration_seconds_sum{destination_workload=~'[[candidate]]', destination_service_namespace='$namespace', reporter='source'}[$window_size])) / sum(increase(istio_requests_total{destination_workload=~'[[candidate]]', destination_service_namespace='$namespace', reporter = 'source'}[$window_size]))",
           "format": "time_series",
           "intervalFactor": 1,
-          "legendFormat": "$baseline",
+          "legendFormat": "$candidate",
           "refId": "B"
         }
       ],
