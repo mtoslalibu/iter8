@@ -162,7 +162,7 @@ spec:
             currentIteration:
               format: int64
               type: integer
-            endTs:
+            endTimestamp:
               type: string
             grafanaURL:
               type: string
@@ -172,7 +172,7 @@ spec:
             observedGeneration:
               format: int64
               type: integer
-            startTs:
+            startTimestamp:
               type: string
             trafficSplitPercentage:
               properties:
