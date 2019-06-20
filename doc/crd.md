@@ -193,7 +193,7 @@ spec:
               format: int64
               type: integer
             # timestamp when experiment is completed
-            endTs:
+            endTimestamp:
               type: string
             # the url to the grafana dashboard
             grafanaURL:
@@ -207,7 +207,7 @@ spec:
               format: int64
               type: integer
             # timestamp when experiment is started
-            startTs:
+            startTimestamp:
               type: string
             # current traffic split between baseline and candidate
             trafficSplitPercentage: 
