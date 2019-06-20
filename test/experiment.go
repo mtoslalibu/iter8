@@ -105,6 +105,15 @@ func CheckExperimentFinished(obj runtime.Object) (bool, error) {
 	return exp.Status.GetCondition(v1alpha1.ExperimentConditionExperimentCompleted).IsTrue(), nil
 }
 
+func CheckServiceFound(obj runtime.Object) (bool, error) {
+	exp, ok := obj.(*v1alpha1.Experiment)
+	if !ok {
+		return false, fmt.Errorf("Expected an experiment service (got: %v)", obj)
+	}
+
+	return exp.Status.GetCondition(v1alpha1.ExperimentConditionServiceProvided).IsTrue(), nil
+}
+
 func DeleteExperiment(name string, namespace string) Hook {
 	return DeleteObject(NewExperiment(name, namespace).Build())
 }

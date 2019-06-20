@@ -78,25 +78,46 @@ func TestKubernetesExperiment(t *testing.T) {
 				getStableVirtualService("reviews", "rollbackward"),
 			},
 		},
-		// "completeDelete": testCase{
-		// 	mocks: map[string]cai.Response{
-		// 		"completeDelete": test.GetSuccessMockResponse(),
-		// 	},
-		// 	initObjects: []runtime.Object{
-		// 		getReviewsService(),
-		// 		getRatingsService(),
-		// 		getReviewsDeployment("v1"),
-		// 		getReviewsDeployment("v2"),
-		// 		getRatingsDeployment(),
-		// 	},
-		// 	object:    getSlowKubernetesExperiment("completeDelete", "reviews", "reviews-v1", "reviews-v2", service.GetURL()),
-		// 	wantState: test.CheckExperimentFinished,
-		// 	frozenObjects: []runtime.Object{
-		// 		getStableDestinationRule("reviews", "completeDelete", getReviewsDeployment("v2")),
-		// 		getStableVirtualService("reviews", "completeDelete"),
-		// 	},
-		// 	postHook: test.DeleteExperiment("completeDelete", Flags.Namespace),
-		// },
+		"ongoingdelete": testCase{
+			mocks: map[string]cai.Response{
+				"ongoingdelete": test.GetSuccessMockResponse(),
+			},
+			initObjects: []runtime.Object{
+				getReviewsService(),
+				getRatingsService(),
+				getReviewsDeployment("v1"),
+				getReviewsDeployment("v2"),
+				getRatingsDeployment(),
+			},
+			object:    getSlowKubernetesExperiment("ongoingdelete", "reviews", "reviews-v1", "reviews-v2", service.GetURL()),
+			wantState: test.CheckServiceFound,
+			wantResults: []runtime.Object{
+				// roolback to baseline
+				getStableDestinationRule("reviews", "ongoingdelete", getReviewsDeployment("v1")),
+				getStableVirtualService("reviews", "ongoingdelete"),
+			},
+			postHook: test.DeleteExperiment("ongoingdelete", Flags.Namespace),
+		},
+		"completedelete": testCase{
+			mocks: map[string]cai.Response{
+				"completedelete": test.GetSuccessMockResponse(),
+			},
+			initObjects: []runtime.Object{
+				getReviewsService(),
+				getRatingsService(),
+				getReviewsDeployment("v1"),
+				getReviewsDeployment("v2"),
+				getRatingsDeployment(),
+			},
+			object:    getFastKubernetesExperiment("completedelete", "reviews", "reviews-v1", "reviews-v2", service.GetURL()),
+			wantState: test.CheckExperimentFinished,
+			frozenObjects: []runtime.Object{
+				// desired end-of-experiment status
+				getStableDestinationRule("reviews", "completedelete", getReviewsDeployment("v2")),
+				getStableVirtualService("reviews", "completedelete"),
+			},
+			postHook: test.DeleteExperiment("completedelete", Flags.Namespace),
+		},
 	}
 
 	runTestCases(t, service, testCases)
@@ -179,10 +200,10 @@ func getSlowKubernetesExperiment(name, serviceName, baseline, candidate, analyti
 		WithAnalyticsHost(analyticsHost).
 		Build()
 
-	twentysecs := "20s"
-	one := 1
+	twentysecs := "10s"
+	two := 2
 	experiment.Spec.TrafficControl.Interval = &twentysecs
-	experiment.Spec.TrafficControl.MaxIterations = &one
+	experiment.Spec.TrafficControl.MaxIterations = &two
 
 	return experiment
 }
