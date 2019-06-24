@@ -1,7 +1,7 @@
 apiVersion: iter8.io/v1alpha1
 kind: Experiment
 metadata:
-  name: reviews-v3-rollout
+  name: reviews-v4-rollout
 spec:
   targetService:
     name: reviews
