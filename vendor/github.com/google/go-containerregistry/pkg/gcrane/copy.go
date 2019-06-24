@@ -63,8 +63,17 @@ func doCopy(args []string, recursive bool) {
 			log.Fatal(err)
 		}
 
-		if err := singleCopy(src, dst, srcAuth, dstAuth); err != nil {
-			log.Fatalf("failed to copy image: %v", err)
+		// First, try to copy as an index.
+		// If that fails, try to copy as an image.
+		// We have to try this second because fallback logic exists in the registry
+		// to convert an index to an image.
+		//
+		// TODO(#407): Refactor crane so we can just call into that logic in the
+		// single-image case.
+		if err := copyIndex(src, dst, srcAuth, dstAuth); err != nil {
+			if err := copyImage(src, dst, srcAuth, dstAuth); err != nil {
+				log.Fatalf("failed to copy image: %v", err)
+			}
 		}
 	}
 }
@@ -78,12 +87,12 @@ type copier struct {
 }
 
 func newCopier(src, dst string) (*copier, error) {
-	srcRepo, err := name.NewRepository(src, name.WeakValidation)
+	srcRepo, err := name.NewRepository(src)
 	if err != nil {
 		return nil, fmt.Errorf("parsing repo %q: %v", src, err)
 	}
 
-	dstRepo, err := name.NewRepository(dst, name.WeakValidation)
+	dstRepo, err := name.NewRepository(dst)
 	if err != nil {
 		return nil, fmt.Errorf("parsing repo %q: %v", dst, err)
 	}
@@ -101,13 +110,13 @@ func newCopier(src, dst string) (*copier, error) {
 	return &copier{srcRepo, dstRepo, srcAuth, dstAuth}, nil
 }
 
-func singleCopy(src, dst string, srcAuth, dstAuth authn.Authenticator) error {
-	srcRef, err := name.ParseReference(src, name.WeakValidation)
+func copyImage(src, dst string, srcAuth, dstAuth authn.Authenticator) error {
+	srcRef, err := name.ParseReference(src)
 	if err != nil {
 		return fmt.Errorf("parsing reference %q: %v", src, err)
 	}
 
-	dstRef, err := name.ParseReference(dst, name.WeakValidation)
+	dstRef, err := name.ParseReference(dst)
 	if err != nil {
 		return fmt.Errorf("parsing reference %q: %v", dst, err)
 	}
@@ -124,6 +133,29 @@ func singleCopy(src, dst string, srcAuth, dstAuth authn.Authenticator) error {
 	return nil
 }
 
+func copyIndex(src, dst string, srcAuth, dstAuth authn.Authenticator) error {
+	srcRef, err := name.ParseReference(src)
+	if err != nil {
+		return fmt.Errorf("parsing reference %q: %v", src, err)
+	}
+
+	dstRef, err := name.ParseReference(dst)
+	if err != nil {
+		return fmt.Errorf("parsing reference %q: %v", dst, err)
+	}
+
+	idx, err := remote.Index(srcRef, remote.WithAuth(srcAuth))
+	if err != nil {
+		return fmt.Errorf("reading image %q: %v", src, err)
+	}
+
+	if err := remote.WriteIndex(dstRef, idx, dstAuth, http.DefaultTransport); err != nil {
+		return fmt.Errorf("writing image %q: %v", dst, err)
+	}
+
+	return nil
+}
+
 // recursiveCopy copies images from repo src to repo dst, rather quickly. tl;dr:
 //
 //  for each repo in src {
@@ -132,7 +164,16 @@ func singleCopy(src, dst string, srcAuth, dstAuth authn.Authenticator) error {
 //				go func {
 //					for each tag in image {
 //						go func {
-//							singleCopy(tag, rename(tag, dst))
+//							copyImage(tag, rename(tag, dst))
+//						}
+//					}
+//				}
+//			}
+//			for each index in repo {
+//				go func {
+//					for each tag in index {
+//						go func {
+//							copyIndex(tag, rename(tag, dst))
 //						}
 //					}
 //				}
@@ -212,18 +253,17 @@ func (c *copier) copyRepo(ctx context.Context, oldRepo name.Repository, tags *go
 		return fmt.Errorf("Failed to copy %s: %v", oldRepo, err)
 	}
 
-	// TODO(#119): Uncomment once we've implemented manifests lists.
 	// Now copy the manifest lists, since it should be safe.
-	// for digest, manifest := range todos {
-	// 	digest, manifest := digest, manifest // https://golang.org/doc/faq#closures_and_goroutines
-	// 	g.Go(func() error {
-	// 		return c.copyImages(ctx, digest, manifest, oldRepo, newRepo)
-	// 	})
-	// }
+	for digest, manifest := range todos {
+		digest, manifest := digest, manifest // https://golang.org/doc/faq#closures_and_goroutines
+		g.Go(func() error {
+			return c.copyIndexes(ctx, digest, manifest, oldRepo, newRepo)
+		})
+	}
 
-	// if err := g.Wait(); err != nil {
-	// 	return fmt.Errorf("Failed to copy %s: %v", oldRepo, err)
-	// }
+	if err := g.Wait(); err != nil {
+		return fmt.Errorf("Failed to copy %s: %v", oldRepo, err)
+	}
 
 	return nil
 }
@@ -236,7 +276,7 @@ func (c *copier) copyImages(ctx context.Context, digest string, manifest google.
 		srcImg := fmt.Sprintf("%s@%s", oldRepo, digest)
 		dstImg := fmt.Sprintf("%s@%s", newRepo, digest)
 
-		return singleCopy(srcImg, dstImg, c.srcAuth, c.dstAuth)
+		return copyImage(srcImg, dstImg, c.srcAuth, c.dstAuth)
 	}
 
 	// Copy all the tags.
@@ -247,7 +287,33 @@ func (c *copier) copyImages(ctx context.Context, digest string, manifest google.
 			srcImg := fmt.Sprintf("%s:%s", oldRepo, tag)
 			dstImg := fmt.Sprintf("%s:%s", newRepo, tag)
 
-			return singleCopy(srcImg, dstImg, c.srcAuth, c.dstAuth)
+			return copyImage(srcImg, dstImg, c.srcAuth, c.dstAuth)
+		})
+	}
+	return g.Wait()
+}
+
+// copyIndexes starts a goroutine for each tag that points to the index
+// oldRepo@digest, or just copies the index by digest if there are no tags.
+func (c *copier) copyIndexes(ctx context.Context, digest string, manifest google.ManifestInfo, oldRepo, newRepo name.Repository) error {
+	// We only have to explicitly copy by digest if there are no tags pointing to this manifest.
+	if len(manifest.Tags) == 0 {
+		srcImg := fmt.Sprintf("%s@%s", oldRepo, digest)
+		dstImg := fmt.Sprintf("%s@%s", newRepo, digest)
+
+		return copyIndex(srcImg, dstImg, c.srcAuth, c.dstAuth)
+	}
+
+	// Copy all the tags.
+	g, _ := errgroup.WithContext(ctx)
+	for _, tag := range manifest.Tags {
+		tag := tag // https://golang.org/doc/faq#closures_and_goroutines
+		g.Go(func() error {
+			srcImg := fmt.Sprintf("%s:%s", oldRepo, tag)
+			dstImg := fmt.Sprintf("%s:%s", newRepo, tag)
+
+			// TODO: Just implement an AddTag thing.
+			return copyIndex(srcImg, dstImg, c.srcAuth, c.dstAuth)
 		})
 	}
 	return g.Wait()
@@ -312,12 +378,12 @@ func toStringSet(slice []string) map[string]struct{} {
 }
 
 func parseRefAuths(src, dst string) (authn.Authenticator, authn.Authenticator, error) {
-	srcRef, err := name.ParseReference(src, name.WeakValidation)
+	srcRef, err := name.ParseReference(src)
 	if err != nil {
 		return nil, nil, fmt.Errorf("parsing reference %q: %v", src, err)
 	}
 
-	dstRef, err := name.ParseReference(dst, name.WeakValidation)
+	dstRef, err := name.ParseReference(dst)
 	if err != nil {
 		return nil, nil, fmt.Errorf("parsing reference %q: %v", dst, err)
 	}

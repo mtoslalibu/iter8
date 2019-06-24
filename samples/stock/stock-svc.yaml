@@ -5,20 +5,20 @@ metadata:
   labels:
     app.kubernetes.io/name: stock-experiment-example
 spec:
-  runLatest:
-    configuration:
-      revisionTemplate:
-        spec:
-          container:
-            image: github.ibm.com/istio-research/iter8-controller/samples/stock
-            env:
-              - name: RESOURCE
-                value: stock
-            readinessProbe:
-              httpGet:
-                path: /
-              initialDelaySeconds: 0
-              periodSeconds: 3
+  template:
+    metadata:
+      name: stock-experiment-example-first
+    spec:
+      containers:
+      - image: github.ibm.com/istio-research/iter8-controller/samples/stock
+        env:
+          - name: RESOURCE
+            value: share
+        readinessProbe:
+          httpGet:
+            path: /
+          initialDelaySeconds: 0
+          periodSeconds: 3
 ---
 apiVersion: networking.istio.io/v1alpha3
 kind: ServiceEntry

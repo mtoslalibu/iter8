@@ -21,6 +21,7 @@ import (
 	"github.com/google/go-containerregistry/pkg/authn"
 	"github.com/google/go-containerregistry/pkg/name"
 	"github.com/google/go-containerregistry/pkg/v1/remote"
+	"github.com/google/go-containerregistry/pkg/v1/types"
 	"github.com/spf13/cobra"
 )
 
@@ -39,18 +40,13 @@ func NewCmdCopy() *cobra.Command {
 
 func doCopy(_ *cobra.Command, args []string) {
 	src, dst := args[0], args[1]
-	srcRef, err := name.ParseReference(src, name.WeakValidation)
+	srcRef, err := name.ParseReference(src)
 	if err != nil {
 		log.Fatalf("parsing reference %q: %v", src, err)
 	}
 	log.Printf("Pulling %v", srcRef)
 
-	img, err := remote.Image(srcRef, remote.WithAuthFromKeychain(authn.DefaultKeychain))
-	if err != nil {
-		log.Fatalf("reading image %q: %v", srcRef, err)
-	}
-
-	dstRef, err := name.ParseReference(dst, name.WeakValidation)
+	dstRef, err := name.ParseReference(dst)
 	if err != nil {
 		log.Fatalf("parsing reference %q: %v", dst, err)
 	}
@@ -61,7 +57,37 @@ func doCopy(_ *cobra.Command, args []string) {
 		log.Fatalf("getting creds for %q: %v", dstRef, err)
 	}
 
-	if err := remote.Write(dstRef, img, dstAuth, http.DefaultTransport); err != nil {
-		log.Fatalf("writing image %q: %v", dstRef, err)
+	desc, err := remote.Get(srcRef, remote.WithAuthFromKeychain(authn.DefaultKeychain))
+	if err != nil {
+		log.Fatalf("fetching image %q: %v", srcRef, err)
 	}
+
+	switch desc.MediaType {
+	case types.OCIImageIndex, types.DockerManifestList:
+		// Handle indexes separately.
+		if err := copyIndex(desc, dstRef, dstAuth); err != nil {
+			log.Fatalf("failed to copy index: %v", err)
+		}
+	default:
+		// Assume anything else is an image, since some registries don't set mediaTypes properly.
+		if err := copyImage(desc, dstRef, dstAuth); err != nil {
+			log.Fatalf("failed to copy image: %v", err)
+		}
+	}
+}
+
+func copyImage(desc *remote.Descriptor, dstRef name.Reference, dstAuth authn.Authenticator) error {
+	img, err := desc.Image()
+	if err != nil {
+		return err
+	}
+	return remote.Write(dstRef, img, dstAuth, http.DefaultTransport)
+}
+
+func copyIndex(desc *remote.Descriptor, dstRef name.Reference, dstAuth authn.Authenticator) error {
+	idx, err := desc.ImageIndex()
+	if err != nil {
+		return err
+	}
+	return remote.WriteIndex(dstRef, idx, dstAuth, http.DefaultTransport)
 }

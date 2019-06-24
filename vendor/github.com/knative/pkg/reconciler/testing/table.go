@@ -29,7 +29,6 @@ import (
 	"github.com/knative/pkg/kmeta"
 	_ "github.com/knative/pkg/system/testing" // Setup system.Namespace()
 	"k8s.io/apimachinery/pkg/api/resource"
-	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/apimachinery/pkg/runtime"
 	clientgotesting "k8s.io/client-go/testing"
 	"k8s.io/client-go/tools/cache"
@@ -54,7 +53,7 @@ type TableRow struct {
 	WantErr bool
 
 	// WantCreates holds the ordered list of Create calls we expect during reconciliation.
-	WantCreates []metav1.Object
+	WantCreates []runtime.Object
 
 	// WantUpdates holds the ordered list of Update calls we expect during reconciliation.
 	WantUpdates []clientgotesting.UpdateActionImpl
@@ -147,7 +146,7 @@ func (r *TableRow) Test(t *testing.T, factory Factory) {
 	}
 	if got, want := len(actions.Creates), len(r.WantCreates); got > want {
 		for _, extra := range actions.Creates[want:] {
-			t.Errorf("Extra create: %#v", extra)
+			t.Errorf("Extra create: %#v", extra.GetObject())
 		}
 	}
 
@@ -181,7 +180,7 @@ func (r *TableRow) Test(t *testing.T, factory Factory) {
 	}
 	if got, want := len(updates), len(r.WantUpdates); got > want {
 		for _, extra := range updates[want:] {
-			t.Errorf("Extra update: %#v", extra)
+			t.Errorf("Extra update: %#v", extra.GetObject())
 		}
 	}
 
@@ -225,11 +224,11 @@ func (r *TableRow) Test(t *testing.T, factory Factory) {
 	}
 
 	if len(statusUpdates)+len(updates) != len(actions.Updates) {
-		var unexpected []clientgotesting.UpdateAction
+		var unexpected []runtime.Object
 
 		for _, update := range actions.Updates {
 			if update.GetSubresource() != "status" && update.GetSubresource() != "" {
-				unexpected = append(unexpected, update)
+				unexpected = append(unexpected, update.GetObject())
 			}
 		}
 
@@ -251,7 +250,7 @@ func (r *TableRow) Test(t *testing.T, factory Factory) {
 	}
 	if got, want := len(actions.Deletes), len(r.WantDeletes); got > want {
 		for _, extra := range actions.Deletes[want:] {
-			t.Errorf("Extra delete: %#v", extra)
+			t.Errorf("Extra delete: %s/%s", extra.GetNamespace(), extra.GetName())
 		}
 	}
 
@@ -264,9 +263,8 @@ func (r *TableRow) Test(t *testing.T, factory Factory) {
 		if got, want := got.GetListRestrictions().Labels, want.GetListRestrictions().Labels; (got != nil) != (want != nil) || got.String() != want.String() {
 			t.Errorf("Unexpected delete-collection[%d].Labels = %v, wanted %v", i, got, want)
 		}
-		// TODO(mattmoor): Add this if/when we need support.
-		if got := got.GetListRestrictions().Fields; got.String() != "" {
-			t.Errorf("Unexpected delete-collection[%d].Fields = %v, wanted ''", i, got)
+		if got, want := got.GetListRestrictions().Fields, want.GetListRestrictions().Fields; (got != nil) != (want != nil) || got.String() != want.String() {
+			t.Errorf("Unexpected delete-collection[%d].Fields = %v, wanted %v", i, got, want)
 		}
 		if !r.SkipNamespaceValidation && got.GetNamespace() != expectedNamespace {
 			t.Errorf("Unexpected delete-collection[%d]: %#v, wanted %s", i, got, expectedNamespace)

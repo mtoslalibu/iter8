@@ -18,6 +18,7 @@ package experiment
 import (
 	"context"
 	"encoding/json"
+	"strconv"
 	"time"
 
 	servingv1alpha1 "github.com/knative/serving/pkg/apis/serving/v1alpha1"
@@ -52,8 +53,8 @@ func (r *ReconcileExperiment) syncKnative(context context.Context, instance *ite
 		return reconcile.Result{Requeue: true}, nil
 	}
 
-	if kservice.Spec.DeprecatedPinned != nil {
-		instance.Status.MarkHasNotService("DeprecatedPinnedNotSupported", "")
+	if kservice.Spec.Template == nil {
+		instance.Status.MarkHasNotService("MissingTemplate", "")
 		err = r.Status().Update(context, instance)
 		return reconcile.Result{}, err
 	}
@@ -78,82 +79,88 @@ func (r *ReconcileExperiment) syncKnative(context context.Context, instance *ite
 		}
 	}
 
-	instance.Status.MarkHasService()
-
-	// Check mode is set to 'release'. If not, change it
-	if kservice.Spec.Release == nil {
-		current := getTrafficByName(kservice, "")
-		if current == nil {
-			instance.Status.MarkHasNotService("NoCurrentRevision", "")
-			err = r.Status().Update(context, instance)
-			return reconcile.Result{}, err
-		}
-		kservice.Spec.Release = &servingv1alpha1.ReleaseType{
-			Revisions:      []string{current.RevisionName},
-			RolloutPercent: 0,
-			Configuration:  kservice.Spec.RunLatest.Configuration,
-		}
-		kservice.Spec.RunLatest = nil
-
-		err := r.Update(context, kservice)
-		if err != nil {
-			instance.Status.MarkHasNotService("NotReleaseMode", "%v", err)
-			err = r.Status().Update(context, instance)
-			return reconcile.Result{}, err
-		}
+	// Check the experiment targets existing traffic targets
+	ksvctraffic := kservice.Spec.Traffic
+	if ksvctraffic == nil {
+		instance.Status.MarkHasNotService("MissingTraffic", "")
+		err = r.Status().Update(context, instance)
+		return reconcile.Result{}, err
 	}
 
-	// Promote latest to candidate when there is only one revision
-	if len(kservice.Spec.Release.Revisions) == 1 {
-		latest := getTrafficByName(kservice, "latest")
-		if latest == nil {
-			instance.Status.MarkHasNotService("NoLatestRevision", "")
-			err = r.Status().Update(context, instance)
-			return reconcile.Result{}, err
-		}
+	baseline := instance.Spec.TargetService.Baseline
+	baselineTraffic := getTrafficByName(kservice, baseline)
+	if baselineTraffic == nil {
+		instance.Status.MarkHasNotService("MissingBaselineRevision", "%s", baseline)
+		err = r.Status().Update(context, instance)
+		return reconcile.Result{}, err
+	}
 
-		if kservice.Spec.Release.Revisions[0] != latest.RevisionName {
-			kservice.Spec.Release.Revisions = []string{kservice.Spec.Release.Revisions[0], latest.RevisionName}
-			kservice.Spec.Release.RolloutPercent = 0
+	candidate := instance.Spec.TargetService.Candidate
+	candidateTraffic := getTrafficByName(kservice, candidate)
+	if candidateTraffic == nil {
+		instance.Status.MarkHasNotService("MissingCandidateRevision", "%s", candidate)
+		err = r.Status().Update(context, instance)
+		return reconcile.Result{}, err
+	}
 
-			err := r.Update(context, kservice)
-			if err != nil {
-				instance.Status.MarkHasNotService("NoCandidate", "%v", err)
-				err = r.Status().Update(context, instance)
-				return reconcile.Result{}, err
-			}
-		} else {
-			// latest == current. Experiment is completed
-			instance.Status.MarkExperimentCompleted()
-			err = r.Status().Update(context, instance)
-			return reconcile.Result{}, err
-		}
+	instance.Status.MarkHasService()
+
+	traffic := instance.Spec.TrafficControl
+	now := time.Now()
+	interval, _ := traffic.GetIntervalDuration() // TODO: admissioncontrollervalidation
+
+	if instance.Status.StartTimestamp == "" {
+		instance.Status.StartTimestamp = strconv.FormatInt(metav1.NewTime(now).UTC().Unix(), 10)
+		updateGrafanaURL(instance, serviceNamespace)
 	}
 
 	// check experiment is finished
-	if instance.Spec.TrafficControl.GetMaxIterations() <= instance.Status.CurrentIteration {
-		log.Info("experiment completed.")
+	if traffic.GetMaxIterations() <= instance.Status.CurrentIteration {
+
 		update := false
 		if instance.Status.AssessmentSummary.AllSuccessCriteriaMet {
+			log.Info("Experiment completed with success")
 			// experiment is successful
-			switch instance.Spec.TrafficControl.GetOnSuccess() {
+			switch traffic.GetOnSuccess() {
 			case "baseline":
-				if kservice.Spec.Release.RolloutPercent != 0 {
-					kservice.Spec.Release.RolloutPercent = 0
+				// Rollback
+				if candidateTraffic.Percent != 0 {
+					candidateTraffic.Percent = 0
 					update = true
 				}
+				if baselineTraffic.Percent != 100 {
+					baselineTraffic.Percent = 100
+					update = true
+				}
+				instance.Status.MarkNotRollForward("OnSuccessBaseline", "")
+				instance.Status.TrafficSplit.Baseline = 100
+				instance.Status.TrafficSplit.Candidate = 0
 			case "candidate":
-				// Promote candidate to baseline
-				kservice.Spec.Release.Revisions = []string{kservice.Spec.Release.Revisions[1]}
-				kservice.Spec.Release.RolloutPercent = 0
-				update = true
+				// Rollforward
+				if candidateTraffic.Percent != 100 {
+					candidateTraffic.Percent = 100
+					update = true
+				}
+				if baselineTraffic.Percent != 0 {
+					baselineTraffic.Percent = 0
+					update = true
+				}
+				instance.Status.MarkRollForward()
+				instance.Status.TrafficSplit.Baseline = 100
+				instance.Status.TrafficSplit.Candidate = 0
 			case "both":
-				// noop.
+				instance.Status.MarkNotRollForward("OnSuccessBoth", "")
 			}
 		} else {
-			// Switch traffic back to current
-			if kservice.Spec.Release.RolloutPercent != 0 {
-				kservice.Spec.Release.RolloutPercent = 0
+			log.Info("Experiment completed with failure")
+
+			// Switch traffic back to baseline
+			if candidateTraffic.Percent != 0 {
+				candidateTraffic.Percent = 0
+				update = true
+			}
+			if baselineTraffic.Percent != 100 {
+				baselineTraffic.Percent = 100
 				update = true
 			}
 		}
@@ -171,6 +178,9 @@ func (r *ReconcileExperiment) syncKnative(context context.Context, instance *ite
 			}
 		}
 
+		// Clear analysis state
+		instance.Status.AnalysisState.Raw = []byte("{}")
+
 		// End experiment
 		instance.Status.MarkExperimentCompleted()
 		err = r.Status().Update(context, instance)
@@ -178,28 +188,25 @@ func (r *ReconcileExperiment) syncKnative(context context.Context, instance *ite
 	}
 
 	// Check if traffic should be updated.
-	traffic := instance.Spec.TrafficControl
-	release := kservice.Spec.Release
-	now := time.Now()
-	interval, _ := traffic.GetIntervalDuration() // TODO: admissioncontrollervalidation
 
 	if now.After(instance.Status.LastIncrementTime.Add(interval)) {
 		log.Info("process iteration.")
 
-		newRolloutPercent := float64(release.RolloutPercent)
+		newRolloutPercent := float64(candidateTraffic.Percent)
 		switch instance.Spec.TrafficControl.GetStrategy() {
 		case "increment_without_check":
 			newRolloutPercent += traffic.GetStepSize()
 		case "check_and_increment":
 			// Get underlying k8s services
-			baselineService, err := r.getServiceForRevision(context, kservice, kservice.Spec.Release.Revisions[0])
+			// TODO: should just get the service name. See issue #83
+			baselineService, err := r.getServiceForRevision(context, kservice, baselineTraffic.RevisionName)
 			if err != nil {
 				// TODO: maybe we want another condition
 				instance.Status.MarkHasNotService("MissingCoreService", "%v", err)
 				err = r.Status().Update(context, instance)
 				return reconcile.Result{}, err
 			}
-			candidateService, err := r.getServiceForRevision(context, kservice, kservice.Spec.Release.Revisions[1])
+			candidateService, err := r.getServiceForRevision(context, kservice, candidateTraffic.RevisionName)
 			if err != nil {
 				// TODO: maybe we want another condition
 				instance.Status.MarkHasNotService("MissingCoreService", "%v", err)
@@ -211,17 +218,17 @@ func (r *ReconcileExperiment) syncKnative(context context.Context, instance *ite
 			payload := MakeRequest(instance, baselineService, candidateService)
 			response, err := checkandincrement.Invoke(log, instance.Spec.Analysis.GetServiceEndpoint(), payload)
 			if err != nil {
-				// TODO: Need new condition
-				instance.Status.MarkHasNotService("ErrorAnalytics", "%v", err)
+				instance.Status.MarkExperimentNotCompleted("ErrorAnalytics", "%v", err)
 				err = r.Status().Update(context, instance)
-				return reconcile.Result{}, err
+				return reconcile.Result{RequeueAfter: 5 * time.Second}, err
 			}
 
 			// Abort?
 			if response.Assessment.Summary.AbortExperiment {
 				log.Info("abort experiment.")
-				if kservice.Spec.Release.RolloutPercent != 0 {
-					kservice.Spec.Release.RolloutPercent = 0
+				if candidateTraffic.Percent != 0 || baselineTraffic.Percent != 100 {
+					baselineTraffic.Percent = 100
+					candidateTraffic.Percent = 0
 					err := r.Update(context, kservice)
 					if err != nil {
 						return reconcile.Result{}, err // retry
@@ -234,24 +241,45 @@ func (r *ReconcileExperiment) syncKnative(context context.Context, instance *ite
 			log.Info("NewTraffic", "baseline", baselineTraffic, "candidate", candidateTraffic)
 			newRolloutPercent = candidateTraffic
 
-			lastState, err := json.Marshal(response.LastState)
-			if err != nil {
-				// TODO: Need new condition
-				instance.Status.MarkHasNotService("ErrorAnalyticsResponse", "%v", err)
-				err = r.Status().Update(context, instance)
-				return reconcile.Result{}, err
+			if response.LastState == nil {
+				instance.Status.AnalysisState.Raw = []byte("{}")
+			} else {
+				lastState, err := json.Marshal(response.LastState)
+				if err != nil {
+					instance.Status.MarkExperimentNotCompleted("ErrorAnalyticsResponse", "%v", err)
+					err = r.Status().Update(context, instance)
+					return reconcile.Result{RequeueAfter: 5 * time.Second}, err
+				}
+				instance.Status.AnalysisState = runtime.RawExtension{Raw: lastState}
 			}
-
-			instance.Status.AnalysisState = runtime.RawExtension{Raw: lastState}
 			instance.Status.AssessmentSummary = response.Assessment.Summary
 			instance.Status.CurrentIteration++
 		}
 
-		if newRolloutPercent <= traffic.GetMaxTrafficPercentage() && release.RolloutPercent != int(newRolloutPercent) {
-			log.Info("set traffic", "rolloutPercent", newRolloutPercent)
-			release.RolloutPercent = int(newRolloutPercent)
+		// Set traffic percentable on all routes
+		needUpdate := false
+		for _, target := range ksvctraffic {
+			if target.RevisionName == baseline {
+				if target.Percent != 100-int(newRolloutPercent) {
+					target.Percent = 100 - int(newRolloutPercent)
+					needUpdate = true
+				}
+			} else if target.RevisionName == candidate {
+				if target.Percent != int(newRolloutPercent) {
+					target.Percent = int(newRolloutPercent)
+					needUpdate = true
+				}
+			} else {
+				if target.Percent != 0 {
+					target.Percent = 0
+					needUpdate = true
+				}
+			}
+		}
+		if needUpdate {
+			log.Info("update traffic", "rolloutPercent", newRolloutPercent)
 
-			err = r.Update(context, kservice)
+			err = r.Update(context, kservice) // TODO: patch?
 			if err != nil {
 				// TODO: the analysis service will be called again upon retry. Maybe we do want that.
 				return reconcile.Result{}, err
@@ -267,8 +295,8 @@ func (r *ReconcileExperiment) syncKnative(context context.Context, instance *ite
 }
 
 func getTrafficByName(service *servingv1alpha1.Service, name string) *servingv1alpha1.TrafficTarget {
-	for _, traffic := range service.Status.Traffic {
-		if traffic.Name == name {
+	for _, traffic := range service.Spec.Traffic {
+		if traffic.RevisionName == name {
 			return &traffic
 		}
 	}

@@ -6,7 +6,10 @@ metadata:
     app.kubernetes.io/name: stock-experiment-example
 spec:
   targetService:
+    apiVersion: serving.knative.dev/v1alpha1
     name: stock-experiment-example
+    baseline: stock-experiment-example-first
+    candidate: stock-experiment-example-second
   trafficControl:
     strategy: increment_without_check
     interval: 10s

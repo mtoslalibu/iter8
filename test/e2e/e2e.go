@@ -25,6 +25,7 @@ import (
 	"github.com/google/go-cmp/cmp/cmpopts"
 	istiov1alpha3 "github.com/knative/pkg/apis/istio/v1alpha3"
 	servingalpha1 "github.com/knative/serving/pkg/apis/serving/v1alpha1"
+	servingbeta1 "github.com/knative/serving/pkg/apis/serving/v1beta1"
 	corev1 "k8s.io/api/core/v1"
 	"k8s.io/apimachinery/pkg/api/meta"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
@@ -72,6 +73,9 @@ func GetClient() client.Client {
 		panic(fmt.Errorf("unable to add scheme (%v)", err))
 	}
 	if err := servingalpha1.AddToScheme(sch); err != nil {
+		panic(fmt.Errorf("unable to add scheme (%v)", err))
+	}
+	if err := servingbeta1.AddToScheme(sch); err != nil {
 		panic(fmt.Errorf("unable to add scheme (%v)", err))
 	}
 	if err := istiov1alpha3.AddToScheme(sch); err != nil {
@@ -223,31 +227,31 @@ func runTestCases(t *testing.T, service *test.AnalyticsService, testCases map[st
 			service.Mock = tc.mocks
 
 			if err := tc.createInitObjects(ctx, client); err != nil {
-				t.Fatal(err)
+				t.Fatalf("Failed initializing objects %v", err)
 			}
 
 			if err := tc.runPreHook(ctx, client); err != nil {
-				t.Fatal(err)
+				t.Fatalf("Failed running prehook %v", err)
 			}
 
 			if err := tc.createObject(ctx, client); err != nil {
-				t.Fatal(err)
+				t.Fatalf("Failed creating object %v", err)
 			}
 
 			if err := tc.checkHasState(ctx, client); err != nil {
-				t.Fatal(err)
+				t.Fatalf("Failed checking state %v", err)
 			}
 
 			if err := tc.freezeObjects(ctx, client); err != nil {
-				t.Fatal(err)
+				t.Fatalf("Failed freezing objects %v", err)
 			}
 
 			if err := tc.runPostHook(ctx, client); err != nil {
-				t.Fatal(err)
+				t.Fatalf("Failed running post hook %v", err)
 			}
 
 			if err := tc.checkHasResults(ctx, client); err != nil {
-				t.Fatal(err)
+				t.Fatalf("Failed checking results %v", err)
 			}
 		})
 	}

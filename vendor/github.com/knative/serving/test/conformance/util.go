@@ -40,15 +40,18 @@ import (
 
 // Constants for test images located in test/test_images.
 const (
-	pizzaPlanet1        = "pizzaplanetv1"
-	pizzaPlanet2        = "pizzaplanetv2"
+	failing             = "failing"
 	helloworld          = "helloworld"
 	httpproxy           = "httpproxy"
+	invalidhelloworld   = "invalidhelloworld"
+	pizzaPlanet1        = "pizzaplanetv1"
+	pizzaPlanet2        = "pizzaplanetv2"
+	printport           = "printport"
+	protocols           = "protocols"
+	runtime             = "runtime"
+	runtimeUnprivileged = "runtime-unprivileged"
 	singleThreadedImage = "singlethreaded"
 	timeout             = "timeout"
-	printport           = "printport"
-	runtime             = "runtime"
-	protocols           = "protocols"
 
 	concurrentRequests = 50
 	// We expect to see 100% of requests succeed for traffic sent directly to revisions.

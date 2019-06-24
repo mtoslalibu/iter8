@@ -22,54 +22,47 @@ import (
 	"fmt"
 	"log"
 	"net/http"
+	"os"
 	"time"
-
-	v1 "k8s.io/api/core/v1"
-	"k8s.io/client-go/tools/clientcmd"
-
-	"github.com/knative/serving/cmd/util"
-	"github.com/knative/serving/pkg/autoscaler"
-
-	"github.com/knative/pkg/logging/logkey"
 
 	"github.com/knative/pkg/configmap"
 	"github.com/knative/pkg/controller"
+	"github.com/knative/pkg/logging/logkey"
+	pkgmetrics "github.com/knative/pkg/metrics"
 	"github.com/knative/pkg/signals"
 	"github.com/knative/pkg/system"
 	"github.com/knative/pkg/version"
 	"github.com/knative/pkg/websocket"
+	"github.com/knative/serving/cmd/util"
 	"github.com/knative/serving/pkg/activator"
+	activatorconfig "github.com/knative/serving/pkg/activator/config"
 	activatorhandler "github.com/knative/serving/pkg/activator/handler"
-	activatorutil "github.com/knative/serving/pkg/activator/util"
-	"github.com/knative/serving/pkg/apis/serving"
-	"github.com/knative/serving/pkg/apis/serving/v1alpha1"
+	"github.com/knative/serving/pkg/apis/networking"
+	"github.com/knative/serving/pkg/autoscaler"
 	clientset "github.com/knative/serving/pkg/client/clientset/versioned"
 	servinginformers "github.com/knative/serving/pkg/client/informers/externalversions"
 	"github.com/knative/serving/pkg/goversion"
-	"github.com/knative/serving/pkg/http/h2c"
+	pkghttp "github.com/knative/serving/pkg/http"
 	"github.com/knative/serving/pkg/logging"
 	"github.com/knative/serving/pkg/metrics"
+	"github.com/knative/serving/pkg/network"
 	"github.com/knative/serving/pkg/queue"
-	"github.com/knative/serving/pkg/reconciler"
-	"github.com/knative/serving/pkg/utils"
+	"github.com/knative/serving/pkg/tracing"
+	tracingconfig "github.com/knative/serving/pkg/tracing/config"
+	zipkin "github.com/openzipkin/zipkin-go"
+	perrors "github.com/pkg/errors"
 	"go.uber.org/zap"
-	"k8s.io/apimachinery/pkg/api/errors"
 	"k8s.io/apimachinery/pkg/util/wait"
 	kubeinformers "k8s.io/client-go/informers"
 	"k8s.io/client-go/kubernetes"
-	"k8s.io/client-go/tools/cache"
+	"k8s.io/client-go/tools/clientcmd"
 )
 
-// Fail if using unsupported go version
+// Fail if using unsupported go version.
 var _ = goversion.IsSupported()
 
 const (
 	component = "activator"
-
-	// This is the number of times we will perform network probes to
-	// see if the Revision is accessible before forwarding the actual
-	// request.
-	maxRetries = 18
 
 	// Add a little buffer space between request handling and stat
 	// reporting so that latency in the stat pipeline doesn't
@@ -94,11 +87,13 @@ const (
 )
 
 var (
-	masterURL  = flag.String("master", "", "The address of the Kubernetes API server. Overrides any value in kubeconfig. Only required if out-of-cluster.")
+	masterURL = flag.String("master", "", "The address of the Kubernetes API server. "+
+		"Overrides any value in kubeconfig. Only required if out-of-cluster.")
 	kubeconfig = flag.String("kubeconfig", "", "Path to a kubeconfig. Only required if out-of-cluster.")
 )
 
-func statReporter(statSink *websocket.ManagedConnection, stopCh <-chan struct{}, statChan <-chan *autoscaler.StatMessage, logger *zap.SugaredLogger) {
+func statReporter(statSink *websocket.ManagedConnection, stopCh <-chan struct{},
+	statChan <-chan *autoscaler.StatMessage, logger *zap.SugaredLogger) {
 	for {
 		select {
 		case sm := <-statChan:
@@ -121,15 +116,15 @@ func main() {
 	flag.Parse()
 	cm, err := configmap.Load("/etc/config-logging")
 	if err != nil {
-		log.Fatalf("Error loading logging configuration: %v", err)
+		log.Fatal("Error loading logging configuration:", err)
 	}
-	config, err := logging.NewConfigFromMap(cm)
+	logConfig, err := logging.NewConfigFromMap(cm)
 	if err != nil {
-		log.Fatalf("Error parsing logging configuration: %v", err)
+		log.Fatal("Error parsing logging configuration:", err)
 	}
-	createdLogger, atomicLevel := logging.NewLoggerFromConfig(config, component)
+	createdLogger, atomicLevel := logging.NewLoggerFromConfig(logConfig, component)
 	logger := createdLogger.With(zap.String(logkey.ControllerType, "activator"))
-	defer logger.Sync()
+	defer flush(logger)
 
 	logger.Info("Starting the knative activator")
 
@@ -174,75 +169,43 @@ func main() {
 	endpointInformer := kubeInformerFactory.Core().V1().Endpoints()
 	serviceInformer := kubeInformerFactory.Core().V1().Services()
 	revisionInformer := servingInformerFactory.Serving().V1alpha1().Revisions()
+	sksInformer := servingInformerFactory.Networking().V1alpha1().ServerlessServices()
 
 	// Run informers instead of starting them from the factory to prevent the sync hanging because of empty handler.
-	go revisionInformer.Informer().Run(stopCh)
-	go endpointInformer.Informer().Run(stopCh)
-	go serviceInformer.Informer().Run(stopCh)
-
-	logger.Info("Waiting for informer caches to sync")
-
-	informerSyncs := []cache.InformerSynced{
-		endpointInformer.Informer().HasSynced,
-		revisionInformer.Informer().HasSynced,
-		serviceInformer.Informer().HasSynced,
+	if err := controller.StartInformers(
+		stopCh,
+		revisionInformer.Informer(),
+		endpointInformer.Informer(),
+		serviceInformer.Informer(),
+		sksInformer.Informer()); err != nil {
+		logger.Fatalw("Failed to start informers", err)
 	}
-	// Make sure the caches are in sync before we add the actual handler.
-	// This will prevent from missing endpoint 'Add' events during startup, e.g. when the endpoints informer
-	// is already in sync and it could not perform it because of
-	// revision informer still being synchronized.
-	for i, synced := range informerSyncs {
-		if ok := cache.WaitForCacheSync(stopCh, synced); !ok {
-			logger.Fatalf("failed to wait for cache at index %d to sync", i)
-		}
-	}
+
 	params := queue.BreakerParams{QueueDepth: breakerQueueDepth, MaxConcurrency: breakerMaxConcurrency, InitialCapacity: 0}
+	throttler := activator.NewThrottler(params, endpointInformer, sksInformer.Lister(), revisionInformer.Lister(), logger)
 
-	// Return the number of endpoints, 0 if no endpoints are found.
-	endpointsGetter := func(revID activator.RevisionID) (int32, error) {
-		endpoints, err := endpointInformer.Lister().Endpoints(revID.Namespace).Get(revID.Name)
-		if errors.IsNotFound(err) {
-			return 0, nil
-		}
-		if err != nil {
-			return 0, err
-		}
-		addresses := activator.EndpointsAddressCount(endpoints.Subsets)
-		return int32(addresses), nil
+	activatorL3 := fmt.Sprintf("%s:%d", activator.K8sServiceName, networking.ServiceHTTPPort)
+	zipkinEndpoint, err := zipkin.NewEndpoint("activator", activatorL3)
+	if err != nil {
+		logger.Error("Unable to create tracing endpoint")
+		return
 	}
+	oct := tracing.NewOpenCensusTracer(
+		tracing.WithZipkinExporter(tracing.CreateZipkinReporter, zipkinEndpoint),
+	)
 
-	// Return the revision from the observer.
-	revisionGetter := func(revID activator.RevisionID) (*v1alpha1.Revision, error) {
-		return revisionInformer.Lister().Revisions(revID.Namespace).Get(revID.Name)
-	}
-
-	serviceGetter := func(namespace, name string) (*v1.Service, error) {
-		return serviceInformer.Lister().Services(namespace).Get(name)
-	}
-
-	throttlerParams := activator.ThrottlerParams{
-		BreakerParams: params,
-		Logger:        logger,
-		GetEndpoints:  endpointsGetter,
-		GetRevision:   revisionGetter,
-	}
-	throttler := activator.NewThrottler(throttlerParams)
-
-	handler := cache.ResourceEventHandlerFuncs{
-		AddFunc:    activator.UpdateEndpoints(throttler),
-		UpdateFunc: controller.PassNew(activator.UpdateEndpoints(throttler)),
-		DeleteFunc: activator.DeleteBreaker(throttler),
-	}
-
-	// Update/create the breaker in the throttler when the number of endpoints changes.
-	endpointInformer.Informer().AddEventHandler(cache.FilteringResourceEventHandler{
-		// Pass only the endpoints created by revisions.
-		FilterFunc: reconciler.LabelExistsFilterFunc(serving.RevisionUID),
-		Handler:    handler,
+	tracerUpdater := configmap.TypeFilter(&tracingconfig.Config{})(func(name string, value interface{}) {
+		cfg := value.(*tracingconfig.Config)
+		oct.ApplyConfig(cfg)
 	})
 
+	// Set up our config store
+	configMapWatcher := configmap.NewInformedWatcher(kubeClient, system.Namespace())
+	configStore := activatorconfig.NewStore(createdLogger, tracerUpdater)
+	configStore.WatchConfigs(configMapWatcher)
+
 	// Open a websocket connection to the autoscaler
-	autoscalerEndpoint := fmt.Sprintf("ws://%s.%s.svc.%s:%d", "autoscaler", system.Namespace(), utils.GetClusterDomainName(), autoscalerPort)
+	autoscalerEndpoint := fmt.Sprintf("ws://%s.%s.svc.%s:%d", "autoscaler", system.Namespace(), network.GetClusterDomainName(), autoscalerPort)
 	logger.Info("Connecting to autoscaler at", autoscalerEndpoint)
 	statSink := websocket.NewDurableSendingConnection(autoscalerEndpoint, logger)
 	go statReporter(statSink, stopCh, statChan, logger)
@@ -257,43 +220,66 @@ func main() {
 
 	// Create activation handler chain
 	// Note: innermost handlers are specified first, ie. the last handler in the chain will be executed first
-	var ah http.Handler = &activatorhandler.ActivationHandler{
-		Transport:     activatorutil.AutoTransport,
-		Logger:        logger,
-		Reporter:      reporter,
-		Throttler:     throttler,
-		GetProbeCount: maxRetries,
-		GetRevision:   revisionGetter,
-		GetService:    serviceGetter,
-	}
+	var ah http.Handler = activatorhandler.New(
+		logger,
+		reporter,
+		throttler,
+		revisionInformer.Lister(),
+		serviceInformer.Lister(),
+		sksInformer.Lister(),
+	)
 	ah = activatorhandler.NewRequestEventHandler(reqChan, ah)
-	ah = &activatorhandler.HealthHandler{HealthCheck: statSink.Status, NextHandler: ah}
+	ah = tracing.HTTPSpanMiddleware(ah)
+	ah = configStore.HTTPMiddleware(ah)
+	reqLogHandler, err := pkghttp.NewRequestLogHandler(ah, logging.NewSyncFileWriter(os.Stdout), "",
+		requestLogTemplateInputGetter(revisionInformer.Lister()))
+	if err != nil {
+		logger.Fatalw("Unable to create request log handler", zap.Error(err))
+	}
+	ah = reqLogHandler
 	ah = &activatorhandler.ProbeHandler{NextHandler: ah}
+	ah = &activatorhandler.HealthHandler{HealthCheck: statSink.Status, NextHandler: ah}
 
 	// Watch the logging config map and dynamically update logging levels.
-	configMapWatcher := configmap.NewInformedWatcher(kubeClient, system.Namespace())
 	configMapWatcher.Watch(logging.ConfigMapName(), logging.UpdateLevelFromConfigMap(logger, atomicLevel, component))
 	// Watch the observability config map and dynamically update metrics exporter.
 	configMapWatcher.Watch(metrics.ObservabilityConfigName, metrics.UpdateExporterFromConfigMap(component, logger))
+	// Watch the observability config map and dynamically update request logs.
+	configMapWatcher.Watch(metrics.ObservabilityConfigName, updateRequestLogFromConfigMap(logger, reqLogHandler))
 	if err = configMapWatcher.Start(stopCh); err != nil {
 		logger.Fatalw("Failed to start configuration manager", zap.Error(err))
 	}
 
-	http1Srv := h2c.NewServer(":8080", ah)
-	go func() {
-		if err := http1Srv.ListenAndServe(); err != nil {
-			logger.Errorw("Error running HTTP server", zap.Error(err))
-		}
-	}()
+	servers := map[string]*http.Server{
+		"http1": network.NewServer(fmt.Sprintf(":%d", networking.BackendHTTPPort), ah),
+		"h2c":   network.NewServer(fmt.Sprintf(":%d", networking.BackendHTTP2Port), ah),
+	}
 
-	h2cSrv := h2c.NewServer(":8081", ah)
-	go func() {
-		if err := h2cSrv.ListenAndServe(); err != nil {
-			logger.Errorw("Error running HTTP server", zap.Error(err))
-		}
-	}()
+	errCh := make(chan error, len(servers))
+	for name, server := range servers {
+		go func(name string, s *http.Server) {
+			// Don't forward ErrServerClosed as that indicates we're already shutting down.
+			if err := s.ListenAndServe(); err != nil && err != http.ErrServerClosed {
+				errCh <- perrors.Wrapf(err, "%s server failed", name)
+			}
+		}(name, server)
+	}
 
-	<-stopCh
-	http1Srv.Shutdown(context.Background())
-	h2cSrv.Shutdown(context.Background())
+	// Exit as soon as we see a shutdown signal or one of the servers failed.
+	select {
+	case <-stopCh:
+	case err := <-errCh:
+		logger.Errorw("Failed to run HTTP server", zap.Error(err))
+	}
+
+	for _, server := range servers {
+		server.Shutdown(context.Background())
+	}
+}
+
+func flush(logger *zap.SugaredLogger) {
+	logger.Sync()
+	os.Stdout.Sync()
+	os.Stderr.Sync()
+	pkgmetrics.FlushExporter()
 }

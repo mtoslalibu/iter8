@@ -28,20 +28,20 @@ import (
 	_ "k8s.io/client-go/plugin/pkg/client/auth/gcp"
 
 	cachinginformers "github.com/knative/caching/pkg/client/informers/externalversions"
-	sharedinformers "github.com/knative/pkg/client/informers/externalversions"
 	"github.com/knative/pkg/configmap"
 	"github.com/knative/pkg/controller"
+	pkgmetrics "github.com/knative/pkg/metrics"
 	"github.com/knative/pkg/signals"
 	informers "github.com/knative/serving/pkg/client/informers/externalversions"
 	"github.com/knative/serving/pkg/logging"
 	"github.com/knative/serving/pkg/metrics"
 	"github.com/knative/serving/pkg/reconciler"
-	"github.com/knative/serving/pkg/reconciler/v1alpha1/clusteringress"
-	"github.com/knative/serving/pkg/reconciler/v1alpha1/configuration"
-	"github.com/knative/serving/pkg/reconciler/v1alpha1/labeler"
-	"github.com/knative/serving/pkg/reconciler/v1alpha1/revision"
-	"github.com/knative/serving/pkg/reconciler/v1alpha1/route"
-	"github.com/knative/serving/pkg/reconciler/v1alpha1/service"
+	"github.com/knative/serving/pkg/reconciler/configuration"
+	"github.com/knative/serving/pkg/reconciler/labeler"
+	"github.com/knative/serving/pkg/reconciler/revision"
+	"github.com/knative/serving/pkg/reconciler/route"
+	"github.com/knative/serving/pkg/reconciler/serverlessservice"
+	"github.com/knative/serving/pkg/reconciler/service"
 	"go.uber.org/zap"
 )
 
@@ -60,14 +60,14 @@ func main() {
 	// Set up our logger.
 	loggingConfigMap, err := configmap.Load("/etc/config-logging")
 	if err != nil {
-		log.Fatalf("Error loading logging configuration: %v", err)
+		log.Fatal("Error loading logging configuration:", err)
 	}
 	loggingConfig, err := logging.NewConfigFromMap(loggingConfigMap)
 	if err != nil {
-		log.Fatalf("Error parsing logging configuration: %v", err)
+		log.Fatal("Error parsing logging configuration:", err)
 	}
 	logger, atomicLevel := logging.NewLoggerFromConfig(loggingConfig, component)
-	defer logger.Sync()
+	defer flush(logger)
 
 	// Set up signals so we handle the first shutdown signal gracefully.
 	stopCh := signals.SetupSignalHandler()
@@ -77,13 +77,12 @@ func main() {
 		logger.Fatalw("Error building kubeconfig", zap.Error(err))
 	}
 
-	// We run 6 controllers, so bump the defaults.
-	cfg.QPS = 6 * rest.DefaultQPS
-	cfg.Burst = 6 * rest.DefaultBurst
+	const numControllers = 6
+	cfg.QPS = numControllers * rest.DefaultQPS
+	cfg.Burst = numControllers * rest.DefaultBurst
 	opt := reconciler.NewOptionsOrDie(cfg, logger, stopCh)
 
 	kubeInformerFactory := kubeinformers.NewSharedInformerFactory(opt.KubeClientSet, opt.ResyncPeriod)
-	sharedInformerFactory := sharedinformers.NewSharedInformerFactory(opt.SharedClientSet, opt.ResyncPeriod)
 	servingInformerFactory := informers.NewSharedInformerFactory(opt.ServingClientSet, opt.ResyncPeriod)
 	cachingInformerFactory := cachinginformers.NewSharedInformerFactory(opt.CachingClientSet, opt.ResyncPeriod)
 	buildInformerFactory := revision.KResourceTypedInformerFactory(opt)
@@ -94,12 +93,12 @@ func main() {
 	revisionInformer := servingInformerFactory.Serving().V1alpha1().Revisions()
 	kpaInformer := servingInformerFactory.Autoscaling().V1alpha1().PodAutoscalers()
 	clusterIngressInformer := servingInformerFactory.Networking().V1alpha1().ClusterIngresses()
+	certificateInformer := servingInformerFactory.Networking().V1alpha1().Certificates()
+	sksInformer := servingInformerFactory.Networking().V1alpha1().ServerlessServices()
 	deploymentInformer := kubeInformerFactory.Apps().V1().Deployments()
 	coreServiceInformer := kubeInformerFactory.Core().V1().Services()
 	endpointsInformer := kubeInformerFactory.Core().V1().Endpoints()
 	configMapInformer := kubeInformerFactory.Core().V1().ConfigMaps()
-	virtualServiceInformer := sharedInformerFactory.Networking().V1alpha3().VirtualServices()
-	gatewayInformer := sharedInformerFactory.Networking().V1alpha3().Gateways()
 	imageInformer := cachingInformerFactory.Caching().V1alpha1().Images()
 
 	// Build all of our controllers, with the clients constructed above.
@@ -128,6 +127,7 @@ func main() {
 			revisionInformer,
 			coreServiceInformer,
 			clusterIngressInformer,
+			certificateInformer,
 		),
 		labeler.NewRouteToConfigurationController(
 			opt,
@@ -139,14 +139,18 @@ func main() {
 			opt,
 			serviceInformer,
 			configurationInformer,
+			revisionInformer,
 			routeInformer,
 		),
-		clusteringress.NewController(
+		serverlessservice.NewController(
 			opt,
-			clusterIngressInformer,
-			virtualServiceInformer,
-			gatewayInformer,
+			sksInformer,
+			coreServiceInformer,
+			endpointsInformer,
 		),
+	}
+	if len(controllers) != numControllers {
+		logger.Fatalf("Number of controllers and QPS settings mismatch: %d != %d", len(controllers), numControllers)
 	}
 
 	// Watch the logging config map and dynamically update logging levels.
@@ -161,24 +165,29 @@ func main() {
 	logger.Info("Starting informers.")
 	if err := controller.StartInformers(
 		stopCh,
-		serviceInformer.Informer(),
-		routeInformer.Informer(),
-		configurationInformer.Informer(),
-		revisionInformer.Informer(),
-		kpaInformer.Informer(),
 		clusterIngressInformer.Informer(),
-		imageInformer.Informer(),
-		deploymentInformer.Informer(),
-		coreServiceInformer.Informer(),
-		endpointsInformer.Informer(),
+		certificateInformer.Informer(),
 		configMapInformer.Informer(),
-		virtualServiceInformer.Informer(),
+		configurationInformer.Informer(),
+		coreServiceInformer.Informer(),
+		deploymentInformer.Informer(),
+		endpointsInformer.Informer(),
+		imageInformer.Informer(),
+		kpaInformer.Informer(),
+		revisionInformer.Informer(),
+		routeInformer.Informer(),
+		serviceInformer.Informer(),
+		sksInformer.Informer(),
 	); err != nil {
-		logger.Fatalf("Failed to start informers: %v", err)
+		logger.Fatalw("Failed to start informers", err)
 	}
 
 	// Start all of the controllers.
 	logger.Info("Starting controllers.")
-	go controller.StartAll(stopCh, controllers...)
-	<-stopCh
+	controller.StartAll(stopCh, controllers...)
+}
+
+func flush(logger *zap.SugaredLogger) {
+	logger.Sync()
+	pkgmetrics.FlushExporter()
 }

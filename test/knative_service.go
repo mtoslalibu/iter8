@@ -15,20 +15,19 @@ limitations under the License.
 package test
 
 import (
-	"context"
 	"fmt"
 
 	servingalpha1 "github.com/knative/serving/pkg/apis/serving/v1alpha1"
+	servingbeta1 "github.com/knative/serving/pkg/apis/serving/v1beta1"
 	corev1 "k8s.io/api/core/v1"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/apimachinery/pkg/runtime"
-	"sigs.k8s.io/controller-runtime/pkg/client"
 )
 
 // KnativeServiceBuilder builds Knative service object
 type KnativeServiceBuilder servingalpha1.Service
 
-// NewKnativeService creates a default Knative service
+// NewKnativeService creates a default Knative service with empty template
 func NewKnativeService(name string, namespace string) *KnativeServiceBuilder {
 	s := &servingalpha1.Service{
 		TypeMeta: metav1.TypeMeta{
@@ -39,8 +38,27 @@ func NewKnativeService(name string, namespace string) *KnativeServiceBuilder {
 			Name:      name,
 			Namespace: namespace,
 		},
+		Spec: servingalpha1.ServiceSpec{
+			ConfigurationSpec: servingalpha1.ConfigurationSpec{
+				Template: &servingalpha1.RevisionTemplateSpec{
+					ObjectMeta: metav1.ObjectMeta{
+						Name: name + "-one",
+					},
+				},
+			},
+			RouteSpec: servingalpha1.RouteSpec{
+				Traffic: []servingalpha1.TrafficTarget{
+					servingalpha1.TrafficTarget{
+						TrafficTarget: servingbeta1.TrafficTarget{
+							RevisionName: name + "-one",
+							Percent:      100,
+						},
+					},
+				},
+			},
+		},
 	}
-	s.SetDefaults(context.TODO())
+	//	s.SetDefaults(context.TODO())
 	return (*KnativeServiceBuilder)(s)
 }
 
@@ -49,48 +67,33 @@ func (b *KnativeServiceBuilder) Build() *servingalpha1.Service {
 	return (*servingalpha1.Service)(b)
 }
 
-func (b *KnativeServiceBuilder) WithReleaseImage(image string) *KnativeServiceBuilder {
-	if b.Spec.Release == nil {
-		b.Spec.Release = &servingalpha1.ReleaseType{}
+func (b *KnativeServiceBuilder) WithImage(name string) *KnativeServiceBuilder {
+	if b.Spec.Template.Spec.Containers == nil {
+		b.Spec.Template.Spec.Containers = make([]corev1.Container, 1)
 	}
-	b.Spec.Release.Configuration.RevisionTemplate.Spec.Container.Image = image
+	b.Spec.Template.Spec.Containers[0].Image = name
 	return b
 }
 
-func (b *KnativeServiceBuilder) WithReleaseRevisions(revisions []string) *KnativeServiceBuilder {
-	if b.Spec.Release == nil {
-		b.Spec.Release = &servingalpha1.ReleaseType{}
-	}
-	b.Spec.Release.Revisions = revisions
+func (b *KnativeServiceBuilder) WithRevision(suffix string) *KnativeServiceBuilder {
+	revisionName := b.Name + "-" + suffix
+	b.Spec.Template.Name = revisionName
+	b.Spec.Traffic = append(b.Spec.Traffic, servingalpha1.TrafficTarget{
+		TrafficTarget: servingbeta1.TrafficTarget{
+			RevisionName: revisionName,
+			Percent:      0,
+		},
+	})
 	return b
 }
 
-func (b *KnativeServiceBuilder) WithReleaseEnv(name string, value string) *KnativeServiceBuilder {
-	if b.Spec.Release == nil {
-		b.Spec.Release = &servingalpha1.ReleaseType{}
+func (b *KnativeServiceBuilder) WithEnv(name string, value string) *KnativeServiceBuilder {
+	if b.Spec.Template.Spec.Containers == nil {
+		b.Spec.Template.Spec.Containers = make([]corev1.Container, 1)
 	}
-	container := b.Spec.Release.Configuration.RevisionTemplate.Spec.Container
+	container := b.Spec.Template.Spec.Containers[0]
 	container.Env = append(container.Env, corev1.EnvVar{Name: name, Value: value})
 	return b
-}
-
-func (b *KnativeServiceBuilder) WithLatestImage(image string) *KnativeServiceBuilder {
-	if b.Spec.RunLatest == nil {
-		b.Spec.RunLatest = &servingalpha1.RunLatestType{}
-	}
-	b.Spec.RunLatest.Configuration.RevisionTemplate.Spec.Container.Image = image
-	return b
-}
-
-func GetLatestRevision(ctx context.Context, cl client.Client, name string, namespace string) (string, error) {
-	obj := NewKnativeService(name, namespace).Build()
-
-	err := cl.Get(ctx, client.ObjectKey{Namespace: obj.GetNamespace(), Name: obj.GetName()}, obj)
-	if err != nil {
-		return "", err
-	}
-
-	return obj.Status.LatestReadyRevisionName, nil
 }
 
 func CheckServiceReady(obj runtime.Object) (bool, error) {
@@ -100,4 +103,15 @@ func CheckServiceReady(obj runtime.Object) (bool, error) {
 	}
 
 	return service.Status.GetCondition(servingalpha1.ServiceConditionReady).IsTrue(), nil
+}
+
+func CheckLatestReadyRevisionName(name string) func(obj runtime.Object) (bool, error) {
+	return func(obj runtime.Object) (bool, error) {
+		service, ok := obj.(*servingalpha1.Service)
+		if !ok {
+			return false, fmt.Errorf("Expected a Knative service (got: %v)", obj)
+		}
+
+		return service.Status.LatestReadyRevisionName == name, nil
+	}
 }
