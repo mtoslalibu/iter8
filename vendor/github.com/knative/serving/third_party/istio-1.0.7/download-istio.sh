@@ -1,10 +1,14 @@
+#!/usr/bin/env bash
+
 # Download and unpack Istio
 ISTIO_VERSION=1.0.7
 DOWNLOAD_URL=https://github.com/istio/istio/releases/download/${ISTIO_VERSION}/istio-${ISTIO_VERSION}-linux.tar.gz
 
 wget $DOWNLOAD_URL
 tar xzf istio-${ISTIO_VERSION}-linux.tar.gz
-cd istio-${ISTIO_VERSION}
+
+( # subshell in downloaded directory
+cd istio-${ISTIO_VERSION} || exit
 
 # Copy CRDs template
 cp install/kubernetes/helm/istio/templates/crds.yaml ../istio-crds.yaml
@@ -23,7 +27,8 @@ helm template --namespace=istio-system \
   install/kubernetes/helm/istio \
   -f install/kubernetes/helm/istio/values-istio-gateways.yaml \
   | sed -e "s/custom-gateway/cluster-local-gateway/g" -e "s/customgateway/clusterlocalgateway/g" \
-  > cluster-local-gateway.yaml
+  | sed "s/[[:space:]]*$//" \
+  > ../istio-knative-extras.yaml
 
 # A template with sidecar injection enabled.
 helm template --namespace=istio-system \
@@ -47,7 +52,7 @@ helm template --namespace=istio-system \
   `# Remove all hardcoded NodePorts` \
   | grep -v "^[[:space:]]*nodePort[[:space:]]*:[[:space:]]*[[:digit:]]\+$" \
   > ../istio.yaml
-cat cluster-local-gateway.yaml >> ../istio.yaml
+cat ../istio-knative-extras.yaml >> ../istio.yaml
 
 # A lighter template, with no sidecar injection.  We could probably remove
 # more from this template.
@@ -68,10 +73,10 @@ helm template --namespace=istio-system \
   `# Remove all hardcoded NodePorts` \
   | grep -v "^[[:space:]]*nodePort[[:space:]]*:[[:space:]]*[[:digit:]]\+$" \
   > ../istio-lean.yaml
-cat cluster-local-gateway.yaml >> ../istio-lean.yaml
+cat ../istio-knative-extras.yaml >> ../istio-lean.yaml
+)
 
 # Clean up.
-cd ..
 rm -rf istio-${ISTIO_VERSION}
 rm istio-${ISTIO_VERSION}-linux.tar.gz
 
@@ -84,8 +89,3 @@ patch istio-lean.yaml namespace.yaml.patch
 #
 # We need to replace this with some better solution like retries.
 patch istio.yaml prestop-sleep.yaml.patch
-
-# Set the default connection timeout
-# as per https://github.com/istio/istio/issues/11319
-patch istio.yaml conn-timeout.yaml.patch
-patch istio-lean.yaml conn-timeout.yaml.patch

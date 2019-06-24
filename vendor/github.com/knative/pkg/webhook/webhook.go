@@ -227,6 +227,7 @@ func validate(ctx context.Context, new GenericCRD) error {
 	if err := new.Validate(ctx); err != nil {
 		return err
 	}
+
 	return nil
 }
 
@@ -332,7 +333,7 @@ func (ac *AdmissionController) register(
 			Rule: admissionregistrationv1beta1.Rule{
 				APIGroups:   []string{gvk.Group},
 				APIVersions: []string{gvk.Version},
-				Resources:   []string{plural},
+				Resources:   []string{plural + "/*"},
 			},
 		})
 	}
@@ -549,7 +550,11 @@ func (ac *AdmissionController) mutate(ctx context.Context, req *admissionv1beta1
 		oldObj = oldObj.DeepCopyObject().(GenericCRD)
 		oldObj.SetDefaults(ctx)
 
-		ctx = apis.WithinUpdate(ctx, oldObj)
+		if req.SubResource == "" {
+			ctx = apis.WithinUpdate(ctx, oldObj)
+		} else {
+			ctx = apis.WithinSubResourceUpdate(ctx, oldObj, req.SubResource)
+		}
 	} else {
 		ctx = apis.WithinCreate(ctx)
 	}
@@ -573,6 +578,7 @@ func (ac *AdmissionController) mutate(ctx context.Context, req *admissionv1beta1
 		// discretion over (our portion of) the message that the user sees.
 		return nil, err
 	}
+
 	return json.Marshal(patches)
 }
 

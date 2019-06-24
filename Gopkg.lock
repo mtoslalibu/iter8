@@ -140,11 +140,11 @@
   revision = "6f77996f0c42f7b84e5a2b252227263f93432e9b"
 
 [[projects]]
-  digest = "1:9c1cb5bad4dddd1b8b88cf1fde16d5c9941cb8f083a4c8a9020740bc9f569329"
+  digest = "1:9502d3f5526c8c5d234ba0575ce046a5b15f08cd9586e4370a2d61d198b68895"
   name = "github.com/google/go-containerregistry"
   packages = ["pkg/name"]
   pruneopts = "T"
-  revision = "dbc4da98389f9d0c42eb314c2b346bf1d2a27310"
+  revision = "ec69c4a8a1bff25fcbe096fcb32c9a6543fbdccf"
 
 [[projects]]
   digest = "1:a6181aca1fd5e27103f9a920876f29ac72854df7345a39f3b01e61c8c94cc8af"
@@ -263,24 +263,26 @@
 
 [[projects]]
   branch = "master"
-  digest = "1:8083b72e26cb33262d4bcd78abed9ce7fedb28ae387ed73379d86494a212dadc"
+  digest = "1:74011ee8ad886225d91925bcaa1e3b692d183713e9fff3411f31920fd37b395d"
   name = "github.com/knative/pkg"
   packages = [
     "apis",
     "apis/duck",
     "apis/duck/v1alpha1",
+    "apis/duck/v1beta1",
     "apis/istio",
     "apis/istio/common/v1alpha1",
     "apis/istio/v1alpha3",
     "configmap",
     "kmeta",
     "kmp",
+    "ptr",
   ]
   pruneopts = "T"
-  revision = "418e675f88c29db0217475a74e61ebfa239f0f50"
+  revision = "d90a9bc97dde7b1acc9f0b5b38916cb0914b1538"
 
 [[projects]]
-  digest = "1:e38da7d798dbfdece007f47e99e46f0f096076e350ae4a5f1095a440c4b53465"
+  digest = "1:696d4ea394c9d92b4df5a39456a58110fd9b45eaa7ddd898d60bb15f17bf3421"
   name = "github.com/knative/serving"
   packages = [
     "pkg/apis/autoscaling",
@@ -289,10 +291,11 @@
     "pkg/apis/networking/v1alpha1",
     "pkg/apis/serving",
     "pkg/apis/serving/v1alpha1",
+    "pkg/apis/serving/v1beta1",
   ]
   pruneopts = "T"
-  revision = "de51b2cd890649e2081dcafbc50afa8b07b54704"
-  version = "v0.5.1"
+  revision = "6afdcf3c200cc8cffcfdeaa223a00df150f4026f"
+  version = "v0.6.1"
 
 [[projects]]
   digest = "1:3804a3a02964db8e6db3e5e7960ac1c1a9b12835642dd4f4ac4e56c749ec73eb"
@@ -1096,6 +1099,7 @@
     "github.com/knative/pkg/apis/duck/v1alpha1",
     "github.com/knative/pkg/apis/istio/v1alpha3",
     "github.com/knative/serving/pkg/apis/serving/v1alpha1",
+    "github.com/knative/serving/pkg/apis/serving/v1beta1",
     "github.com/onsi/ginkgo",
     "github.com/onsi/gomega",
     "github.com/pkg/errors",

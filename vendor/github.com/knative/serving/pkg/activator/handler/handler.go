@@ -3,7 +3,9 @@ Copyright 2018 The Knative Authors
 Licensed under the Apache License, Version 2.0 (the "License");
 you may not use this file except in compliance with the License.
 You may obtain a copy of the License at
+
     http://www.apache.org/licenses/LICENSE-2.0
+
 Unless required by applicable law or agreed to in writing, software
 distributed under the License is distributed on an "AS IS" BASIS,
 WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
@@ -16,63 +18,135 @@ package handler
 import (
 	"errors"
 	"fmt"
-	"io/ioutil"
 	"net/http"
 	"net/http/httputil"
 	"net/url"
 	"time"
 
+	"go.opencensus.io/plugin/ochttp"
+	"go.opencensus.io/trace"
+	"go.uber.org/zap"
+
 	"github.com/knative/pkg/logging/logkey"
 	"github.com/knative/serving/pkg/activator"
 	"github.com/knative/serving/pkg/activator/util"
+	"github.com/knative/serving/pkg/apis/networking"
 	"github.com/knative/serving/pkg/apis/serving"
 	"github.com/knative/serving/pkg/apis/serving/v1alpha1"
+	netlisters "github.com/knative/serving/pkg/client/listers/networking/v1alpha1"
+	servinglisters "github.com/knative/serving/pkg/client/listers/serving/v1alpha1"
 	pkghttp "github.com/knative/serving/pkg/http"
 	"github.com/knative/serving/pkg/network"
+	"github.com/knative/serving/pkg/network/prober"
 	"github.com/knative/serving/pkg/queue"
-	"github.com/knative/serving/pkg/reconciler"
-	"github.com/knative/serving/pkg/reconciler/v1alpha1/revision/resources"
-	resourcenames "github.com/knative/serving/pkg/reconciler/v1alpha1/revision/resources/names"
-	"go.uber.org/zap"
-	v1 "k8s.io/api/core/v1"
+
 	k8serrors "k8s.io/apimachinery/pkg/api/errors"
 	"k8s.io/apimachinery/pkg/util/wait"
+	corev1listers "k8s.io/client-go/listers/core/v1"
 )
 
-// ActivationHandler will wait for an active endpoint for a revision
+// activationHandler will wait for an active endpoint for a revision
 // to be available before proxing the request
-type ActivationHandler struct {
-	Logger    *zap.SugaredLogger
-	Transport http.RoundTripper
-	Reporter  activator.StatsReporter
-	Throttler *activator.Throttler
+type activationHandler struct {
+	logger    *zap.SugaredLogger
+	transport http.RoundTripper
+	reporter  activator.StatsReporter
+	throttler *activator.Throttler
 
-	// GetProbeCount is the number of attempts we should
-	// make to network probe the queue-proxy after the revision becomes
-	// ready before forwarding the payload.  If zero, a network probe
-	// is not required.
-	GetProbeCount int
+	probeTimeout time.Duration
 
-	GetRevision func(revID activator.RevisionID) (*v1alpha1.Revision, error)
-	GetService  func(namespace, name string) (*v1.Service, error)
+	revisionLister servinglisters.RevisionLister
+	serviceLister  corev1listers.ServiceLister
+	sksLister      netlisters.ServerlessServiceLister
 }
 
-func (a *ActivationHandler) ServeHTTP(w http.ResponseWriter, r *http.Request) {
+// The default time we'll try to probe the revision for activation.
+const defaulTimeout = 2 * time.Minute
+
+// New constructs a new http.Handler that deals with revision activation.
+func New(l *zap.SugaredLogger, r activator.StatsReporter, t *activator.Throttler,
+	rl servinglisters.RevisionLister, sl corev1listers.ServiceLister,
+	sksL netlisters.ServerlessServiceLister) http.Handler {
+
+	// In activator we collect metrics, so we're wrapping
+	// the Roundtripper the prober would use inside annotating transport.
+	prober.TransportFactory = func() http.RoundTripper {
+		return &ochttp.Transport{
+			Base: network.NewAutoTransport(),
+		}
+	}
+	return &activationHandler{
+		logger:         l,
+		transport:      network.AutoTransport,
+		reporter:       r,
+		throttler:      t,
+		revisionLister: rl,
+		sksLister:      sksL,
+		serviceLister:  sl,
+		probeTimeout:   defaulTimeout,
+	}
+}
+
+func withOrigProto(or *http.Request) prober.ProbeOption {
+	return func(r *http.Request) *http.Request {
+		r.Proto = or.Proto
+		r.ProtoMajor = or.ProtoMajor
+		r.ProtoMinor = or.ProtoMinor
+		return r
+	}
+}
+
+func (a *activationHandler) probeEndpoint(logger *zap.SugaredLogger, r *http.Request, target *url.URL) (bool, int) {
+	var (
+		attempts int
+		st       = time.Now()
+	)
+
+	reqCtx, probeSpan := trace.StartSpan(r.Context(), "probe")
+	defer func() {
+		probeSpan.End()
+		a.logger.Infof("Probing %s took %d attempts and %v time", target.String(), attempts, time.Since(st))
+	}()
+
+	err := wait.PollImmediate(100*time.Millisecond, a.probeTimeout, func() (bool, error) {
+		attempts++
+		ret, err := prober.Do(reqCtx, target.String(), queue.Name, withOrigProto(r))
+		if err != nil {
+			logger.Warnw("Pod probe failed", zap.Error(err))
+			return false, nil
+		}
+		if !ret {
+			logger.Warn("Pod probe unsuccessful")
+			return false, nil
+		}
+		return true, nil
+	})
+	return (err == nil), attempts
+}
+
+func (a *activationHandler) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 	namespace := pkghttp.LastHeaderValue(r.Header, activator.RevisionHeaderNamespace)
 	name := pkghttp.LastHeaderValue(r.Header, activator.RevisionHeaderName)
 	start := time.Now()
 	revID := activator.RevisionID{Namespace: namespace, Name: name}
 
-	logger := a.Logger.With(zap.String(logkey.Key, revID.String()))
+	logger := a.logger.With(zap.String(logkey.Key, revID.String()))
 
-	revision, err := a.GetRevision(revID)
+	revision, err := a.revisionLister.Revisions(namespace).Get(name)
 	if err != nil {
 		logger.Errorw("Error while getting revision", zap.Error(err))
 		sendError(err, w)
 		return
 	}
 
-	host, err := a.serviceHostName(revision)
+	// SKS name matches that of revision.
+	sks, err := a.sksLister.ServerlessServices(namespace).Get(name)
+	if err != nil {
+		logger.Errorw("Error while getting SKS", zap.Error(err))
+		sendError(err, w)
+		return
+	}
+	host, err := a.serviceHostName(revision, sks.Status.PrivateServiceName)
 	if err != nil {
 		logger.Errorw("Error while getting hostname", zap.Error(err))
 		sendError(err, w)
@@ -84,62 +158,18 @@ func (a *ActivationHandler) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 		Host:   host,
 	}
 
-	err = a.Throttler.Try(revID, func() {
+	err = a.throttler.Try(revID, func() {
 		var (
 			httpStatus int
-			attempts   int
 		)
 
-		// If a GET probe interval has been configured, then probe
-		// the queue-proxy with our network probe header until it
-		// returns a 200 status code.
-		success := (a.GetProbeCount == 0)
-		if !success {
-			probeReq := &http.Request{
-				Method:     http.MethodGet,
-				URL:        target,
-				Proto:      r.Proto,
-				ProtoMajor: r.ProtoMajor,
-				ProtoMinor: r.ProtoMinor,
-				Host:       r.Host,
-				Header: map[string][]string{
-					http.CanonicalHeaderKey(network.ProbeHeaderName): {queue.Name},
-				},
-			}
-			settings := wait.Backoff{
-				Duration: 100 * time.Millisecond,
-				Factor:   1.3,
-				Steps:    a.GetProbeCount,
-			}
-			err := wait.ExponentialBackoff(settings, func() (bool, error) {
-				attempts++
-				probeResp, err := a.Transport.RoundTrip(probeReq)
-				if err != nil {
-					logger.Warnw("Pod probe failed", zap.Error(err))
-					return false, nil
-				}
-				defer probeResp.Body.Close()
-				httpStatus = probeResp.StatusCode
-				if httpStatus != http.StatusOK {
-					logger.Warnf("Pod probe sent status: %d", httpStatus)
-					return false, nil
-				}
-				if body, err := ioutil.ReadAll(probeResp.Body); err != nil {
-					logger.Errorw("Pod probe returns an invalid response body", zap.Error(err))
-					return false, nil
-				} else if queue.Name != string(body) {
-					logger.Infof("Pod probe did not reach the target queue proxy. Reached: %s", body)
-					return false, nil
-				}
-				return true, nil
-			})
-			success = (err == nil) && httpStatus == http.StatusOK
-		}
-
+		success, attempts := a.probeEndpoint(logger, r, target)
 		if success {
 			// Once we see a successful probe, send traffic.
 			attempts++
-			httpStatus = a.proxyRequest(w, r, target)
+			reqCtx, proxySpan := trace.StartSpan(r.Context(), "proxy")
+			httpStatus = a.proxyRequest(w, r.WithContext(reqCtx), target)
+			proxySpan.End()
 		} else {
 			httpStatus = http.StatusInternalServerError
 			w.WriteHeader(httpStatus)
@@ -155,8 +185,8 @@ func (a *ActivationHandler) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 			serviceName = revision.Labels[serving.ServiceLabelKey]
 		}
 
-		a.Reporter.ReportRequestCount(namespace, serviceName, configurationName, name, httpStatus, attempts, 1.0)
-		a.Reporter.ReportResponseTime(namespace, serviceName, configurationName, name, httpStatus, duration)
+		a.reporter.ReportRequestCount(namespace, serviceName, configurationName, name, httpStatus, attempts, 1.0)
+		a.reporter.ReportResponseTime(namespace, serviceName, configurationName, name, httpStatus, duration)
 	})
 	if err != nil {
 		if err == activator.ErrActivatorOverload {
@@ -168,10 +198,13 @@ func (a *ActivationHandler) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 	}
 }
 
-func (a *ActivationHandler) proxyRequest(w http.ResponseWriter, r *http.Request, target *url.URL) int {
+func (a *activationHandler) proxyRequest(w http.ResponseWriter, r *http.Request, target *url.URL) int {
+	network.RewriteHostIn(r)
 	recorder := pkghttp.NewResponseRecorder(w, http.StatusOK)
 	proxy := httputil.NewSingleHostReverseProxy(target)
-	proxy.Transport = a.Transport
+	proxy.Transport = &ochttp.Transport{
+		Base: a.transport,
+	}
 	proxy.FlushInterval = -1
 
 	r.Header.Set(network.ProxyHeaderName, activator.Name)
@@ -184,18 +217,17 @@ func (a *ActivationHandler) proxyRequest(w http.ResponseWriter, r *http.Request,
 
 // serviceHostName obtains the hostname of the underlying service and the correct
 // port to send requests to.
-func (a *ActivationHandler) serviceHostName(rev *v1alpha1.Revision) (string, error) {
-	serviceName := resourcenames.K8sService(rev)
-	svc, err := a.GetService(rev.Namespace, serviceName)
+func (a *activationHandler) serviceHostName(rev *v1alpha1.Revision, serviceName string) (string, error) {
+	svc, err := a.serviceLister.Services(rev.Namespace).Get(serviceName)
 	if err != nil {
 		return "", err
 	}
 
 	// Search for the appropriate port
-	port := int32(-1)
+	port := -1
 	for _, p := range svc.Spec.Ports {
-		if p.Name == resources.ServicePortName(rev) {
-			port = p.Port
+		if p.Name == networking.ServicePortName(rev.GetProtocol()) {
+			port = int(p.Port)
 			break
 		}
 	}
@@ -203,7 +235,7 @@ func (a *ActivationHandler) serviceHostName(rev *v1alpha1.Revision) (string, err
 		return "", errors.New("revision needs external HTTP port")
 	}
 
-	serviceFQDN := reconciler.GetK8sServiceFullname(serviceName, rev.Namespace)
+	serviceFQDN := network.GetServiceHostname(serviceName, rev.Namespace)
 
 	return fmt.Sprintf("%s:%d", serviceFQDN, port), nil
 }

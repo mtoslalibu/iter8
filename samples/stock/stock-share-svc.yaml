@@ -3,11 +3,21 @@ kind: Service
 metadata:
   name: stock-experiment-example
 spec:
-  release:
-    configuration:
-      revisionTemplate:
-        spec:
-          container:
-            env:
-              - name: RESOURCE
-                value: share
+  template:
+    metadata:
+      name: stock-experiment-example-second
+    spec:
+      containers:
+      - image: github.ibm.com/istio-research/iter8-controller/samples/stock
+        env:
+          - name: RESOURCE
+            value: share2
+        readinessProbe:
+          httpGet:
+            path: /
+          initialDelaySeconds: 0
+          periodSeconds: 3
+  traffic:
+  - revisionName: stock-experiment-example-first
+    percent: 100
+  - revisionName: stock-experiment-example-second

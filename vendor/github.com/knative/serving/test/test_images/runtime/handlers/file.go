@@ -15,35 +15,33 @@ package handlers
 
 import (
 	"os"
+	"strings"
 
 	"github.com/knative/serving/test/types"
 )
 
-// filePaths is the set of filepaths probed and returned to the
-// client as FileInfo.
-var filePaths = []string{"/tmp",
-	"/var/log",
-	"/dev/log",
-	"/etc/hosts",
-	"/etc/hostname",
-	"/etc/resolv.conf"}
-
-func fileInfo(paths ...string) []*types.FileInfo {
-	var infoList []*types.FileInfo
-
+func fileInfo(paths ...string) map[string]types.FileInfo {
+	files := map[string]types.FileInfo{}
 	for _, path := range paths {
 		file, err := os.Stat(path)
 		if err != nil {
-			infoList = append(infoList, &types.FileInfo{Name: path, Error: err.Error()})
+			files[path] = types.FileInfo{Error: err.Error()}
 			continue
 		}
 		size := file.Size()
 		dir := file.IsDir()
-		infoList = append(infoList, &types.FileInfo{Name: path,
-			Size:    &size,
-			Mode:    file.Mode().String(),
-			ModTime: file.ModTime(),
-			IsDir:   &dir})
+		source, _ := os.Readlink(path)
+
+		// If we apply the UNIX permissions mask via 'Perm' the leading
+		// character will always be "-" because all the mode bits are dropped.
+		perm := strings.TrimPrefix(file.Mode().Perm().String(), "-")
+
+		files[path] = types.FileInfo{
+			Size:       &size,
+			Perm:       perm,
+			ModTime:    file.ModTime(),
+			SourceFile: source,
+			IsDir:      &dir}
 	}
-	return infoList
+	return files
 }

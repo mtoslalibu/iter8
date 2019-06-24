@@ -18,41 +18,26 @@ package activator
 
 import (
 	"fmt"
-
-	"github.com/knative/serving/pkg/apis/networking"
 )
 
 const (
 	// Name is the name of the component.
 	Name = "activator"
-	// K8sServiceName is the name of the activator service
+	// K8sServiceName is the name of the activator Kubernetes service.
 	K8sServiceName = "activator-service"
-	// RevisionHeaderName is the header key for revision name
+	// RevisionHeaderName is the header key for revision name.
 	RevisionHeaderName string = "knative-serving-revision"
-	// RevisionHeaderNamespace is the header key for revision's namespace
+	// RevisionHeaderNamespace is the header key for revision's namespace.
 	RevisionHeaderNamespace string = "knative-serving-namespace"
-
-	// ServicePortHTTP1 is the port number for activating HTTP1 revisions
-	ServicePortHTTP1 int32 = 80
-	// ServicePortH2C is the port number for activating H2C revisions
-	ServicePortH2C int32 = 81
 )
 
-// RevisionID is the combination of namespace and service name
+// RevisionID is the combination of namespace and revision name
 type RevisionID struct {
 	Namespace string
 	Name      string
 }
 
+// String returns the namespaced name of the RevisionID.
 func (rev RevisionID) String() string {
 	return fmt.Sprintf("%s/%s", rev.Namespace, rev.Name)
-}
-
-// ServicePort returns the activator service port for the given app level protocol.
-// Default is `ServicePortHTTP1`.
-func ServicePort(protocol networking.ProtocolType) int32 {
-	if protocol == networking.ProtocolH2C {
-		return ServicePortH2C
-	}
-	return ServicePortHTTP1
 }

@@ -44,7 +44,7 @@ func TestKnativeExperiment(t *testing.T) {
 			initObjects: []runtime.Object{
 				getBaseStockService("stock-1"),
 			},
-			object:    getFastExperimentForService("stock-1", "stock-1"),
+			object:    getFastExperimentForService("stock-1", "stock-1", service.GetURL()),
 			preHook:   newStockServiceRevision("stock-1"),
 			wantState: test.CheckExperimentFinished,
 			frozenObjects: []runtime.Object{
@@ -63,12 +63,15 @@ func getDoNotExistExperiment() *v1alpha1.Experiment {
 		Build()
 }
 
-func getFastExperimentForService(name string, serviceName string) *v1alpha1.Experiment {
+func getFastExperimentForService(name string, serviceName string, analyticsHost string) *v1alpha1.Experiment {
 	experiment := test.NewExperiment(name, Flags.Namespace).
 		WithKNativeService(serviceName).
+		WithAnalyticsHost(analyticsHost).
 		Build()
 	onesec := "1s"
 	one := 1
+	experiment.Spec.TargetService.Baseline = serviceName + "-one"
+	experiment.Spec.TargetService.Candidate = serviceName + "-two"
 	experiment.Spec.TrafficControl.Interval = &onesec
 	experiment.Spec.TrafficControl.MaxIterations = &one
 	return experiment
@@ -83,34 +86,27 @@ func getDoNotExistExperimentReconciled() *v1alpha1.Experiment {
 
 func getBaseStockService(name string) runtime.Object {
 	return test.NewKnativeService(name, Flags.Namespace).
-		WithLatestImage(test.StockImageName).
+		WithImage(test.StockImageName).
 		Build()
-}
-
-func getSharedStockService(name string) runtime.Object {
-	return test.NewKnativeService(name, Flags.Namespace).
-		WithLatestImage(test.StockImageName).Build()
 }
 
 func newStockServiceRevision(name string) test.Hook {
 	return func(ctx context.Context, cl client.Client) error {
-		candidate := test.NewKnativeService(name, Flags.Namespace)
+		ksvc := test.NewKnativeService(name, Flags.Namespace).Build()
 
-		test.WaitForState(ctx, cl, candidate.Build(), test.CheckServiceReady)
-		revision, err := test.GetLatestRevision(ctx, cl, name, Flags.Namespace)
+		err := test.WaitForState(ctx, cl, ksvc, test.CheckServiceReady)
 		if err != nil {
 			return err
 		}
 
-		candidate = candidate.WithReleaseRevisions([]string{revision}).
-			WithReleaseImage(test.StockImageName).
-			WithReleaseEnv("RESOURCE", "share")
-		candidate.Spec.RunLatest = nil
+		(*test.KnativeServiceBuilder)(ksvc).
+			WithEnv("RESOURCE", "share").
+			WithRevision("two")
 
-		if err := cl.Update(ctx, candidate.Build()); err != nil {
+		if err := cl.Update(ctx, ksvc); err != nil {
 			return errors.Wrapf(err, "Cannot update service %s", name)
 		}
 
-		return test.WaitForState(ctx, cl, candidate.Build(), test.CheckServiceReady)
+		return test.WaitForState(ctx, cl, ksvc, test.CheckLatestReadyRevisionName(name+"-two"))
 	}
 }
