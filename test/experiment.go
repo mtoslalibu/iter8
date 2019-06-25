@@ -105,6 +105,24 @@ func CheckExperimentFinished(obj runtime.Object) (bool, error) {
 	return exp.Status.GetCondition(v1alpha1.ExperimentConditionExperimentCompleted).IsTrue(), nil
 }
 
+func CheckExperimentRollForward(obj runtime.Object) (bool, error) {
+	exp, ok := obj.(*v1alpha1.Experiment)
+	if !ok {
+		return false, fmt.Errorf("Expected an experiment service (got: %v)", obj)
+	}
+
+	return exp.Status.GetCondition(v1alpha1.ExperimentConditionRollForward).IsTrue(), nil
+}
+
+func CheckExperimentNotRollForward(obj runtime.Object) (bool, error) {
+	exp, ok := obj.(*v1alpha1.Experiment)
+	if !ok {
+		return false, fmt.Errorf("Expected an experiment service (got: %v)", obj)
+	}
+
+	return exp.Status.GetCondition(v1alpha1.ExperimentConditionRollForward).IsFalse(), nil
+}
+
 func CheckServiceFound(obj runtime.Object) (bool, error) {
 	exp, ok := obj.(*v1alpha1.Experiment)
 	if !ok {

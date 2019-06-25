@@ -37,20 +37,67 @@ func TestKnativeExperiment(t *testing.T) {
 			object:      getDoNotExistExperiment(),
 			wantResults: []runtime.Object{getDoNotExistExperimentReconciled()},
 		},
-		"deleteExperimentAfterCompleted": testCase{
+		"rollforward": testCase{
 			mocks: map[string]cai.Response{
-				"stock-1": test.GetDefaultMockResponse(),
+				"stock-rollforward": test.GetSuccessMockResponse(),
 			},
 			initObjects: []runtime.Object{
-				getBaseStockService("stock-1"),
+				getBaseStockService("stock-rollforward"),
 			},
-			object:    getFastExperimentForService("stock-1", "stock-1", service.GetURL()),
-			preHook:   newStockServiceRevision("stock-1"),
+			preHook: newStockServiceRevision("stock-rollforward", 50),
+			object:  getFastExperimentForService("stock-rollforward", "stock-rollforward", service.GetURL()),
+			wantState: test.WantAllStates(
+				test.CheckExperimentFinished,
+				test.CheckExperimentRollForward),
+			wantResults: []runtime.Object{
+				getRollforwardStockService("stock-rollforward"),
+			},
+		},
+		"rollbackward": testCase{
+			mocks: map[string]cai.Response{
+				"stock-rollbackward": test.GetFailureMockResponse(),
+			},
+			initObjects: []runtime.Object{
+				getBaseStockService("stock-rollbackward"),
+			},
+			preHook: newStockServiceRevision("stock-rollbackward", 0),
+			object:  getFastExperimentForService("stock-rollbackward", "stock-rollbackward", service.GetURL()),
+			wantState: test.WantAllStates(
+				test.CheckExperimentFinished,
+				test.CheckExperimentNotRollForward),
+			wantResults: []runtime.Object{
+				getRollBackwardStockService("stock-rollbackward"),
+			},
+		},
+		// "ongoingdelete": testCase{
+		// 	mocks: map[string]cai.Response{
+		// 		"stock-ongoingdelete": test.GetSuccessMockResponse(),
+		// 	},
+		// 	initObjects: []runtime.Object{
+		// 		getBaseStockService("stock-ongoingdelete"),
+		// 	},
+		// 	object:    getSlowExperimentForService("stock-ongoingdelete", "stock-ongoingdelete", service.GetURL()),
+		// 	preHook:   newStockServiceRevision("stock-ongoingdelete", 0),
+		// 	wantState: test.CheckServiceFound,
+		// 	wantResults: []runtime.Object{
+		// 		getRollBackwardStockService("stock-ongoingdelete"),
+		// 	},
+		// 	postHook: test.DeleteExperiment("stock-ongoingdelete", Flags.Namespace),
+		// },
+		"completedelete": testCase{
+			mocks: map[string]cai.Response{
+				"stock-completedelete": test.GetDefaultMockResponse(),
+			},
+			initObjects: []runtime.Object{
+				getBaseStockService("stock-completedelete"),
+			},
+			object:    getFastExperimentForService("stock-completedelete", "stock-completedelete", service.GetURL()),
+			preHook:   newStockServiceRevision("stock-completedelete", 0),
 			wantState: test.CheckExperimentFinished,
 			frozenObjects: []runtime.Object{
-				getBaseStockService("stock-1"),
+				test.NewKnativeService("stock-completedelete", Flags.Namespace).Build(),
 			},
-			postHook: test.DeleteExperiment("stock-1", Flags.Namespace),
+			postHook: test.DeleteExperiment("stock-completedelete", Flags.Namespace),
 		},
 	}
 
@@ -77,6 +124,21 @@ func getFastExperimentForService(name string, serviceName string, analyticsHost 
 	return experiment
 }
 
+func getSlowExperimentForService(name string, serviceName string, analyticsHost string) *v1alpha1.Experiment {
+	experiment := test.NewExperiment(name, Flags.Namespace).
+		WithKNativeService(serviceName).
+		WithAnalyticsHost(analyticsHost).
+		Build()
+
+	twentysecs := "10s"
+	two := 2
+	experiment.Spec.TargetService.Baseline = serviceName + "-one"
+	experiment.Spec.TargetService.Candidate = serviceName + "-two"
+	experiment.Spec.TrafficControl.Interval = &twentysecs
+	experiment.Spec.TrafficControl.MaxIterations = &two
+	return experiment
+}
+
 func getDoNotExistExperimentReconciled() *v1alpha1.Experiment {
 	experiment := getDoNotExistExperiment()
 	experiment.Status.MarkExperimentNotCompleted("Progressing", "")
@@ -87,10 +149,29 @@ func getDoNotExistExperimentReconciled() *v1alpha1.Experiment {
 func getBaseStockService(name string) runtime.Object {
 	return test.NewKnativeService(name, Flags.Namespace).
 		WithImage(test.StockImageName).
+		WithRevision(name+"-one", 100).
 		Build()
 }
 
-func newStockServiceRevision(name string) test.Hook {
+func getRollforwardStockService(name string) runtime.Object {
+	ksvc := test.NewKnativeService(name, Flags.Namespace).
+		WithImage(test.StockImageName).
+		WithRevision(name+"-one", 0).
+		WithRevision(name+"-two", 100)
+
+	return ksvc.Build()
+}
+
+func getRollBackwardStockService(name string) runtime.Object {
+	ksvc := test.NewKnativeService(name, Flags.Namespace).
+		WithImage(test.StockImageName).
+		WithRevision(name+"-one", 100).
+		WithRevision(name+"-two", 0)
+
+	return ksvc.Build()
+}
+
+func newStockServiceRevision(name string, percent int) test.Hook {
 	return func(ctx context.Context, cl client.Client) error {
 		ksvc := test.NewKnativeService(name, Flags.Namespace).Build()
 
@@ -101,7 +182,9 @@ func newStockServiceRevision(name string) test.Hook {
 
 		(*test.KnativeServiceBuilder)(ksvc).
 			WithEnv("RESOURCE", "share").
-			WithRevision("two")
+			WithRevision(name+"-two", percent)
+
+		ksvc.Spec.RouteSpec.Traffic[0].Percent = 100 - percent
 
 		if err := cl.Update(ctx, ksvc); err != nil {
 			return errors.Wrapf(err, "Cannot update service %s", name)

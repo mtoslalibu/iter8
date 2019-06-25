@@ -51,7 +51,7 @@ then
     setup_knative
 fi
 
-NAMESPACE=$(random_namespace)
+export NAMESPACE=$(random_namespace)
 header "creating namespace $NAMESPACE"
 kubectl create ns $NAMESPACE
 
@@ -70,6 +70,6 @@ echo "controller started $CONTROLLER_PID"
 
 sleep 4 # wait for controller to start
 
-go test -v ./test/e2e/... -args -namespace ${NAMESPACE}
+go test -v -p 1 ./test/e2e/... -args -namespace ${NAMESPACE}
 
 cleanup

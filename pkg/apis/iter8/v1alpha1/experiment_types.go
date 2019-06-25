@@ -270,8 +270,7 @@ func (t *TrafficControl) GetIntervalDuration() (time.Duration, error) {
 func (t *TrafficControl) GetOnSuccess() string {
 	onsuccess := t.OnSuccess
 	if onsuccess == nil {
-		candidate := "candidate"
-		onsuccess = &candidate
+		return "candidate"
 	}
 	return *onsuccess
 }

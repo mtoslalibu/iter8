@@ -27,7 +27,7 @@ import (
 // KnativeServiceBuilder builds Knative service object
 type KnativeServiceBuilder servingalpha1.Service
 
-// NewKnativeService creates a default Knative service with empty template
+// NewKnativeService creates a default Knative service with one revision
 func NewKnativeService(name string, namespace string) *KnativeServiceBuilder {
 	s := &servingalpha1.Service{
 		TypeMeta: metav1.TypeMeta{
@@ -40,21 +40,10 @@ func NewKnativeService(name string, namespace string) *KnativeServiceBuilder {
 		},
 		Spec: servingalpha1.ServiceSpec{
 			ConfigurationSpec: servingalpha1.ConfigurationSpec{
-				Template: &servingalpha1.RevisionTemplateSpec{
-					ObjectMeta: metav1.ObjectMeta{
-						Name: name + "-one",
-					},
-				},
+				Template: &servingalpha1.RevisionTemplateSpec{},
 			},
 			RouteSpec: servingalpha1.RouteSpec{
-				Traffic: []servingalpha1.TrafficTarget{
-					servingalpha1.TrafficTarget{
-						TrafficTarget: servingbeta1.TrafficTarget{
-							RevisionName: name + "-one",
-							Percent:      100,
-						},
-					},
-				},
+				Traffic: []servingalpha1.TrafficTarget{},
 			},
 		},
 	}
@@ -75,13 +64,14 @@ func (b *KnativeServiceBuilder) WithImage(name string) *KnativeServiceBuilder {
 	return b
 }
 
-func (b *KnativeServiceBuilder) WithRevision(suffix string) *KnativeServiceBuilder {
-	revisionName := b.Name + "-" + suffix
+func (b *KnativeServiceBuilder) WithRevision(revisionName string, percent int) *KnativeServiceBuilder {
 	b.Spec.Template.Name = revisionName
+	nottrue := false
 	b.Spec.Traffic = append(b.Spec.Traffic, servingalpha1.TrafficTarget{
 		TrafficTarget: servingbeta1.TrafficTarget{
-			RevisionName: revisionName,
-			Percent:      0,
+			RevisionName:   revisionName,
+			Percent:        percent,
+			LatestRevision: &nottrue,
 		},
 	})
 	return b

@@ -28,7 +28,7 @@ import (
 const (
 	StockImageName = "villardl/stock-60d7d0dbe2427b272042abacd4e1e644"
 	interval       = 1 * time.Second
-	timeout        = 10 * time.Minute
+	timeout        = 1 * time.Minute
 )
 
 // Hook defines a function with a client.
@@ -93,5 +93,17 @@ func DeleteObject(obj runtime.Object) Hook {
 			return err
 		}
 		return nil
+	}
+}
+
+func WantAllStates(stateFns ...InStateFunc) InStateFunc {
+	return func(obj runtime.Object) (bool, error) {
+		for _, fn := range stateFns {
+			ok, err := fn(obj)
+			if !ok || err != nil {
+				return ok, err
+			}
+		}
+		return true, nil
 	}
 }

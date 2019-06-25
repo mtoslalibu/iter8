@@ -43,7 +43,11 @@ import (
 // Flags holds the command line flags or defaults for settings in the user's environment.
 // See EnvironmentFlags for a list of supported fields.
 var Flags = initializeFlags()
-var compoptions = cmpopts.IgnoreTypes(metav1.TypeMeta{}, metav1.ObjectMeta{}, metav1.Time{}, corev1.ResourceRequirements{})
+var compoptions = []cmp.Option{
+	cmpopts.IgnoreTypes(metav1.TypeMeta{}, metav1.ObjectMeta{}, metav1.Time{},
+		corev1.ResourceRequirements{}, servingalpha1.ServiceStatus{}),
+	cmpopts.IgnoreFields(servingbeta1.RevisionSpec{}, "TimeoutSeconds"),
+}
 
 // EnvironmentFlags define the flags that are needed to run the e2e tests.
 type EnvironmentFlags struct {
@@ -153,14 +157,14 @@ func (tc *testCase) runPostHook(ctx context.Context, cl client.Client) error {
 
 func (tc *testCase) checkHasResults(ctx context.Context, cl client.Client) error {
 	for _, result := range tc.wantResults {
-		retries := 5
+		retries := 10
 		for {
 			obj, err := getObject(ctx, cl, result)
 			if err != nil {
 				return err
 			}
 
-			if diff := cmp.Diff(result, obj, compoptions); diff != "" {
+			if diff := cmp.Diff(result, obj, compoptions...); diff != "" {
 				if retries == 0 {
 					return fmt.Errorf("unexpected reponse diff (-want, +got) = %v", diff)
 				}

@@ -119,11 +119,10 @@ func (r *ReconcileExperiment) syncKnative(context context.Context, instance *ite
 
 		update := false
 		if instance.Status.AssessmentSummary.AllSuccessCriteriaMet {
-			log.Info("Experiment completed with success")
+			log.Info("Experiment completed with success", "onsuccess", traffic.GetOnSuccess())
 			// experiment is successful
 			switch traffic.GetOnSuccess() {
 			case "baseline":
-				// Rollback
 				if candidateTraffic.Percent != 0 {
 					candidateTraffic.Percent = 0
 					update = true
@@ -136,7 +135,6 @@ func (r *ReconcileExperiment) syncKnative(context context.Context, instance *ite
 				instance.Status.TrafficSplit.Baseline = 100
 				instance.Status.TrafficSplit.Candidate = 0
 			case "candidate":
-				// Rollforward
 				if candidateTraffic.Percent != 100 {
 					candidateTraffic.Percent = 100
 					update = true
@@ -146,8 +144,8 @@ func (r *ReconcileExperiment) syncKnative(context context.Context, instance *ite
 					update = true
 				}
 				instance.Status.MarkRollForward()
-				instance.Status.TrafficSplit.Baseline = 100
-				instance.Status.TrafficSplit.Candidate = 0
+				instance.Status.TrafficSplit.Baseline = 0
+				instance.Status.TrafficSplit.Candidate = 100
 			case "both":
 				instance.Status.MarkNotRollForward("OnSuccessBoth", "")
 			}
@@ -163,6 +161,8 @@ func (r *ReconcileExperiment) syncKnative(context context.Context, instance *ite
 				baselineTraffic.Percent = 100
 				update = true
 			}
+
+			instance.Status.MarkNotRollForward("ExperimentFailure", "")
 		}
 
 		labels := kservice.GetLabels()
@@ -295,9 +295,10 @@ func (r *ReconcileExperiment) syncKnative(context context.Context, instance *ite
 }
 
 func getTrafficByName(service *servingv1alpha1.Service, name string) *servingv1alpha1.TrafficTarget {
-	for _, traffic := range service.Spec.Traffic {
+	for i := range service.Spec.Traffic {
+		traffic := &service.Spec.Traffic[i]
 		if traffic.RevisionName == name {
-			return &traffic
+			return traffic
 		}
 	}
 	return nil
