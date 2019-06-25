@@ -20,7 +20,7 @@ limitations under the License.
 // +k8s:deepcopy-gen=package,register
 // +k8s:conversion-gen=github.ibm.com/istio-research/iter8-controller/pkg/apis/iter8
 // +k8s:defaulter-gen=TypeMeta
-// +groupName=iter8.io
+// +groupName=iter8.tools
 package v1alpha1
 
 import (
@@ -30,7 +30,7 @@ import (
 
 var (
 	// SchemeGroupVersion is group version used to register these objects
-	SchemeGroupVersion = schema.GroupVersion{Group: "iter8.io", Version: "v1alpha1"}
+	SchemeGroupVersion = schema.GroupVersion{Group: "iter8.tools", Version: "v1alpha1"}
 
 	// SchemeBuilder is used to add go types to the GroupVersionKind scheme
 	SchemeBuilder = &scheme.Builder{GroupVersion: SchemeGroupVersion}

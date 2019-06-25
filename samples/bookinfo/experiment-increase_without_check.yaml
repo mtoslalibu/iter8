@@ -1,4 +1,4 @@
-apiVersion: iter8.io/v1alpha1
+apiVersion: iter8.tools/v1alpha1
 kind: Experiment 
 metadata:
   name: reviews

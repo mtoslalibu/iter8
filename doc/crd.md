@@ -9,7 +9,7 @@ metadata:
   creationTimestamp: null
   labels:
     controller-tools.k8s.io: "1.0"
-  name: experiments.iter8.io
+  name: experiments.iter8.tools
 spec:
   additionalPrinterColumns:
   - JSONPath: .status.conditions[?(@.type == 'ExperimentCompleted')].status
@@ -44,7 +44,7 @@ spec:
     format: int32
     name: percentage
     type: integer
-  group: iter8.io
+  group: iter8.tools
   names:
     categories:
     - all

@@ -34,9 +34,9 @@ const (
 	Stable      = "stable"
 	Progressing = "progressing"
 
-	experimentRole  = "iter8.io/role"
-	experimentLabel = "iter8.io/experiment"
-	experimentHost  = "iter8.io/host"
+	experimentRole  = "iter8.tools/role"
+	experimentLabel = "iter8.tools/experiment"
+	experimentHost  = "iter8.tools/host"
 )
 
 type DestinationRuleBuilder v1alpha3.DestinationRule
