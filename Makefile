@@ -25,9 +25,9 @@ deploy: manifests
 # Generate manifests e.g. CRD, RBAC etc.
 manifests:
 	go run vendor/sigs.k8s.io/controller-tools/cmd/controller-gen/main.go all
-	sed -i'' -e 's@namespace: .*@namespace: iter8@' ./config/rbac/rbac_role_binding.yaml
-	sed -i'' -e 's@name: default.*@name: controller-manager@' ./config/rbac/rbac_role_binding.yaml
-	rm -f ./config/rbac/rbac_role_binding.yaml-e
+	echo '  namespace: iter8' >> ./config/rbac/manager_role_binding.yaml
+	sed -i'' -e '12s@name:.*@name: controller-manager@' ./config/rbac/manager_role_binding.yaml
+	rm -f ./config/rbac/manager_role_binding.yaml-e
 	./hack/crd_fix.sh
 
 # Run go fmt against code
