@@ -131,6 +131,17 @@ func GetSuccessMockResponse() cai.Response {
 		Assessment: cai.Assessment{
 			Summary: iter8v1alpha1.Summary{
 				AllSuccessCriteriaMet: true,
+				AbortExperiment:       false,
+			},
+		},
+	}
+}
+
+func GetAbortExperimentResponse() cai.Response {
+	return cai.Response{
+		Assessment: cai.Assessment{
+			Summary: iter8v1alpha1.Summary{
+				AbortExperiment: true,
 			},
 		},
 	}

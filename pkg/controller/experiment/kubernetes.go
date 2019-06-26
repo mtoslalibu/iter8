@@ -359,6 +359,27 @@ func (r *ReconcileExperiment) syncKubernetes(context context.Context, instance *
 				return reconcile.Result{RequeueAfter: 5 * time.Second}, err
 			}
 
+			if response.Assessment.Summary.AbortExperiment {
+				log.Info("ExperimentAborted. Rollback to Baseline.")
+				// rollback to baseline and mark experiment as complelete
+				// delete routing rules
+				if err := deleteRules(context, r, instance); err != nil {
+					return reconcile.Result{}, err
+				}
+				// Set all traffic to baseline deployment
+				// generate new rules to shift all traffic to baseline
+				if err := setStableRules(context, r, baseline, instance); err != nil {
+					return reconcile.Result{}, err
+				}
+				instance.Status.MarkNotRollForward("AbortExperiment: Roll Back to Baseline", "")
+				instance.Status.TrafficSplit.Baseline = 100
+				instance.Status.TrafficSplit.Candidate = 0
+				instance.Status.MarkExperimentCompleted()
+				// End experiment
+				err = r.Status().Update(context, instance)
+				return reconcile.Result{}, err
+			}
+
 			baselineTraffic := response.Baseline.TrafficPercentage
 			candidateTraffic := response.Canary.TrafficPercentage
 			log.Info("NewTraffic", "Baseline", baselineTraffic, "Candidate", candidateTraffic)

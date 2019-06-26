@@ -118,6 +118,25 @@ func TestKubernetesExperiment(t *testing.T) {
 			},
 			postHook: test.DeleteExperiment("completedelete", Flags.Namespace),
 		},
+		"abortexperiment": testCase{
+			mocks: map[string]cai.Response{
+				"abortexperiment": test.GetAbortExperimentResponse(),
+			},
+			initObjects: []runtime.Object{
+				getReviewsService(),
+				getRatingsService(),
+				getReviewsDeployment("v1"),
+				getReviewsDeployment("v2"),
+				getRatingsDeployment(),
+			},
+			object:    getSlowKubernetesExperiment("abortexperiment", "reviews", "reviews-v1", "reviews-v2", service.GetURL()),
+			wantState: test.CheckExperimentFinished,
+			wantResults: []runtime.Object{
+				// roolback to baseline
+				getStableDestinationRule("reviews", "abortexperiment", getReviewsDeployment("v1")),
+				getStableVirtualService("reviews", "abortexperiment"),
+			},
+		},
 	}
 
 	runTestCases(t, service, testCases)

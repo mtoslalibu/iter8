@@ -225,7 +225,7 @@ func (r *ReconcileExperiment) syncKnative(context context.Context, instance *ite
 
 			// Abort?
 			if response.Assessment.Summary.AbortExperiment {
-				log.Info("abort experiment.")
+				log.Info("ExperimentAborted. Rollback to Baseline.")
 				if candidateTraffic.Percent != 0 || baselineTraffic.Percent != 100 {
 					baselineTraffic.Percent = 100
 					candidateTraffic.Percent = 0
@@ -233,6 +233,15 @@ func (r *ReconcileExperiment) syncKnative(context context.Context, instance *ite
 					if err != nil {
 						return reconcile.Result{}, err // retry
 					}
+				}
+
+				instance.Status.MarkNotRollForward("AbortExperiment: Roll Back to Baseline", "")
+				instance.Status.TrafficSplit.Baseline = 100
+				instance.Status.TrafficSplit.Candidate = 0
+				instance.Status.MarkExperimentCompleted()
+				err := r.Update(context, instance)
+				if err != nil {
+					return reconcile.Result{}, err // retry
 				}
 			}
 
