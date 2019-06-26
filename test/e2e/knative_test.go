@@ -69,21 +69,21 @@ func TestKnativeExperiment(t *testing.T) {
 				getRollBackwardStockService("stock-rollbackward"),
 			},
 		},
-		// "ongoingdelete": testCase{
-		// 	mocks: map[string]cai.Response{
-		// 		"stock-ongoingdelete": test.GetSuccessMockResponse(),
-		// 	},
-		// 	initObjects: []runtime.Object{
-		// 		getBaseStockService("stock-ongoingdelete"),
-		// 	},
-		// 	object:    getSlowExperimentForService("stock-ongoingdelete", "stock-ongoingdelete", service.GetURL()),
-		// 	preHook:   newStockServiceRevision("stock-ongoingdelete", 0),
-		// 	wantState: test.CheckServiceFound,
-		// 	wantResults: []runtime.Object{
-		// 		getRollBackwardStockService("stock-ongoingdelete"),
-		// 	},
-		// 	postHook: test.DeleteExperiment("stock-ongoingdelete", Flags.Namespace),
-		// },
+		"ongoingdelete": testCase{
+			mocks: map[string]cai.Response{
+				"stock-ongoingdelete": test.GetSuccessMockResponse(),
+			},
+			initObjects: []runtime.Object{
+				getBaseStockService("stock-ongoingdelete"),
+			},
+			object:    getSlowExperimentForService("stock-ongoingdelete", "stock-ongoingdelete", service.GetURL()),
+			preHook:   newStockServiceRevision("stock-ongoingdelete", 50),
+			wantState: test.CheckServiceFound,
+			wantResults: []runtime.Object{
+				getRollBackwardStockService("stock-ongoingdelete"),
+			},
+			postHook: test.DeleteExperiment("stock-ongoingdelete", Flags.Namespace),
+		},
 		"completedelete": testCase{
 			mocks: map[string]cai.Response{
 				"stock-completedelete": test.GetDefaultMockResponse(),

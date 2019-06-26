@@ -222,6 +222,8 @@ func (r *ReconcileExperiment) finalize(context context.Context, instance *iter8v
 	switch apiVersion {
 	case KubernetesService:
 		return r.finalizeIstio(context, instance)
+	case KnativeServiceV1Alpha1:
+		return r.finalizeKnative(context, instance)
 	}
 
 	return reconcile.Result{}, removeFinalizer(context, r, instance, Finalizer)

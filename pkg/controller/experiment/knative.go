@@ -326,3 +326,53 @@ func (r *ReconcileExperiment) getServiceForRevision(context context.Context, ksv
 	}
 	return service, nil
 }
+
+func (r *ReconcileExperiment) finalizeKnative(context context.Context, instance *iter8v1alpha1.Experiment) (reconcile.Result, error) {
+	completed := instance.Status.GetCondition(iter8v1alpha1.ExperimentConditionExperimentCompleted)
+	if completed != nil && completed.Status != corev1.ConditionTrue {
+		// Do a rollback
+
+		// Get Knative service
+		serviceName := instance.Spec.TargetService.Name
+		serviceNamespace := instance.Spec.TargetService.Namespace
+		if serviceNamespace == "" {
+			serviceNamespace = instance.Namespace
+		}
+
+		kservice := &servingv1alpha1.Service{}
+		err := r.Get(context, types.NamespacedName{Name: serviceName, Namespace: serviceNamespace}, kservice)
+		if err != nil {
+			return reconcile.Result{}, removeFinalizer(context, r, instance, Finalizer)
+		}
+
+		// Check the experiment targets existing traffic targets
+		ksvctraffic := kservice.Spec.Traffic
+		if ksvctraffic == nil {
+			return reconcile.Result{}, removeFinalizer(context, r, instance, Finalizer)
+		}
+
+		baseline := instance.Spec.TargetService.Baseline
+		baselineTraffic := getTrafficByName(kservice, baseline)
+		if baselineTraffic == nil {
+			return reconcile.Result{}, removeFinalizer(context, r, instance, Finalizer)
+		}
+
+		candidate := instance.Spec.TargetService.Candidate
+		candidateTraffic := getTrafficByName(kservice, candidate)
+		if candidateTraffic == nil {
+			return reconcile.Result{}, removeFinalizer(context, r, instance, Finalizer)
+		}
+
+		if baselineTraffic.Percent != 100 || candidateTraffic.Percent != 0 {
+			baselineTraffic.Percent = 100
+			candidateTraffic.Percent = 0
+
+			err = r.Update(context, kservice) // TODO: patch?
+			if err != nil {
+				return reconcile.Result{}, err
+			}
+		}
+	}
+
+	return reconcile.Result{}, removeFinalizer(context, r, instance, Finalizer)
+}
