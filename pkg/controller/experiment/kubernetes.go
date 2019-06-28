@@ -375,6 +375,10 @@ func (r *ReconcileExperiment) syncKubernetes(context context.Context, instance *
 				instance.Status.TrafficSplit.Baseline = 100
 				instance.Status.TrafficSplit.Candidate = 0
 				instance.Status.MarkExperimentCompleted()
+
+				ts := metav1.NewTime(now).UTC().UnixNano() / int64(time.Millisecond)
+				instance.Status.EndTimestamp = strconv.FormatInt(ts, 10)
+				updateGrafanaURL(instance, serviceNamespace)
 				// End experiment
 				err = r.Status().Update(context, instance)
 				return reconcile.Result{}, err
