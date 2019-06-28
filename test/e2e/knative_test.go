@@ -37,6 +37,30 @@ func TestKnativeExperiment(t *testing.T) {
 			object:      getDoNotExistExperiment(),
 			wantResults: []runtime.Object{getDoNotExistExperimentReconciled()},
 		},
+		"missingbaseline": func(name string) testCase {
+			return testCase{
+				mocks: map[string]cai.Response{
+					name: test.GetSuccessMockResponse(),
+				},
+				initObjects: []runtime.Object{
+					getBaseStockService(name),
+				},
+				object:    getMissingBaselineExperiment(name, name, service.GetURL()),
+				wantState: test.CheckServiceNotFound("MissingBaselineRevision"),
+			}
+		}("stock-missingbaseline"),
+		"missingcandidate": func(name string) testCase {
+			return testCase{
+				mocks: map[string]cai.Response{
+					name: test.GetSuccessMockResponse(),
+				},
+				initObjects: []runtime.Object{
+					getBaseStockService(name),
+				},
+				object:    getMissingCandidateExperiment(name, name, service.GetURL()),
+				wantState: test.CheckServiceNotFound("MissingCandidateRevision"),
+			}
+		}("stock-missingcandidate"),
 		"rollforward": testCase{
 			mocks: map[string]cai.Response{
 				"stock-rollforward": test.GetSuccessMockResponse(),
@@ -108,6 +132,23 @@ func getDoNotExistExperiment() *v1alpha1.Experiment {
 	return test.NewExperiment("experiment-missing-service", Flags.Namespace).
 		WithKNativeService("doesnotexist").
 		Build()
+}
+
+func getMissingBaselineExperiment(name string, serviceName string, analyticsHost string) *v1alpha1.Experiment {
+	experiment := test.NewExperiment(name, Flags.Namespace).
+		WithKNativeService(serviceName).
+		Build()
+	experiment.Spec.TargetService.Baseline = serviceName + "-donotexist"
+	return experiment
+}
+
+func getMissingCandidateExperiment(name string, serviceName string, analyticsHost string) *v1alpha1.Experiment {
+	experiment := test.NewExperiment(name, Flags.Namespace).
+		WithKNativeService(serviceName).
+		Build()
+	experiment.Spec.TargetService.Baseline = serviceName + "-one"
+	experiment.Spec.TargetService.Candidate = serviceName + "-donotexist"
+	return experiment
 }
 
 func getFastExperimentForService(name string, serviceName string, analyticsHost string) *v1alpha1.Experiment {
