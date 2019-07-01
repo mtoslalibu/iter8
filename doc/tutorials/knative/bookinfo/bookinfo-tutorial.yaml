@@ -1,0 +1,98 @@
+apiVersion: serving.knative.dev/v1alpha1
+kind: Service
+metadata:
+  name: details
+  namespace: knative-bookinfo-iter8
+spec:
+  template:
+    metadata:
+      name: details-v1
+    spec:
+      containers:
+      - image: istio/examples-bookinfo-details-v1:1.10.1
+        ports:
+        - containerPort: 9080
+          name: http1
+  traffic:
+  - revisionName: details-v1
+    percent: 100
+---
+apiVersion: serving.knative.dev/v1alpha1
+kind: Service
+metadata:
+  name: productpage
+  namespace: knative-bookinfo-iter8
+spec:
+  template:
+    metadata:
+      name: productpage-v1
+    spec:
+      containers:
+      - image: iter8/productpage:knative_0.1
+        ports:
+        - containerPort: 9080
+          name: http1
+          protocol: TCP
+        env:
+        - name: VERSION
+          value: v1
+        - name: DETAILS_HOSTNAME
+          value: details.default.svc.cluster.local
+        - name: RATINGS_HOSTNAME
+          value: ratings.default.svc.cluster.local
+        - name: REVIEWS_HOSTNAME
+          value: reviews.default.svc.cluster.local
+        - name: DETAILS_SERVER_PORT
+          value: "80"
+        - name: RATINGS_SERVER_PORT
+          value: "80"
+        - name: REVIEWS_SERVER_PORT
+          value: "80"
+  traffic:
+  - revisionName: productpage-v1
+    percent: 100
+---
+apiVersion: serving.knative.dev/v1alpha1
+kind: Service
+metadata:
+  name: ratings
+  namespace: knative-bookinfo-iter8
+spec:
+  template:
+    metadata:
+      name: ratings-v1
+    spec:
+      containers:
+      - image: istio/examples-bookinfo-ratings-v1:1.10.1
+        ports:
+        - containerPort: 9080
+          name: http1
+  traffic:
+  - revisionName: ratings-v1
+    percent: 100
+---
+apiVersion: serving.knative.dev/v1alpha1
+kind: Service
+metadata:
+  name: reviews
+  namespace: knative-bookinfo-iter8
+spec:
+  template:
+    metadata:
+      name: reviews-v2
+    spec:
+      containers:
+      - image: iter8/reviews-v2:knative_0.1
+        ports:
+        - containerPort: 9080
+          name: http1
+        env:
+        - name: VERSION
+          value: v2
+        - name: RATINGS_HOSTNAME
+          value: ratings.default.svc.cluster.local
+        - name: RATINGS_SERVER_PORT
+          value: "80"
+  traffic:
+  - revisionName: reviews-v2
+    percent: 100
