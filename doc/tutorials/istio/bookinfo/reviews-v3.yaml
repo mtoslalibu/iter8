@@ -33,7 +33,7 @@ spec:
     spec:
       containers:
       - name: reviews
-        image: iter8:istio-v3
+        image: iter8/reviews:istio-v3
         imagePullPolicy: IfNotPresent
         ports:
         - containerPort: 9080
