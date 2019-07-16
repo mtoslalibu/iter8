@@ -76,7 +76,7 @@ func (r *ReconcileExperiment) syncKubernetes(context context.Context, instance *
 	if len(drl.Items) == 1 && len(vsl.Items) == 1 {
 		dr = drl.Items[0].DeepCopy()
 		vs = vsl.Items[0].DeepCopy()
-		log.Info("StableRulesFound", "dr", dr, "vs", vs)
+		log.Info("StableRulesFound", "dr", dr.GetName(), "vs", vs.GetName())
 	} else if len(drl.Items) == 0 && len(vsl.Items) == 0 {
 		// Create progressing rules if not existed
 		listOptions = listOptions.
@@ -90,10 +90,10 @@ func (r *ReconcileExperiment) syncKubernetes(context context.Context, instance *
 			if err != nil {
 				return reconcile.Result{}, err
 			}
-			log.Info("ProgressingRuleCreated", "dr", dr)
+			log.Info("ProgressingRuleCreated", "dr", dr.GetName())
 		} else if len(drl.Items) == 1 {
 			dr = drl.Items[0].DeepCopy()
-			log.Info("ProgressingRuleFound", "dr", dr)
+			log.Info("ProgressingRuleFound", "dr", dr.GetName())
 		} else {
 			for _, dr := range drl.Items {
 				if err := r.Delete(context, &dr); err != nil {
@@ -108,7 +108,7 @@ func (r *ReconcileExperiment) syncKubernetes(context context.Context, instance *
 				WithProgressingLabel().
 				WithRolloutPercent(serviceName, 0).
 				Build()
-			log.Info("TryingToCreateProgressingRule...", "vs", vs)
+				//	log.Info("TryingToCreateProgressingRule...", "vs", vs)
 			err := r.Create(context, vs)
 			if err != nil {
 				return reconcile.Result{}, err
@@ -116,7 +116,7 @@ func (r *ReconcileExperiment) syncKubernetes(context context.Context, instance *
 			log.Info("ProgressingRuleCreated", "vs", vs)
 		} else if len(vsl.Items) == 1 {
 			vs = vsl.Items[0].DeepCopy()
-			log.Info("ProgressingRuleFound", "vs", vs)
+			log.Info("ProgressingRuleFound", "vs", vs.GetName())
 		} else {
 			for _, vs := range vsl.Items {
 				if err := r.Delete(context, &vs); err != nil {
@@ -127,7 +127,7 @@ func (r *ReconcileExperiment) syncKubernetes(context context.Context, instance *
 		}
 	} else {
 		//Unexpected condition, delete all before progressing rules are created
-		log.Info("UnexpectedContidtion")
+		log.Info("UnexpectedCondition")
 		if len(drl.Items) > 0 {
 			for _, dr := range drl.Items {
 				if err := r.Delete(context, &dr); err != nil {
@@ -182,7 +182,7 @@ func (r *ReconcileExperiment) syncKubernetes(context context.Context, instance *
 		if err := r.Create(context, dr); err != nil {
 			return reconcile.Result{}, err
 		}
-		log.Info("ProgressingRuleCreated", "dr", dr)
+		log.Info("ProgressingRuleCreated", "dr", dr.GetName())
 
 		vs = NewVirtualService(serviceName, instance.GetName(), instance.GetNamespace()).
 			WithProgressingLabel().
@@ -191,7 +191,7 @@ func (r *ReconcileExperiment) syncKubernetes(context context.Context, instance *
 		if err = r.Create(context, vs); err != nil {
 			return reconcile.Result{}, err
 		}
-		log.Info("ProgressingRuleCreated", "vs", vs)
+		log.Info("ProgressingRuleCreated", "vs", vs.GetName())
 		stable = false
 	}
 
@@ -202,7 +202,7 @@ func (r *ReconcileExperiment) syncKubernetes(context context.Context, instance *
 					log.Info("ProgressingRuleUpdateFailure", "dr", rName)
 					return reconcile.Result{}, err
 				}
-				log.Info("ProgressingRuleUpdated", "dr", dr)
+				log.Info("ProgressingRuleUpdated", "dr", dr.GetName())
 			}
 		}
 		if len(candidate.GetName()) > 0 {
@@ -211,7 +211,7 @@ func (r *ReconcileExperiment) syncKubernetes(context context.Context, instance *
 					log.Info("ProgressingRuleUpdateFailure", "dr", rName)
 					return reconcile.Result{}, err
 				}
-				log.Info("ProgressingRuleUpdated", "dr", dr)
+				log.Info("ProgressingRuleUpdated", "dr", dr.GetName())
 			}
 		}
 	}
@@ -258,7 +258,8 @@ func (r *ReconcileExperiment) syncKubernetes(context context.Context, instance *
 	}
 
 	// check experiment is finished
-	if instance.Spec.TrafficControl.GetMaxIterations() <= instance.Status.CurrentIteration {
+	if instance.Spec.TrafficControl.GetMaxIterations() <= instance.Status.CurrentIteration ||
+		instance.Spec.Assessment != iter8v1alpha1.AssessmentNull {
 		log.Info("ExperimentCompleted")
 		// remove experiment labels
 		if err := removeExperimentLabel(context, r, baseline); err != nil {
@@ -275,8 +276,15 @@ func (r *ReconcileExperiment) syncKubernetes(context context.Context, instance *
 		instance.Status.EndTimestamp = strconv.FormatInt(ts, 10)
 		updateGrafanaURL(instance, serviceNamespace)
 
-		if instance.Status.AssessmentSummary.AllSuccessCriteriaMet ||
-			instance.Spec.TrafficControl.GetStrategy() == "increment_without_check" {
+		if instance.Spec.Assessment != iter8v1alpha1.AssessmentNull {
+			log.Info("ExperimentStopWithAssessmentFlagSet", "Action", instance.Spec.Assessment)
+		}
+
+		if (getStrategy(instance) == "check_and_increment" &&
+			(instance.Spec.Assessment == iter8v1alpha1.AssessmentOverrideSuccess || instance.Status.AssessmentSummary.AllSuccessCriteriaMet)) ||
+			(getStrategy(instance) == "increment_without_check" &&
+				(instance.Spec.Assessment == iter8v1alpha1.AssessmentOverrideSuccess || instance.Spec.Assessment == iter8v1alpha1.AssessmentNull)) {
+
 			// experiment is successful
 			log.Info("ExperimentSucceeded: AllSuccessCriteriaMet")
 			switch instance.Spec.TrafficControl.GetOnSuccess() {
@@ -345,7 +353,7 @@ func (r *ReconcileExperiment) syncKubernetes(context context.Context, instance *
 	rolloutPercent := float64(getWeight(Candidate, vs))
 	if now.After(instance.Status.LastIncrementTime.Add(interval)) {
 
-		switch instance.Spec.TrafficControl.GetStrategy() {
+		switch getStrategy(instance) {
 		case "increment_without_check":
 			rolloutPercent += traffic.GetStepSize()
 		case "check_and_increment":
@@ -568,4 +576,13 @@ func (r *ReconcileExperiment) finalizeIstio(context context.Context, instance *i
 
 func getIstioRuleName(instance *iter8v1alpha1.Experiment) string {
 	return instance.GetName() + IstioRuleSuffix
+}
+
+func getStrategy(instance *iter8v1alpha1.Experiment) string {
+	strategy := instance.Spec.TrafficControl.GetStrategy()
+	if strategy == "check_and_increment" &&
+		(instance.Spec.Analysis.SuccessCriteria == nil || len(instance.Spec.Analysis.SuccessCriteria) == 0) {
+		strategy = "increment_without_check"
+	}
+	return strategy
 }

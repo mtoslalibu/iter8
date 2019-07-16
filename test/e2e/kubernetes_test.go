@@ -92,7 +92,7 @@ func TestKubernetesExperiment(t *testing.T) {
 			object:    getSlowKubernetesExperiment("ongoingdelete", "reviews", "reviews-v1", "reviews-v2", service.GetURL()),
 			wantState: test.CheckServiceFound,
 			wantResults: []runtime.Object{
-				// roolback to baseline
+				// rollback to baseline
 				getStableDestinationRule("reviews", "ongoingdelete", getReviewsDeployment("v1")),
 				getStableVirtualService("reviews", "ongoingdelete"),
 			},
@@ -132,9 +132,25 @@ func TestKubernetesExperiment(t *testing.T) {
 			object:    getSlowKubernetesExperiment("abortexperiment", "reviews", "reviews-v1", "reviews-v2", service.GetURL()),
 			wantState: test.CheckExperimentFinished,
 			wantResults: []runtime.Object{
-				// roolback to baseline
+				// rollback to baseline
 				getStableDestinationRule("reviews", "abortexperiment", getReviewsDeployment("v1")),
 				getStableVirtualService("reviews", "abortexperiment"),
+			},
+		},
+		"emptycriterion": testCase{
+			initObjects: []runtime.Object{
+				getReviewsService(),
+				getRatingsService(),
+				getReviewsDeployment("v1"),
+				getReviewsDeployment("v2"),
+				getRatingsDeployment(),
+			},
+			object:    getDefaultKubernetesExperiment("emptycriterion", "reviews", "reviews-v1", "reviews-v2"),
+			wantState: test.CheckExperimentFinished,
+			wantResults: []runtime.Object{
+				// rollforward
+				getStableDestinationRule("reviews", "emptycriterion", getReviewsDeployment("v2")),
+				getStableVirtualService("reviews", "emptycriterion"),
 			},
 		},
 	}
@@ -194,15 +210,23 @@ func getRatingsDeployment() runtime.Object {
 }
 
 func getDefaultKubernetesExperiment(name, serviceName, baseline, candidate string) *iter8v1alpha1.Experiment {
-	return test.NewExperiment(name, Flags.Namespace).
+	exp := test.NewExperiment(name, Flags.Namespace).
 		WithKubernetesTargetService(serviceName, baseline, candidate).
 		Build()
+
+	onesec := "1s"
+	one := 1
+	exp.Spec.TrafficControl.Interval = &onesec
+	exp.Spec.TrafficControl.MaxIterations = &one
+
+	return exp
 }
 
 func getFastKubernetesExperiment(name, serviceName, baseline, candidate, analyticsHost string) *iter8v1alpha1.Experiment {
 	experiment := test.NewExperiment(name, Flags.Namespace).
 		WithKubernetesTargetService(serviceName, baseline, candidate).
 		WithAnalyticsHost(analyticsHost).
+		WithDummySuccessCriterion().
 		Build()
 
 	onesec := "1s"
@@ -217,6 +241,7 @@ func getSlowKubernetesExperiment(name, serviceName, baseline, candidate, analyti
 	experiment := test.NewExperiment(name, Flags.Namespace).
 		WithKubernetesTargetService(serviceName, baseline, candidate).
 		WithAnalyticsHost(analyticsHost).
+		WithDummySuccessCriterion().
 		Build()
 
 	twentysecs := "10s"

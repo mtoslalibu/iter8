@@ -115,10 +115,14 @@ func (r *ReconcileExperiment) syncKnative(context context.Context, instance *ite
 	}
 
 	// check experiment is finished
-	if traffic.GetMaxIterations() <= instance.Status.CurrentIteration {
+	if traffic.GetMaxIterations() <= instance.Status.CurrentIteration ||
+		instance.Spec.Assessment != iter8v1alpha1.AssessmentNull {
 
 		update := false
-		if instance.Status.AssessmentSummary.AllSuccessCriteriaMet {
+		if (getStrategy(instance) == "check_and_increment" &&
+			(instance.Spec.Assessment == iter8v1alpha1.AssessmentOverrideSuccess || instance.Status.AssessmentSummary.AllSuccessCriteriaMet)) ||
+			(getStrategy(instance) == "increment_without_check" &&
+				(instance.Spec.Assessment == iter8v1alpha1.AssessmentOverrideSuccess || instance.Spec.Assessment == iter8v1alpha1.AssessmentNull)) {
 			log.Info("Experiment completed with success", "onsuccess", traffic.GetOnSuccess())
 			// experiment is successful
 			switch traffic.GetOnSuccess() {
@@ -193,7 +197,8 @@ func (r *ReconcileExperiment) syncKnative(context context.Context, instance *ite
 		log.Info("process iteration.")
 
 		newRolloutPercent := float64(candidateTraffic.Percent)
-		switch instance.Spec.TrafficControl.GetStrategy() {
+
+		switch getStrategy(instance) {
 		case "increment_without_check":
 			newRolloutPercent += traffic.GetStepSize()
 		case "check_and_increment":

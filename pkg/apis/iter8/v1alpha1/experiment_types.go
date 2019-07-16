@@ -53,6 +53,14 @@ type ExperimentList struct {
 	Items           []Experiment `json:"items"`
 }
 
+type AssessmentType string
+
+const (
+	AssessmentOverrideSuccess AssessmentType = "override_success"
+	AssessmentOverrideFailure AssessmentType = "override_failure"
+	AssessmentNull            AssessmentType = ""
+)
+
 // ExperimentSpec defines the desired state of Experiment
 type ExperimentSpec struct {
 	// TargetService is a reference to an object to use as target service
@@ -65,6 +73,11 @@ type ExperimentSpec struct {
 	// Analysis parameters
 	// +optional
 	Analysis Analysis `json:"analysis,omitempty"`
+
+	// Assessment is a flag to terminate experiment with action
+	// +optional.
+	//+kubebuilder:validation:Enum=override_success,override_failure
+	Assessment AssessmentType `json:"assessment,omitempty"`
 }
 
 // TargetService defines what to watch in the controller
@@ -189,7 +202,7 @@ type SuccessCriterion struct {
 	//+kubebuilder:validation:Enum=iter8_latency,iter8_error_rate,iter8_error_count
 	MetricName string `json:"metricName"`
 
-	// 	Criterion type. Options:
+	// 	Tolerance type. Options:
 	// "delta": compares the candidate against the baseline version with respect to the metric;
 	// "threshold": checks the candidate with respect to the metric
 	//+kubebuilder:validation:Enum=threshold,delta

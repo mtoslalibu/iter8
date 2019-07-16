@@ -118,6 +118,12 @@ spec:
                     type: object
                   type: array
               type: object
+            assessment:
+              description: Assessment is a flag to terminate experiment with action
+              enum:
+              - override_success
+              - override_failure
+              type: string
             targetService:
               description: TargetService is a reference to an object to use as target
                 service

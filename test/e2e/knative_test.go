@@ -155,6 +155,7 @@ func getFastExperimentForService(name string, serviceName string, analyticsHost 
 	experiment := test.NewExperiment(name, Flags.Namespace).
 		WithKNativeService(serviceName).
 		WithAnalyticsHost(analyticsHost).
+		WithDummySuccessCriterion().
 		Build()
 	onesec := "1s"
 	one := 1
@@ -169,6 +170,7 @@ func getSlowExperimentForService(name string, serviceName string, analyticsHost 
 	experiment := test.NewExperiment(name, Flags.Namespace).
 		WithKNativeService(serviceName).
 		WithAnalyticsHost(analyticsHost).
+		WithDummySuccessCriterion().
 		Build()
 
 	twentysecs := "10s"
