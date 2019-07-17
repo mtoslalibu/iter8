@@ -104,6 +104,14 @@ spec:
                     type: object
                   type: array
               type: object
+              assessment:
+              description: Assessment is a flag to terminate experiment with action
+              # If override_success is set, the experiment will stop with final condition set by OnSuccess.
+              # If override_failure is used, a rollback will be triggered.
+              enum:
+              - override_success
+              - override_failure
+              type: string
             targetService: # service for which experiment is performed
               properties: # This needs to be resolved
               # For istio, both of these are required
