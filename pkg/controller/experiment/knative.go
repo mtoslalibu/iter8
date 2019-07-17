@@ -272,7 +272,8 @@ func (r *ReconcileExperiment) syncKnative(context context.Context, instance *ite
 
 		// Set traffic percentable on all routes
 		needUpdate := false
-		for _, target := range ksvctraffic {
+		for i := range ksvctraffic {
+			target := &ksvctraffic[i]
 			if target.RevisionName == baseline {
 				if target.Percent != 100-int(newRolloutPercent) {
 					target.Percent = 100 - int(newRolloutPercent)
