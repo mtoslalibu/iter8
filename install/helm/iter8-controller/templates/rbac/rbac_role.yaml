@@ -64,8 +64,20 @@ rules:
   - services/status
   verbs:
   - get
-  - update
-  - patch
+- apiGroups:
+  - serving.knative.dev
+  resources:
+  - revisions
+  verbs:
+  - get
+  - list
+  - watch
+- apiGroups:
+  - serving.knative.dev
+  resources:
+  - revisions/status
+  verbs:
+  - get
 - apiGroups:
   - apps
   resources:
