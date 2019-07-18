@@ -277,7 +277,6 @@ func (r *ReconcileExperiment) syncKnative(context context.Context, instance *ite
 				instance.Status.AnalysisState = runtime.RawExtension{Raw: lastState}
 			}
 			instance.Status.AssessmentSummary = response.Assessment.Summary
-			instance.Status.CurrentIteration++
 		}
 
 		// Set traffic percentable on all routes
@@ -311,6 +310,7 @@ func (r *ReconcileExperiment) syncKnative(context context.Context, instance *ite
 			}
 		}
 
+		instance.Status.CurrentIteration++
 		instance.Status.LastIncrementTime = metav1.NewTime(now)
 	}
 
