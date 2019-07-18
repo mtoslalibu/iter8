@@ -187,12 +187,13 @@ func (r *ReconcileExperiment) syncKnative(context context.Context, instance *ite
 
 		// End experiment
 		instance.Status.MarkExperimentCompleted()
+		instance.Status.TrafficSplit.Baseline = baselineTraffic.Percent
+		instance.Status.TrafficSplit.Candidate = candidateTraffic.Percent
 		err = r.Status().Update(context, instance)
 		return reconcile.Result{}, err
 	}
 
 	// Check if traffic should be updated.
-
 	if now.After(instance.Status.LastIncrementTime.Add(interval)) {
 		log.Info("process iteration.")
 
@@ -305,6 +306,8 @@ func (r *ReconcileExperiment) syncKnative(context context.Context, instance *ite
 	}
 
 	instance.Status.MarkExperimentNotCompleted("Progressing", "")
+	instance.Status.TrafficSplit.Baseline = baselineTraffic.Percent
+	instance.Status.TrafficSplit.Candidate = candidateTraffic.Percent
 	err = r.Status().Update(context, instance)
 	return reconcile.Result{RequeueAfter: interval}, err
 }
