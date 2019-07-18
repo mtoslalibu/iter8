@@ -6,10 +6,10 @@ metadata:
 spec:
   template:
     metadata:
-      name: reviews-v3
+      name: reviews-v5
     spec:
       containers:
-      - image: iter8/reviews-v3:knative_0.1
+      - image: iter8/reviews-v5:knative_0.1
         ports:
         - containerPort: 9080
           name: http1

@@ -37,11 +37,11 @@ spec:
         - name: VERSION
           value: v1
         - name: DETAILS_HOSTNAME
-          value: details.default.svc.cluster.local
+          value: details.knative-bookinfo-iter8.svc.cluster.local
         - name: RATINGS_HOSTNAME
-          value: ratings.default.svc.cluster.local
+          value: ratings.knative-bookinfo-iter8.svc.cluster.local
         - name: REVIEWS_HOSTNAME
-          value: reviews.default.svc.cluster.local
+          value: reviews.knative-bookinfo-iter8.svc.cluster.local
         - name: DETAILS_SERVER_PORT
           value: "80"
         - name: RATINGS_SERVER_PORT
@@ -90,7 +90,7 @@ spec:
         - name: VERSION
           value: v2
         - name: RATINGS_HOSTNAME
-          value: ratings.default.svc.cluster.local
+          value: ratings.knative-bookinfo-iter8.svc.cluster.local
         - name: RATINGS_SERVER_PORT
           value: "80"
   traffic:
