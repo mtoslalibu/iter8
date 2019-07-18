@@ -89,16 +89,25 @@ func (r *ReconcileExperiment) syncKnative(context context.Context, instance *ite
 
 	baseline := instance.Spec.TargetService.Baseline
 	baselineTraffic := getTrafficByName(kservice, baseline)
+	candidate := instance.Spec.TargetService.Candidate
+	candidateTraffic := getTrafficByName(kservice, candidate)
+
 	if baselineTraffic == nil {
 		instance.Status.MarkHasNotService("MissingBaselineRevision", "%s", baseline)
+		instance.Status.TrafficSplit.Baseline = 0
+		if candidateTraffic == nil {
+			instance.Status.TrafficSplit.Candidate = 0
+		} else {
+			instance.Status.TrafficSplit.Candidate = candidateTraffic.Percent
+		}
 		err = r.Status().Update(context, instance)
 		return reconcile.Result{}, err
 	}
 
-	candidate := instance.Spec.TargetService.Candidate
-	candidateTraffic := getTrafficByName(kservice, candidate)
 	if candidateTraffic == nil {
 		instance.Status.MarkHasNotService("MissingCandidateRevision", "%s", candidate)
+		instance.Status.TrafficSplit.Baseline = baselineTraffic.Percent
+		instance.Status.TrafficSplit.Candidate = 0
 		err = r.Status().Update(context, instance)
 		return reconcile.Result{}, err
 	}
