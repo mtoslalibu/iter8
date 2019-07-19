@@ -21,7 +21,7 @@ spec:
         - name: RATINGS_SERVER_PORT
           value: "80"
   traffic:
-  - revisionName: reviews-v2
-    percent: 100
   - revisionName: reviews-v3
+    percent: 100
+  - revisionName: reviews-v5
     percent: 0
