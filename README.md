@@ -10,7 +10,7 @@
 
 ### Run the controller locally
 
-1. Clone this repository under `$GOPATH/src/github.ibm.com/istio-research/iter8-controller`
+1. Clone this repository under `$GOPATH/src/github.com/iter8.tools/iter8-controller`
 2. Install CRDs into the cluste:
 
 ```sh

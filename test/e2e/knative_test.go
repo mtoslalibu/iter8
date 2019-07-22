@@ -22,10 +22,10 @@ import (
 	"k8s.io/apimachinery/pkg/runtime"
 	"sigs.k8s.io/controller-runtime/pkg/client"
 
-	cai "github.ibm.com/istio-research/iter8-controller/pkg/analytics/checkandincrement"
+	cai "github.com/iter8.tools/iter8-controller/pkg/analytics/checkandincrement"
 
-	"github.ibm.com/istio-research/iter8-controller/pkg/apis/iter8/v1alpha1"
-	"github.ibm.com/istio-research/iter8-controller/test"
+	"github.com/iter8.tools/iter8-controller/pkg/apis/iter8/v1alpha1"
+	"github.com/iter8.tools/iter8-controller/test"
 )
 
 // TestKnativeExperiment tests various experiment scenarios on Knative platform

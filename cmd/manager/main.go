@@ -19,9 +19,9 @@ import (
 	"flag"
 	"os"
 
-	"github.ibm.com/istio-research/iter8-controller/pkg/apis"
-	"github.ibm.com/istio-research/iter8-controller/pkg/controller"
-	"github.ibm.com/istio-research/iter8-controller/pkg/webhook"
+	"github.com/iter8.tools/iter8-controller/pkg/apis"
+	"github.com/iter8.tools/iter8-controller/pkg/controller"
+	"github.com/iter8.tools/iter8-controller/pkg/webhook"
 	_ "k8s.io/client-go/plugin/pkg/client/auth/oidc"
 	"sigs.k8s.io/controller-runtime/pkg/client/config"
 	"sigs.k8s.io/controller-runtime/pkg/manager"

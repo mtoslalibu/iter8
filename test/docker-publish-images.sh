@@ -16,4 +16,4 @@
 #
 set -e
 
-ko publish github.ibm.com/istio-research/iter8-controller/samples/stock -t latest
+ko publish github.com/iter8.tools/iter8-controller/samples/stock -t latest

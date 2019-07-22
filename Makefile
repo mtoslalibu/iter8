@@ -6,7 +6,7 @@ all: manager
 
 # Build manager binary
 manager: generate fmt vet
-	go build -o bin/manager github.ibm.com/istio-research/iter8-controller/cmd/manager
+	go build -o bin/manager github.com/iter8.tools/iter8-controller/cmd/manager
 
 # Run against the configured Kubernetes cluster in ~/.kube/config
 run: generate fmt vet

@@ -10,7 +10,7 @@ spec:
       name: stock-experiment-example-first
     spec:
       containers:
-      - image: github.ibm.com/istio-research/iter8-controller/samples/stock
+      - image: github.com/iter8.tools/iter8-controller/samples/stock
         env:
           - name: RESOURCE
             value: share

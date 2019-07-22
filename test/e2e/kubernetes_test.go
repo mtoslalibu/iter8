@@ -19,10 +19,10 @@ import (
 
 	"k8s.io/apimachinery/pkg/runtime"
 
-	cai "github.ibm.com/istio-research/iter8-controller/pkg/analytics/checkandincrement"
-	iter8v1alpha1 "github.ibm.com/istio-research/iter8-controller/pkg/apis/iter8/v1alpha1"
-	"github.ibm.com/istio-research/iter8-controller/pkg/controller/experiment"
-	"github.ibm.com/istio-research/iter8-controller/test"
+	cai "github.com/iter8.tools/iter8-controller/pkg/analytics/checkandincrement"
+	iter8v1alpha1 "github.com/iter8.tools/iter8-controller/pkg/apis/iter8/v1alpha1"
+	"github.com/iter8.tools/iter8-controller/pkg/controller/experiment"
+	"github.com/iter8.tools/iter8-controller/test"
 	appsv1 "k8s.io/api/apps/v1"
 )
 

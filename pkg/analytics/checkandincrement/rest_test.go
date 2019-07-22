@@ -21,7 +21,7 @@ import (
 	"testing"
 
 	"github.com/google/go-cmp/cmp"
-	iter8v1alpha1 "github.ibm.com/istio-research/iter8-controller/pkg/apis/iter8/v1alpha1"
+	iter8v1alpha1 "github.com/iter8.tools/iter8-controller/pkg/apis/iter8/v1alpha1"
 	"sigs.k8s.io/controller-runtime/pkg/runtime/log"
 )
 

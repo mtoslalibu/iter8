@@ -39,7 +39,7 @@ import (
 	appsv1 "k8s.io/api/apps/v1"
 	corev1 "k8s.io/api/core/v1"
 
-	iter8v1alpha1 "github.ibm.com/istio-research/iter8-controller/pkg/apis/iter8/v1alpha1"
+	iter8v1alpha1 "github.com/iter8.tools/iter8-controller/pkg/apis/iter8/v1alpha1"
 )
 
 var log = logf.Log.WithName("experiment-controller")

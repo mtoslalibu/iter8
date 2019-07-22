@@ -20,7 +20,7 @@ import (
 	"time"
 
 	"github.com/onsi/gomega"
-	iter8v1alpha1 "github.ibm.com/istio-research/iter8-controller/pkg/apis/iter8/v1alpha1"
+	iter8v1alpha1 "github.com/iter8.tools/iter8-controller/pkg/apis/iter8/v1alpha1"
 	"golang.org/x/net/context"
 	apierrors "k8s.io/apimachinery/pkg/api/errors"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"

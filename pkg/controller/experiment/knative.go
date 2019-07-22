@@ -28,8 +28,8 @@ import (
 	"k8s.io/apimachinery/pkg/types"
 	"sigs.k8s.io/controller-runtime/pkg/reconcile"
 
-	"github.ibm.com/istio-research/iter8-controller/pkg/analytics/checkandincrement"
-	iter8v1alpha1 "github.ibm.com/istio-research/iter8-controller/pkg/apis/iter8/v1alpha1"
+	"github.com/iter8.tools/iter8-controller/pkg/analytics/checkandincrement"
+	iter8v1alpha1 "github.com/iter8.tools/iter8-controller/pkg/apis/iter8/v1alpha1"
 )
 
 func (r *ReconcileExperiment) syncKnative(context context.Context, instance *iter8v1alpha1.Experiment) (reconcile.Result, error) {

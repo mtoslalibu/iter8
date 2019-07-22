@@ -5,7 +5,7 @@ go:
 services:
   - docker
 
-go_import_path: github.ibm.com/istio-research/iter8-controller/
+go_import_path: github.com/iter8.tools/iter8-controller/
 
 before_install:
   - ./test/scripts/tools.sh

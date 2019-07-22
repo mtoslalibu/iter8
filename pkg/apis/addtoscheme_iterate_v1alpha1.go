@@ -16,7 +16,7 @@ limitations under the License.
 package apis
 
 import (
-	"github.ibm.com/istio-research/iter8-controller/pkg/apis/iter8/v1alpha1"
+	"github.com/iter8.tools/iter8-controller/pkg/apis/iter8/v1alpha1"
 )
 
 func init() {
