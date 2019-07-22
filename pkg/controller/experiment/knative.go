@@ -119,7 +119,8 @@ func (r *ReconcileExperiment) syncKnative(context context.Context, instance *ite
 	interval, _ := traffic.GetIntervalDuration() // TODO: admissioncontrollervalidation
 
 	if instance.Status.StartTimestamp == "" {
-		instance.Status.StartTimestamp = strconv.FormatInt(metav1.NewTime(now).UTC().Unix(), 10)
+		ts := metav1.NewTime(now).UTC().UnixNano() / int64(time.Millisecond)
+		instance.Status.StartTimestamp = strconv.FormatInt(ts, 10)
 		updateGrafanaURL(instance, serviceNamespace)
 	}
 
@@ -194,6 +195,10 @@ func (r *ReconcileExperiment) syncKnative(context context.Context, instance *ite
 		// Clear analysis state
 		instance.Status.AnalysisState.Raw = []byte("{}")
 
+		ts := metav1.NewTime(now).UTC().UnixNano() / int64(time.Millisecond)
+		instance.Status.EndTimestamp = strconv.FormatInt(ts, 10)
+		updateGrafanaURL(instance, serviceNamespace)
+
 		// End experiment
 		instance.Status.MarkExperimentCompleted()
 		instance.Status.TrafficSplit.Baseline = baselineTraffic.Percent
@@ -254,6 +259,11 @@ func (r *ReconcileExperiment) syncKnative(context context.Context, instance *ite
 				instance.Status.TrafficSplit.Baseline = 100
 				instance.Status.TrafficSplit.Candidate = 0
 				instance.Status.MarkExperimentCompleted()
+
+				ts := metav1.NewTime(now).UTC().UnixNano() / int64(time.Millisecond)
+				instance.Status.EndTimestamp = strconv.FormatInt(ts, 10)
+				updateGrafanaURL(instance, serviceNamespace)
+
 				err := r.Update(context, instance)
 				if err != nil {
 					return reconcile.Result{}, err // retry
