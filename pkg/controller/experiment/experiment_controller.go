@@ -39,7 +39,7 @@ import (
 	appsv1 "k8s.io/api/apps/v1"
 	corev1 "k8s.io/api/core/v1"
 
-	iter8v1alpha1 "github.com/iter8.tools/iter8-controller/pkg/apis/iter8/v1alpha1"
+	iter8v1alpha1 "github.com/iter8-tools/iter8-controller/pkg/apis/iter8/v1alpha1"
 )
 
 var log = logf.Log.WithName("experiment-controller")
@@ -50,7 +50,7 @@ const (
 	KubernetesService      = "v1"
 	KnativeServiceV1Alpha1 = "serving.knative.dev/v1alpha1"
 
-	Finalizer = "finalizer.iter8.tools"
+	Finalizer = "finalizer.iter8-tools"
 	loggerKey = loggerKeyType("logger")
 )
 
@@ -135,8 +135,8 @@ type ReconcileExperiment struct {
 
 // Reconcile reads that state of the cluster for a Experiment object and makes changes based on the state read
 // and what is in the Experiment.Spec
-// +kubebuilder:rbac:groups=iter8.tools,resources=experiments,verbs=get;list;watch;create;update;patch;delete
-// +kubebuilder:rbac:groups=iter8.tools,resources=experiments/status,verbs=get;update;patch
+// +kubebuilder:rbac:groups=iter8-tools,resources=experiments,verbs=get;list;watch;create;update;patch;delete
+// +kubebuilder:rbac:groups=iter8-tools,resources=experiments/status,verbs=get;update;patch
 // +kubebuilder:rbac:groups=networking.istio.io,resources=destinationrules,verbs=get;list;watch;create;update;patch;delete
 // +kubebuilder:rbac:groups=networking.istio.io,resources=virtualservices,verbs=get;list;watch;create;update;patch;delete
 // +kubebuilder:rbac:groups=serving.knative.dev,resources=services,verbs=get;list;watch;update;patch

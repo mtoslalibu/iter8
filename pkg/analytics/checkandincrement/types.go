@@ -16,7 +16,7 @@ limitations under the License.
 package checkandincrement
 
 import (
-	iter8v1alpha1 "github.com/iter8.tools/iter8-controller/pkg/apis/iter8/v1alpha1"
+	iter8v1alpha1 "github.com/iter8-tools/iter8-controller/pkg/apis/iter8/v1alpha1"
 )
 
 type Request struct {

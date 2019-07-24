@@ -35,9 +35,9 @@ import (
 	"sigs.k8s.io/controller-runtime/pkg/client"
 	"sigs.k8s.io/controller-runtime/pkg/client/config"
 
-	"github.com/iter8.tools/iter8-controller/pkg/analytics/checkandincrement"
-	"github.com/iter8.tools/iter8-controller/pkg/apis/iter8/v1alpha1"
-	"github.com/iter8.tools/iter8-controller/test"
+	"github.com/iter8-tools/iter8-controller/pkg/analytics/checkandincrement"
+	"github.com/iter8-tools/iter8-controller/pkg/apis/iter8/v1alpha1"
+	"github.com/iter8-tools/iter8-controller/test"
 )
 
 // Flags holds the command line flags or defaults for settings in the user's environment.

@@ -5,15 +5,15 @@ metadata:
 spec:
   targetService:
     name: reviews
-    apiVersion: v1 
+    apiVersion: v1
     baseline: reviews-v2
     candidate: reviews-v3
   trafficControl:
     strategy: check_and_increment
     interval: 30s
     trafficStepSize: 20
-    maxIterations: 8 
-    maxTrafficPercentage: 80 
+    maxIterations: 8
+    maxTrafficPercentage: 80
   analysis:
     analyticsService: "http://iter8-analytics.iter8"
     successCriteria:

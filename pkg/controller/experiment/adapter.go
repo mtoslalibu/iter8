@@ -21,8 +21,8 @@ import (
 	appsv1 "k8s.io/api/apps/v1"
 	corev1 "k8s.io/api/core/v1"
 
-	"github.com/iter8.tools/iter8-controller/pkg/analytics/checkandincrement"
-	iter8v1alpha1 "github.com/iter8.tools/iter8-controller/pkg/apis/iter8/v1alpha1"
+	"github.com/iter8-tools/iter8-controller/pkg/analytics/checkandincrement"
+	iter8v1alpha1 "github.com/iter8-tools/iter8-controller/pkg/apis/iter8/v1alpha1"
 )
 
 func MakeRequest(instance *iter8v1alpha1.Experiment, baseline, experiment interface{}) *checkandincrement.Request {

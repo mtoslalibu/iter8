@@ -1,5 +1,5 @@
-apiVersion: iter8.tools/v1alpha1
-kind: Experiment 
+apiVersion: iter8-tools/v1alpha1
+kind: Experiment
 metadata:
   name: reviews
   labels:
@@ -11,7 +11,7 @@ spec:
     baseline: reviews-v2 # Name of deployment
     candidate: reviews-v3
   trafficControl:
-    strategy: increment_without_check 
+    strategy: increment_without_check
     interval: 20s
     trafficStepSize: 5
     maxIterations: 10 #default value = 100

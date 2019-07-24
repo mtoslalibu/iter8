@@ -22,8 +22,8 @@ import (
 	"net/http"
 	"net/http/httptest"
 
-	cai "github.com/iter8.tools/iter8-controller/pkg/analytics/checkandincrement"
-	iter8v1alpha1 "github.com/iter8.tools/iter8-controller/pkg/apis/iter8/v1alpha1"
+	cai "github.com/iter8-tools/iter8-controller/pkg/analytics/checkandincrement"
+	iter8v1alpha1 "github.com/iter8-tools/iter8-controller/pkg/apis/iter8/v1alpha1"
 )
 
 const (

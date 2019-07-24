@@ -20,7 +20,7 @@ spec:
     type: string
   - JSONPath: .status.conditions[?(@.type == 'Ready')].reason
     # [Experiment status messages like 'Progressing', 'Candidate missing', ...]
-    description: Status of the experiment 
+    description: Status of the experiment
     format: byte
     name: status
     type: string
@@ -70,7 +70,7 @@ spec:
               properties:
                 analyticsService: # optional; default value = http://iter8analytics:5555
                   type: string
-                # The endpoint to grafana dashboard; 
+                # The endpoint to grafana dashboard;
                 # optional; default value = http://localhost:3000
                 grafanaEndpoint:
                   type: string
@@ -80,7 +80,7 @@ spec:
                     properties:
                       metricName:
                         enum:
-                        - iter8_latency # mean latency of the service 
+                        - iter8_latency # mean latency of the service
                         - iter8_error_rate # mean error rate (~5** HTTP Status codes) of the service
                         - iter8_error_count # total error count (~5** HTTP Status codes) of the service
                         type: string
@@ -90,12 +90,12 @@ spec:
                       stopOnFailure: # optional; default = False
                         type: boolean
                       tolerance: # tolerance limit in the success criteria
-                        format: double 
+                        format: double
                         type: number
                       toleranceType:
                         enum:
                         - threshold # tolerance limit is an absolute value
-                        - delta # tolerance limit is a relative value compared to baseline 
+                        - delta # tolerance limit is a relative value compared to baseline
                         type: string
                     required:
                     - name
@@ -132,7 +132,7 @@ spec:
                   type: integer
                 # maximum percentage of traffic routed to candidate during the experiment
                 # in knative, the max value of this seems to be 99. Can we make this 100?
-                maxTrafficPercentage: # optional; default value = 50; 
+                maxTrafficPercentage: # optional; default value = 50;
                   format: double
                   type: number
                 # where should traffic go on successful completion of experiment?
@@ -168,7 +168,7 @@ spec:
               type: object
             # Plain text summary of the experiment
             # Experiment could have completed or could be still going on
-            assessment: 
+            assessment:
               properties:
                 conclusions:
                   items:
@@ -176,7 +176,7 @@ spec:
                   type: array
               type: object
             # kubectl output shows the last change for each of the above conditions
-            conditions: 
+            conditions:
               items:
                 properties:
                   lastTransitionTime:
@@ -196,8 +196,8 @@ spec:
                 - status
                 type: object
               type: array
-            # number of iterations of the experiment that have finished so far 
-            currentIteration: 
+            # number of iterations of the experiment that have finished so far
+            currentIteration:
               format: int64
               type: integer
             # timestamp when experiment is completed
@@ -207,7 +207,7 @@ spec:
             grafanaURL:
               type: string
             # time at which the last iteration completed
-            lastIterationCompletionTime: 
+            lastIterationCompletionTime:
               format: date-time
               type: string
             # to be resolved... ???
@@ -218,7 +218,7 @@ spec:
             startTimestamp:
               type: string
             # current traffic split between baseline and candidate
-            trafficSplitPercentage: 
+            trafficSplitPercentage:
               properties:
                 baseline:
                   format: int64
