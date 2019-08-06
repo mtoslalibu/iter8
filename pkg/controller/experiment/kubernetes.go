@@ -280,11 +280,7 @@ func (r *ReconcileExperiment) syncKubernetes(context context.Context, instance *
 			log.Info("ExperimentStopWithAssessmentFlagSet", "Action", instance.Spec.Assessment)
 		}
 
-		if (getStrategy(instance) == "check_and_increment" &&
-			(instance.Spec.Assessment == iter8v1alpha1.AssessmentOverrideSuccess || instance.Status.AssessmentSummary.AllSuccessCriteriaMet)) ||
-			(getStrategy(instance) == "increment_without_check" &&
-				(instance.Spec.Assessment == iter8v1alpha1.AssessmentOverrideSuccess || instance.Spec.Assessment == iter8v1alpha1.AssessmentNull)) {
-
+		if experimentSucceeded(instance) {
 			// experiment is successful
 			log.Info("ExperimentSucceeded: AllSuccessCriteriaMet")
 			switch instance.Spec.TrafficControl.GetOnSuccess() {
@@ -585,4 +581,17 @@ func getStrategy(instance *iter8v1alpha1.Experiment) string {
 		strategy = "increment_without_check"
 	}
 	return strategy
+}
+
+func experimentSucceeded(instance *iter8v1alpha1.Experiment) bool {
+	switch getStrategy(instance) {
+	case "increment_without_check":
+		return instance.Spec.Assessment == iter8v1alpha1.AssessmentOverrideSuccess ||
+			instance.Spec.Assessment == iter8v1alpha1.AssessmentNull
+	case "check_and_increment":
+		return instance.Spec.Assessment == iter8v1alpha1.AssessmentOverrideSuccess ||
+			instance.Status.AssessmentSummary.AllSuccessCriteriaMet && instance.Spec.Assessment == iter8v1alpha1.AssessmentNull
+	default:
+		return false
+	}
 }

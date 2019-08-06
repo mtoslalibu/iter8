@@ -129,10 +129,7 @@ func (r *ReconcileExperiment) syncKnative(context context.Context, instance *ite
 		instance.Spec.Assessment != iter8v1alpha1.AssessmentNull {
 
 		update := false
-		if (getStrategy(instance) == "check_and_increment" &&
-			(instance.Spec.Assessment == iter8v1alpha1.AssessmentOverrideSuccess || instance.Status.AssessmentSummary.AllSuccessCriteriaMet)) ||
-			(getStrategy(instance) == "increment_without_check" &&
-				(instance.Spec.Assessment == iter8v1alpha1.AssessmentOverrideSuccess || instance.Spec.Assessment == iter8v1alpha1.AssessmentNull)) {
+		if experimentSucceeded(instance) {
 			log.Info("Experiment completed with success", "onsuccess", traffic.GetOnSuccess())
 			// experiment is successful
 			switch traffic.GetOnSuccess() {
