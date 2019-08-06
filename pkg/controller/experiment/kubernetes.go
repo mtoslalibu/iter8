@@ -294,7 +294,7 @@ func (r *ReconcileExperiment) syncKubernetes(context context.Context, instance *
 				if err := setStableRules(context, r, baseline, instance); err != nil {
 					return reconcile.Result{}, err
 				}
-				instance.Status.MarkNotRollForward("Roll Back to Baseline", "")
+
 				instance.Status.TrafficSplit.Baseline = 100
 				instance.Status.TrafficSplit.Candidate = 0
 			case "candidate":
@@ -307,7 +307,7 @@ func (r *ReconcileExperiment) syncKubernetes(context context.Context, instance *
 				if err := setStableRules(context, r, candidate, instance); err != nil {
 					return reconcile.Result{}, err
 				}
-				instance.Status.MarkRollForward()
+
 				instance.Status.TrafficSplit.Baseline = 0
 				instance.Status.TrafficSplit.Candidate = 100
 			case "both":
@@ -320,7 +320,7 @@ func (r *ReconcileExperiment) syncKubernetes(context context.Context, instance *
 				if err := r.Update(context, dr); err != nil {
 					return reconcile.Result{}, err
 				}
-				instance.Status.MarkNotRollForward("Traffic is maintained as end of experiment", "")
+
 			}
 		} else {
 			log.Info("ExperimentFailure: NotAllSuccessCriteriaMet")
@@ -334,7 +334,7 @@ func (r *ReconcileExperiment) syncKubernetes(context context.Context, instance *
 			if err := setStableRules(context, r, baseline, instance); err != nil {
 				return reconcile.Result{}, err
 			}
-			instance.Status.MarkNotRollForward("ExperimentFailure: Roll Back to Baseline", "")
+
 			instance.Status.TrafficSplit.Baseline = 100
 			instance.Status.TrafficSplit.Candidate = 0
 		}
@@ -375,7 +375,7 @@ func (r *ReconcileExperiment) syncKubernetes(context context.Context, instance *
 				if err := setStableRules(context, r, baseline, instance); err != nil {
 					return reconcile.Result{}, err
 				}
-				instance.Status.MarkNotRollForward("AbortExperiment: Roll Back to Baseline", "")
+
 				instance.Status.TrafficSplit.Baseline = 100
 				instance.Status.TrafficSplit.Candidate = 0
 				instance.Status.MarkExperimentCompleted()

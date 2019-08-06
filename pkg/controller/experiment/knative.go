@@ -142,7 +142,7 @@ func (r *ReconcileExperiment) syncKnative(context context.Context, instance *ite
 					baselineTraffic.Percent = 100
 					update = true
 				}
-				instance.Status.MarkNotRollForward("OnSuccessBaseline", "")
+				// instance.Status.MarkNotRollForward("OnSuccessBaseline", "")
 				instance.Status.TrafficSplit.Baseline = 100
 				instance.Status.TrafficSplit.Candidate = 0
 			case "candidate":
@@ -154,11 +154,11 @@ func (r *ReconcileExperiment) syncKnative(context context.Context, instance *ite
 					baselineTraffic.Percent = 0
 					update = true
 				}
-				instance.Status.MarkRollForward()
+				// instance.Status.MarkRollForward()
 				instance.Status.TrafficSplit.Baseline = 0
 				instance.Status.TrafficSplit.Candidate = 100
 			case "both":
-				instance.Status.MarkNotRollForward("OnSuccessBoth", "")
+				// instance.Status.MarkNotRollForward("OnSuccessBoth", "")
 			}
 		} else {
 			log.Info("Experiment completed with failure")
@@ -173,7 +173,7 @@ func (r *ReconcileExperiment) syncKnative(context context.Context, instance *ite
 				update = true
 			}
 
-			instance.Status.MarkNotRollForward("ExperimentFailure", "")
+			// instance.Status.MarkNotRollForward("ExperimentFailure", "")
 		}
 
 		labels := kservice.GetLabels()
@@ -252,7 +252,7 @@ func (r *ReconcileExperiment) syncKnative(context context.Context, instance *ite
 					}
 				}
 
-				instance.Status.MarkNotRollForward("AbortExperiment: Roll Back to Baseline", "")
+				// instance.Status.MarkNotRollForward("AbortExperiment: Roll Back to Baseline", "")
 				instance.Status.TrafficSplit.Baseline = 100
 				instance.Status.TrafficSplit.Candidate = 0
 				instance.Status.MarkExperimentCompleted()

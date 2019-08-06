@@ -92,6 +92,15 @@ type TargetService struct {
 	Candidate string `json:"candidate,omitempty"`
 }
 
+type Phrase string
+
+const (
+	PhraseInitializing Phrase = "Initializing"
+	PhraseProgressing  Phrase = "Progressing"
+	PhraseSucceeded    Phrase = "Succeeded"
+	PhraseFailed       Phrase = "Failed"
+)
+
 // ExperimentStatus defines the observed state of Experiment
 type ExperimentStatus struct {
 	// inherits duck/v1alpha1 Status, which currently provides:
@@ -122,6 +131,12 @@ type ExperimentStatus struct {
 
 	// TrafficSplit tells the current traffic spliting between baseline and candidate
 	TrafficSplit TrafficSplit `json:"trafficSplitPercentage,omitempty"`
+
+	// Phrase marks the phrase the experiment is at
+	Phrase Phrase `json:"phrase,omitempty"`
+
+	// Message specifies message to show in the kubectl printer
+	Message string `json:"messeage,omitempty"`
 }
 
 type TrafficSplit struct {
@@ -338,14 +353,14 @@ const (
 	// ExperimentConditionExperimentCompleted has status True when the experiment is completed
 	ExperimentConditionExperimentCompleted duckv1alpha1.ConditionType = "ExperimentCompleted"
 
-	// ExperimentConditionRollForward has status True when a Experiment rollout forward is completed
-	ExperimentConditionRollForward duckv1alpha1.ConditionType = "RollForward"
+	// ExperimentConditionExperimentSucceeded has status True when the experiment is succeeded
+	ExperimentConditionExperimentSucceeded duckv1alpha1.ConditionType = "ExperimentSucceeded"
 )
 
 var experimentCondSet = duckv1alpha1.NewLivingConditionSet(
 	ExperimentConditionServiceProvided,
 	ExperimentConditionExperimentCompleted,
-	ExperimentConditionRollForward,
+	ExperimentConditionExperimentSucceeded,
 )
 
 // InitializeConditions sets relevant unset conditions to Unknown state.
@@ -373,14 +388,14 @@ func (s *ExperimentStatus) MarkExperimentNotCompleted(reason, messageFormat stri
 	experimentCondSet.Manage(s).MarkFalse(ExperimentConditionExperimentCompleted, reason, messageFormat, messageA...)
 }
 
-// MarkRollForward sets the condition that all traffic is set to candidate
-func (s *ExperimentStatus) MarkRollForward() {
-	experimentCondSet.Manage(s).MarkTrue(ExperimentConditionRollForward)
+// MarkExperimentCompleted sets the condition that the experiemnt is completed
+func (s *ExperimentStatus) MarkExperimentSucceeded() {
+	experimentCondSet.Manage(s).MarkTrue(ExperimentConditionExperimentSucceeded)
 }
 
-// MarkNotRollForward sets the condition that the traffic is not all set to candidate
-func (s *ExperimentStatus) MarkNotRollForward(reason, messageFormat string, messageA ...interface{}) {
-	experimentCondSet.Manage(s).MarkFalse(ExperimentConditionRollForward, reason, messageFormat, messageA...)
+// MarkExperimentFailed sets the condition that the experiemnt is ongoing
+func (s *ExperimentStatus) MarkExperimentFailed(reason, messageFormat string, messageA ...interface{}) {
+	experimentCondSet.Manage(s).MarkFalse(ExperimentConditionExperimentSucceeded, reason, messageFormat, messageA...)
 }
 
 func init() {
