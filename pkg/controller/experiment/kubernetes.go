@@ -45,7 +45,7 @@ func (r *ReconcileExperiment) syncKubernetes(context context.Context, instance *
 	err := r.Get(context, types.NamespacedName{Name: serviceName, Namespace: serviceNamespace}, service)
 	if err != nil {
 		log.Info("TargetServiceNotFound", "service", serviceName)
-		instance.Status.MarkTargetServiceError("Service Not Found", "")
+		instance.Status.MarkTargetsError("Service Not Found", "")
 		err = r.Status().Update(context, instance)
 		if err != nil {
 			return reconcile.Result{}, err
@@ -215,13 +215,13 @@ func (r *ReconcileExperiment) syncKubernetes(context context.Context, instance *
 	if baseline.GetName() == "" || candidate.GetName() == "" {
 		if baseline.GetName() == "" && candidate.GetName() == "" {
 			log.Info("Missing Baseline and Candidate Deployments")
-			instance.Status.MarkTargetServiceError("Baseline and candidate deployments are missing", "")
+			instance.Status.MarkTargetsError("Baseline and candidate deployments are missing", "")
 		} else if candidate.GetName() == "" {
 			log.Info("Missing Candidate Deployment")
-			instance.Status.MarkTargetServiceError("Candidate deployment is missing", "")
+			instance.Status.MarkTargetsError("Candidate deployment is missing", "")
 		} else {
 			log.Info("Missing Baseline Deployment")
-			instance.Status.MarkTargetServiceError("Baseline deployment is missing", "")
+			instance.Status.MarkTargetsError("Baseline deployment is missing", "")
 		}
 
 		if len(baseline.GetName()) > 0 {
@@ -238,7 +238,7 @@ func (r *ReconcileExperiment) syncKubernetes(context context.Context, instance *
 		return reconcile.Result{RequeueAfter: 5 * time.Second}, nil
 	}
 
-	instance.Status.MarkTargetServiceFound()
+	instance.Status.MarkTargetsFound()
 
 	// check experiment is finished
 	if instance.Spec.TrafficControl.GetMaxIterations() <= instance.Status.CurrentIteration ||
@@ -358,7 +358,7 @@ func (r *ReconcileExperiment) syncKubernetes(context context.Context, instance *
 				instance.Status.TrafficSplit.Baseline = 100
 				instance.Status.TrafficSplit.Candidate = 0
 				markExperimentCompleted(instance)
-				instance.Status.MarkExperimentFailed("ExperimentFailure: Aborted, Rollback To Baseline.", "")
+				instance.Status.MarkExperimentFailed("Aborted, Traffic: AllToBaseline.", "")
 				// End experiment
 				err = r.Status().Update(context, instance)
 				return reconcile.Result{}, err

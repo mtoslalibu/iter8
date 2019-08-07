@@ -45,7 +45,7 @@ func (r *ReconcileExperiment) syncKnative(context context.Context, instance *ite
 	kservice := &servingv1alpha1.Service{}
 	err := r.Get(context, types.NamespacedName{Name: serviceName, Namespace: serviceNamespace}, kservice)
 	if err != nil {
-		instance.Status.MarkTargetServiceError("ServiceNotFound", "")
+		instance.Status.MarkTargetsError("ServiceNotFound", "")
 		err = r.Status().Update(context, instance)
 		if err != nil {
 			return reconcile.Result{}, err
@@ -54,7 +54,7 @@ func (r *ReconcileExperiment) syncKnative(context context.Context, instance *ite
 	}
 
 	if kservice.Spec.Template == nil {
-		instance.Status.MarkTargetServiceError("MissingTemplate", "")
+		instance.Status.MarkTargetsError("MissingTemplate", "")
 		err = r.Status().Update(context, instance)
 		return reconcile.Result{}, err
 	}
@@ -62,7 +62,7 @@ func (r *ReconcileExperiment) syncKnative(context context.Context, instance *ite
 	// link service to this experiment. Only one experiment can control a service
 	labels := kservice.GetLabels()
 	if experiment, found := labels[experimentLabel]; found && experiment != instance.GetName() {
-		instance.Status.MarkTargetServiceError("ExistingExperiment", "service is already controlled by %v", experiment)
+		instance.Status.MarkTargetsError("ExistingExperiment", "service is already controlled by %v", experiment)
 		err = r.Status().Update(context, instance)
 		return reconcile.Result{}, err
 	}
@@ -82,7 +82,7 @@ func (r *ReconcileExperiment) syncKnative(context context.Context, instance *ite
 	// Check the experiment targets existing traffic targets
 	ksvctraffic := kservice.Spec.Traffic
 	if ksvctraffic == nil {
-		instance.Status.MarkTargetServiceError("MissingTraffic", "")
+		instance.Status.MarkTargetsError("MissingTraffic", "")
 		err = r.Status().Update(context, instance)
 		return reconcile.Result{}, err
 	}
@@ -93,7 +93,7 @@ func (r *ReconcileExperiment) syncKnative(context context.Context, instance *ite
 	candidateTraffic := getTrafficByName(kservice, candidate)
 
 	if baselineTraffic == nil {
-		instance.Status.MarkTargetServiceError("MissingBaselineRevision", "%s", baseline)
+		instance.Status.MarkTargetsError("MissingBaselineRevision", "%s", baseline)
 		instance.Status.TrafficSplit.Baseline = 0
 		if candidateTraffic == nil {
 			instance.Status.TrafficSplit.Candidate = 0
@@ -105,14 +105,14 @@ func (r *ReconcileExperiment) syncKnative(context context.Context, instance *ite
 	}
 
 	if candidateTraffic == nil {
-		instance.Status.MarkTargetServiceError("MissingCandidateRevision", "%s", candidate)
+		instance.Status.MarkTargetsError("MissingCandidateRevision", "%s", candidate)
 		instance.Status.TrafficSplit.Baseline = baselineTraffic.Percent
 		instance.Status.TrafficSplit.Candidate = 0
 		err = r.Status().Update(context, instance)
 		return reconcile.Result{}, err
 	}
 
-	instance.Status.MarkTargetServiceFound()
+	instance.Status.MarkTargetsFound()
 
 	traffic := instance.Spec.TrafficControl
 	now := time.Now()
@@ -207,14 +207,14 @@ func (r *ReconcileExperiment) syncKnative(context context.Context, instance *ite
 			baselineService, err := r.getServiceForRevision(context, kservice, baselineTraffic.RevisionName)
 			if err != nil {
 				// TODO: maybe we want another condition
-				instance.Status.MarkTargetServiceError("MissingCoreService", "%v", err)
+				instance.Status.MarkTargetsError("MissingCoreService", "%v", err)
 				err = r.Status().Update(context, instance)
 				return reconcile.Result{}, err
 			}
 			candidateService, err := r.getServiceForRevision(context, kservice, candidateTraffic.RevisionName)
 			if err != nil {
 				// TODO: maybe we want another condition
-				instance.Status.MarkTargetServiceError("MissingCoreService", "%v", err)
+				instance.Status.MarkTargetsError("MissingCoreService", "%v", err)
 				err = r.Status().Update(context, instance)
 				return reconcile.Result{}, err
 			}
@@ -228,7 +228,6 @@ func (r *ReconcileExperiment) syncKnative(context context.Context, instance *ite
 				return reconcile.Result{RequeueAfter: 5 * time.Second}, err
 			}
 
-			// Abort?
 			if response.Assessment.Summary.AbortExperiment {
 				log.Info("ExperimentAborted. Rollback to Baseline.")
 				if candidateTraffic.Percent != 0 || baselineTraffic.Percent != 100 {
@@ -240,13 +239,11 @@ func (r *ReconcileExperiment) syncKnative(context context.Context, instance *ite
 					}
 				}
 
-				// instance.Status.MarkNotRollForward("AbortExperiment: Roll Back to Baseline", "")
 				instance.Status.TrafficSplit.Baseline = 100
 				instance.Status.TrafficSplit.Candidate = 0
 
 				markExperimentCompleted(instance)
-				instance.Status.MarkExperimentFailed("ExperimentFailure: Aborted, Rollback To Baseline.", "")
-
+				instance.Status.MarkExperimentFailed("Aborted, Traffic: AllToBaseline.", "")
 				err := r.Update(context, instance)
 				if err != nil {
 					return reconcile.Result{}, err // retry

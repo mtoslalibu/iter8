@@ -349,8 +349,8 @@ const (
 	// ExperimentConditionReady has status True when the Experiment has finished controlling traffic
 	ExperimentConditionReady = duckv1alpha1.ConditionReady
 
-	// ExperimentConditionServiceProvided has status True when the Experiment detects all elements specified in targetService
-	ExperimentConditionServiceProvided duckv1alpha1.ConditionType = "ServiceProvided"
+	// ExperimentConditionTargetsProvided has status True when the Experiment detects all elements specified in targetService
+	ExperimentConditionTargetsProvided duckv1alpha1.ConditionType = "TargetsProvided"
 
 	// ExperimentConditionAnalyticsServiceNormal has status True when the analytics service is operating normally
 	ExperimentConditionAnalyticsServiceNormal duckv1alpha1.ConditionType = "AnalyticsServiceNormal"
@@ -363,9 +363,10 @@ const (
 )
 
 var experimentCondSet = duckv1alpha1.NewLivingConditionSet(
-	ExperimentConditionServiceProvided,
+	ExperimentConditionTargetsProvided,
 	ExperimentConditionExperimentCompleted,
 	ExperimentConditionExperimentSucceeded,
+	ExperimentConditionAnalyticsServiceNormal,
 )
 
 // InitializeConditions sets relevant unset conditions to Unknown state.
@@ -376,14 +377,14 @@ func (s *ExperimentStatus) InitializeConditions() {
 	}
 }
 
-// MarkTargetServiceFound sets the condition that the target service has been found
-func (s *ExperimentStatus) MarkTargetServiceFound() {
-	experimentCondSet.Manage(s).MarkTrue(ExperimentConditionServiceProvided)
+// MarkTargetServiceFound sets the condition that the all target have been found
+func (s *ExperimentStatus) MarkTargetsFound() {
+	experimentCondSet.Manage(s).MarkTrue(ExperimentConditionTargetsProvided)
 }
 
 // MarkTargetServiceError sets the condition that the target service hasn't been found.
-func (s *ExperimentStatus) MarkTargetServiceError(reason, messageFormat string, messageA ...interface{}) {
-	experimentCondSet.Manage(s).MarkFalse(ExperimentConditionServiceProvided, reason, messageFormat, messageA...)
+func (s *ExperimentStatus) MarkTargetsError(reason, messageFormat string, messageA ...interface{}) {
+	experimentCondSet.Manage(s).MarkFalse(ExperimentConditionTargetsProvided, reason, messageFormat, messageA...)
 	s.Phase = PhasePause
 	s.Message = composeMessage(reason, messageFormat, messageA...)
 }
@@ -395,7 +396,7 @@ func (s *ExperimentStatus) MarkAnalyticsServiceRunning() {
 
 // MarkAnalyticsServiceError sets the condition that the analytics service has breakdown
 func (s *ExperimentStatus) MarkAnalyticsServiceError(reason, messageFormat string, messageA ...interface{}) {
-	experimentCondSet.Manage(s).MarkFalse(ExperimentConditionServiceProvided, reason, messageFormat, messageA...)
+	experimentCondSet.Manage(s).MarkFalse(ExperimentConditionTargetsProvided, reason, messageFormat, messageA...)
 	s.Message = composeMessage(reason, messageFormat, messageA...)
 	s.Phase = PhasePause
 }

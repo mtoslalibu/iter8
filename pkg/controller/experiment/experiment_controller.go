@@ -217,7 +217,7 @@ func (r *ReconcileExperiment) Reconcile(request reconcile.Request) (reconcile.Re
 	case KnativeServiceV1Alpha1:
 		return r.syncKnative(ctx, instance)
 	default:
-		instance.Status.MarkTargetServiceError("UnsupportedAPIVersion", "%s", apiVersion)
+		instance.Status.MarkTargetsError("UnsupportedAPIVersion", "%s", apiVersion)
 		err := r.Status().Update(ctx, instance)
 		return reconcile.Result{}, err
 	}
