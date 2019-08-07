@@ -34,8 +34,8 @@ func TestKnativeExperiment(t *testing.T) {
 	defer service.Close()
 	testCases := map[string]testCase{
 		"missingService": testCase{
-			object:      getDoNotExistExperiment(),
-			wantResults: []runtime.Object{getDoNotExistExperimentReconciled()},
+			object:    getDoNotExistExperiment(),
+			wantState: test.CheckServiceNotFound("ServiceNotFound"),
 		},
 		"missingbaseline": func(name string) testCase {
 			return testCase{
@@ -181,12 +181,6 @@ func getSlowExperimentForService(name string, serviceName string, analyticsHost 
 	experiment.Spec.TargetService.Candidate = serviceName + "-two"
 	experiment.Spec.TrafficControl.Interval = &twentysecs
 	experiment.Spec.TrafficControl.MaxIterations = &two
-	return experiment
-}
-
-func getDoNotExistExperimentReconciled() *v1alpha1.Experiment {
-	experiment := getDoNotExistExperiment()
-	experiment.Status.MarkTargetServiceError("ServiceNotFound", "")
 	return experiment
 }
 
