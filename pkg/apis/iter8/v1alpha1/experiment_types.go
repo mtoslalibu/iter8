@@ -16,6 +16,7 @@ limitations under the License.
 package v1alpha1
 
 import (
+	"fmt"
 	"time"
 
 	duckv1alpha1 "github.com/knative/pkg/apis/duck/v1alpha1"
@@ -31,8 +32,8 @@ import (
 // +k8s:openapi-gen=true
 // +kubebuilder:subresource:status
 // +kubebuilder:categories=all,iter8
-// +kubebuilder:printcolumn:name="completed",type="string",JSONPath=".status.conditions[?(@.type == 'ExperimentCompleted')].status",description="Whether experiment is completed",format="byte"
-// +kubebuilder:printcolumn:name="status",type="string",JSONPath=".status.conditions[?(@.type == 'Ready')].reason",description="Status of the experiment",format="byte"
+// +kubebuilder:printcolumn:name="phase",type="string",JSONPath=".status.phase",description="Phase of the experiment",format="byte"
+// +kubebuilder:printcolumn:name="status",type="string",JSONPath=".status.message",description="Detailed Status of the experiment",format="byte"
 // +kubebuilder:printcolumn:name="baseline",type="string",JSONPath=".spec.targetService.baseline",description="Name of baseline",format="byte"
 // +kubebuilder:printcolumn:name="percentage",type="integer",JSONPath=".status.trafficSplitPercentage.baseline",description="Traffic percentage for baseline",format="int32"
 // +kubebuilder:printcolumn:name="candidate",type="string",JSONPath=".spec.targetService.candidate",description="Name of candidate",format="byte"
@@ -92,13 +93,14 @@ type TargetService struct {
 	Candidate string `json:"candidate,omitempty"`
 }
 
-type Phrase string
+type Phase string
 
 const (
-	PhraseInitializing Phrase = "Initializing"
-	PhraseProgressing  Phrase = "Progressing"
-	PhraseSucceeded    Phrase = "Succeeded"
-	PhraseFailed       Phrase = "Failed"
+	PhaseInitializing Phase = "Initializing"
+	PhasePause        Phase = "Pause"
+	PhaseProgressing  Phase = "Progressing"
+	PhaseSucceeded    Phase = "Succeeded"
+	PhaseFailed       Phase = "Failed"
 )
 
 // ExperimentStatus defines the observed state of Experiment
@@ -132,11 +134,11 @@ type ExperimentStatus struct {
 	// TrafficSplit tells the current traffic spliting between baseline and candidate
 	TrafficSplit TrafficSplit `json:"trafficSplitPercentage,omitempty"`
 
-	// Phrase marks the phrase the experiment is at
-	Phrase Phrase `json:"phrase,omitempty"`
+	// Phase marks the Phase the experiment is at
+	Phase Phase `json:"Phase,omitempty"`
 
 	// Message specifies message to show in the kubectl printer
-	Message string `json:"messeage,omitempty"`
+	Message string `json:"message,omitempty"`
 }
 
 type TrafficSplit struct {
@@ -347,8 +349,11 @@ const (
 	// ExperimentConditionReady has status True when the Experiment has finished controlling traffic
 	ExperimentConditionReady = duckv1alpha1.ConditionReady
 
-	// ExperimentConditionServiceProvided has status True when the Experiment has been configured with a Knative service
+	// ExperimentConditionServiceProvided has status True when the Experiment detects all elements specified in targetService
 	ExperimentConditionServiceProvided duckv1alpha1.ConditionType = "ServiceProvided"
+
+	// ExperimentConditionAnalyticsServiceNormal has status True when the analytics service is operating normally
+	ExperimentConditionAnalyticsServiceNormal duckv1alpha1.ConditionType = "AnalyticsServiceNormal"
 
 	// ExperimentConditionExperimentCompleted has status True when the experiment is completed
 	ExperimentConditionExperimentCompleted duckv1alpha1.ConditionType = "ExperimentCompleted"
@@ -366,16 +371,33 @@ var experimentCondSet = duckv1alpha1.NewLivingConditionSet(
 // InitializeConditions sets relevant unset conditions to Unknown state.
 func (s *ExperimentStatus) InitializeConditions() {
 	experimentCondSet.Manage(s).InitializeConditions()
+	if s.Phase == "" {
+		s.Phase = PhaseInitializing
+	}
 }
 
-// MarkHasService sets the condition that the target service has been found
-func (s *ExperimentStatus) MarkHasService() {
+// MarkTargetServiceFound sets the condition that the target service has been found
+func (s *ExperimentStatus) MarkTargetServiceFound() {
 	experimentCondSet.Manage(s).MarkTrue(ExperimentConditionServiceProvided)
 }
 
-// MarkHasNotService sets the condition that the target service hasn't been found.
-func (s *ExperimentStatus) MarkHasNotService(reason, messageFormat string, messageA ...interface{}) {
+// MarkTargetServiceError sets the condition that the target service hasn't been found.
+func (s *ExperimentStatus) MarkTargetServiceError(reason, messageFormat string, messageA ...interface{}) {
 	experimentCondSet.Manage(s).MarkFalse(ExperimentConditionServiceProvided, reason, messageFormat, messageA...)
+	s.Phase = PhasePause
+	s.Message = composeMessage(reason, messageFormat, messageA...)
+}
+
+// MarkTargetServiceRunning sets the condition that the analytics service is operating normally
+func (s *ExperimentStatus) MarkAnalyticsServiceRunning() {
+	experimentCondSet.Manage(s).MarkTrue(ExperimentConditionAnalyticsServiceNormal)
+}
+
+// MarkAnalyticsServiceError sets the condition that the analytics service has breakdown
+func (s *ExperimentStatus) MarkAnalyticsServiceError(reason, messageFormat string, messageA ...interface{}) {
+	experimentCondSet.Manage(s).MarkFalse(ExperimentConditionServiceProvided, reason, messageFormat, messageA...)
+	s.Message = composeMessage(reason, messageFormat, messageA...)
+	s.Phase = PhasePause
 }
 
 // MarkExperimentCompleted sets the condition that the experiemnt is completed
@@ -386,16 +408,30 @@ func (s *ExperimentStatus) MarkExperimentCompleted() {
 // MarkExperimentNotCompleted sets the condition that the experiemnt is ongoing
 func (s *ExperimentStatus) MarkExperimentNotCompleted(reason, messageFormat string, messageA ...interface{}) {
 	experimentCondSet.Manage(s).MarkFalse(ExperimentConditionExperimentCompleted, reason, messageFormat, messageA...)
+	s.Phase = PhaseProgressing
+	s.Message = composeMessage(reason, messageFormat, messageA...)
 }
 
-// MarkExperimentCompleted sets the condition that the experiemnt is completed
-func (s *ExperimentStatus) MarkExperimentSucceeded() {
+// MarkExperimentSucceeded sets the condition that the experiemnt is completed
+func (s *ExperimentStatus) MarkExperimentSucceeded(reason, messageFormat string, messageA ...interface{}) {
 	experimentCondSet.Manage(s).MarkTrue(ExperimentConditionExperimentSucceeded)
+	s.Phase = PhaseSucceeded
+	s.Message = composeMessage(reason, messageFormat, messageA...)
 }
 
 // MarkExperimentFailed sets the condition that the experiemnt is ongoing
 func (s *ExperimentStatus) MarkExperimentFailed(reason, messageFormat string, messageA ...interface{}) {
 	experimentCondSet.Manage(s).MarkFalse(ExperimentConditionExperimentSucceeded, reason, messageFormat, messageA...)
+	s.Phase = PhaseFailed
+	s.Message = composeMessage(reason, messageFormat, messageA...)
+}
+
+func composeMessage(reason, messageFormat string, messageA ...interface{}) string {
+	out := reason
+	if len(fmt.Sprintf(messageFormat, messageA...)) > 0 {
+		out += ", " + fmt.Sprintf(messageFormat, messageA...)
+	}
+	return out
 }
 
 func init() {

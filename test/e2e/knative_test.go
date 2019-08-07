@@ -72,7 +72,8 @@ func TestKnativeExperiment(t *testing.T) {
 			object:  getFastExperimentForService("stock-rollforward", "stock-rollforward", service.GetURL()),
 			wantState: test.WantAllStates(
 				test.CheckExperimentFinished,
-				test.CheckExperimentRollForward),
+				test.CheckExperimentSuccess,
+			),
 			wantResults: []runtime.Object{
 				getRollforwardStockService("stock-rollforward"),
 			},
@@ -88,7 +89,8 @@ func TestKnativeExperiment(t *testing.T) {
 			object:  getFastExperimentForService("stock-rollbackward", "stock-rollbackward", service.GetURL()),
 			wantState: test.WantAllStates(
 				test.CheckExperimentFinished,
-				test.CheckExperimentNotRollForward),
+				test.CheckExperimentFailure,
+			),
 			wantResults: []runtime.Object{
 				getRollBackwardStockService("stock-rollbackward"),
 			},
@@ -184,8 +186,7 @@ func getSlowExperimentForService(name string, serviceName string, analyticsHost 
 
 func getDoNotExistExperimentReconciled() *v1alpha1.Experiment {
 	experiment := getDoNotExistExperiment()
-	experiment.Status.MarkExperimentNotCompleted("Progressing", "")
-	experiment.Status.MarkHasNotService("NotFound", "")
+	experiment.Status.MarkTargetServiceError("ServiceNotFound", "")
 	return experiment
 }
 

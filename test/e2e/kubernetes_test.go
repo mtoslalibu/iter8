@@ -53,8 +53,11 @@ func TestKubernetesExperiment(t *testing.T) {
 				getReviewsDeployment("v2"),
 				getRatingsDeployment(),
 			},
-			object:    getFastKubernetesExperiment("rollforward", "reviews", "reviews-v1", "reviews-v2", service.GetURL()),
-			wantState: test.CheckExperimentFinished,
+			object: getFastKubernetesExperiment("rollforward", "reviews", "reviews-v1", "reviews-v2", service.GetURL()),
+			wantState: test.WantAllStates(
+				test.CheckExperimentFinished,
+				test.CheckExperimentSuccess,
+			),
 			wantResults: []runtime.Object{
 				getStableDestinationRule("reviews", "rollforward", getReviewsDeployment("v2")),
 				getStableVirtualService("reviews", "rollforward"),
@@ -71,8 +74,11 @@ func TestKubernetesExperiment(t *testing.T) {
 				getReviewsDeployment("v2"),
 				getRatingsDeployment(),
 			},
-			object:    getFastKubernetesExperiment("rollbackward", "reviews", "reviews-v1", "reviews-v2", service.GetURL()),
-			wantState: test.CheckExperimentFinished,
+			object: getFastKubernetesExperiment("rollbackward", "reviews", "reviews-v1", "reviews-v2", service.GetURL()),
+			wantState: test.WantAllStates(
+				test.CheckExperimentFinished,
+				test.CheckExperimentFailure,
+			),
 			wantResults: []runtime.Object{
 				getStableDestinationRule("reviews", "rollbackward", getReviewsDeployment("v1")),
 				getStableVirtualService("reviews", "rollbackward"),
@@ -129,8 +135,11 @@ func TestKubernetesExperiment(t *testing.T) {
 				getReviewsDeployment("v2"),
 				getRatingsDeployment(),
 			},
-			object:    getSlowKubernetesExperiment("abortexperiment", "reviews", "reviews-v1", "reviews-v2", service.GetURL()),
-			wantState: test.CheckExperimentFinished,
+			object: getSlowKubernetesExperiment("abortexperiment", "reviews", "reviews-v1", "reviews-v2", service.GetURL()),
+			wantState: test.WantAllStates(
+				test.CheckExperimentFinished,
+				test.CheckExperimentFailure,
+			),
 			wantResults: []runtime.Object{
 				// rollback to baseline
 				getStableDestinationRule("reviews", "abortexperiment", getReviewsDeployment("v1")),
@@ -145,8 +154,11 @@ func TestKubernetesExperiment(t *testing.T) {
 				getReviewsDeployment("v2"),
 				getRatingsDeployment(),
 			},
-			object:    getDefaultKubernetesExperiment("emptycriterion", "reviews", "reviews-v1", "reviews-v2"),
-			wantState: test.CheckExperimentFinished,
+			object: getDefaultKubernetesExperiment("emptycriterion", "reviews", "reviews-v1", "reviews-v2"),
+			wantState: test.WantAllStates(
+				test.CheckExperimentFinished,
+				test.CheckExperimentSuccess,
+			),
 			wantResults: []runtime.Object{
 				// rollforward
 				getStableDestinationRule("reviews", "emptycriterion", getReviewsDeployment("v2")),

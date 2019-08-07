@@ -7,13 +7,13 @@ metadata:
   name: experiments.iter8.tools
 spec:
   additionalPrinterColumns:
-  - JSONPath: .status.conditions[?(@.type == 'ExperimentCompleted')].status
-    description: Whether experiment is completed
+  - JSONPath: .status.phase
+    description: Phase of the experiment
     format: byte
-    name: completed
+    name: phase
     type: string
-  - JSONPath: .status.conditions[?(@.type == 'Ready')].reason
-    description: Status of the experiment
+  - JSONPath: .status.message
+    description: Detailed Status of the experiment
     format: byte
     name: status
     type: string
@@ -183,6 +183,9 @@ spec:
           type: object
         status:
           properties:
+            Phase:
+              description: Phase marks the Phase the experiment is at
+              type: string
             analysisState:
               description: AnalysisState is the last analysis state
               type: object
@@ -243,6 +246,9 @@ spec:
               description: LastIncrementTime is the last time the traffic has been
                 incremented
               format: date-time
+              type: string
+            message:
+              description: Message specifies message to show in the kubectl printer
               type: string
             observedGeneration:
               description: ObservedGeneration is the 'Generation' of the Service that
