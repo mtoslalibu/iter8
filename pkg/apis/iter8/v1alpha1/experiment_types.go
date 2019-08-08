@@ -135,7 +135,7 @@ type ExperimentStatus struct {
 	TrafficSplit TrafficSplit `json:"trafficSplitPercentage,omitempty"`
 
 	// Phase marks the Phase the experiment is at
-	Phase Phase `json:"Phase,omitempty"`
+	Phase Phase `json:"phase,omitempty"`
 
 	// Message specifies message to show in the kubectl printer
 	Message string `json:"message,omitempty"`
@@ -377,19 +377,19 @@ func (s *ExperimentStatus) InitializeConditions() {
 	}
 }
 
-// MarkTargetServiceFound sets the condition that the all target have been found
+// MarkTargetsFound sets the condition that the all target have been found
 func (s *ExperimentStatus) MarkTargetsFound() {
 	experimentCondSet.Manage(s).MarkTrue(ExperimentConditionTargetsProvided)
 }
 
-// MarkTargetServiceError sets the condition that the target service hasn't been found.
+// MarkTargetsError sets the condition that the target service hasn't been found.
 func (s *ExperimentStatus) MarkTargetsError(reason, messageFormat string, messageA ...interface{}) {
 	experimentCondSet.Manage(s).MarkFalse(ExperimentConditionTargetsProvided, reason, messageFormat, messageA...)
 	s.Phase = PhasePause
 	s.Message = composeMessage(reason, messageFormat, messageA...)
 }
 
-// MarkTargetServiceRunning sets the condition that the analytics service is operating normally
+// MarkAnalyticsServiceRunning sets the condition that the analytics service is operating normally
 func (s *ExperimentStatus) MarkAnalyticsServiceRunning() {
 	experimentCondSet.Manage(s).MarkTrue(ExperimentConditionAnalyticsServiceNormal)
 }
