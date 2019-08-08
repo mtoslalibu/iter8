@@ -19,7 +19,6 @@ import (
 	"context"
 	"encoding/json"
 	"fmt"
-	"strconv"
 	"time"
 
 	"github.com/iter8-tools/iter8-controller/pkg/analytics/checkandincrement"
@@ -39,17 +38,14 @@ import (
 func (r *ReconcileExperiment) syncKubernetes(context context.Context, instance *iter8v1alpha1.Experiment) (reconcile.Result, error) {
 	log := Logger(context)
 	serviceName := instance.Spec.TargetService.Name
-	serviceNamespace := instance.Spec.TargetService.Namespace
-	if serviceNamespace == "" {
-		serviceNamespace = instance.Namespace
-	}
+	serviceNamespace := getServiceNamespace(instance)
 
 	// Get k8s service
 	service := &corev1.Service{}
 	err := r.Get(context, types.NamespacedName{Name: serviceName, Namespace: serviceNamespace}, service)
 	if err != nil {
 		log.Info("TargetServiceNotFound", "service", serviceName)
-		instance.Status.MarkHasNotService("Service Not Found", "")
+		instance.Status.MarkTargetsError("Service Not Found", "")
 		err = r.Status().Update(context, instance)
 		if err != nil {
 			return reconcile.Result{}, err
@@ -219,13 +215,13 @@ func (r *ReconcileExperiment) syncKubernetes(context context.Context, instance *
 	if baseline.GetName() == "" || candidate.GetName() == "" {
 		if baseline.GetName() == "" && candidate.GetName() == "" {
 			log.Info("Missing Baseline and Candidate Deployments")
-			instance.Status.MarkHasNotService("Baseline and candidate deployments are missing", "")
+			instance.Status.MarkTargetsError("Baseline and candidate deployments are missing", "")
 		} else if candidate.GetName() == "" {
 			log.Info("Missing Candidate Deployment")
-			instance.Status.MarkHasNotService("Candidate deployment is missing", "")
+			instance.Status.MarkTargetsError("Candidate deployment is missing", "")
 		} else {
 			log.Info("Missing Baseline Deployment")
-			instance.Status.MarkHasNotService("Baseline deployment is missing", "")
+			instance.Status.MarkTargetsError("Baseline deployment is missing", "")
 		}
 
 		if len(baseline.GetName()) > 0 {
@@ -242,39 +238,12 @@ func (r *ReconcileExperiment) syncKubernetes(context context.Context, instance *
 		return reconcile.Result{RequeueAfter: 5 * time.Second}, nil
 	}
 
-	instance.Status.MarkHasService()
-
-	// Start Experiment Process
-	// Get info on Experiment
-	traffic := instance.Spec.TrafficControl
-	now := time.Now()
-	// TODO: check err in getting the time value
-	interval, _ := traffic.GetIntervalDuration()
-
-	if instance.Status.StartTimestamp == "" {
-		ts := metav1.NewTime(now).UTC().UnixNano() / int64(time.Millisecond)
-		instance.Status.StartTimestamp = strconv.FormatInt(ts, 10)
-		updateGrafanaURL(instance, serviceNamespace)
-	}
+	instance.Status.MarkTargetsFound()
 
 	// check experiment is finished
 	if instance.Spec.TrafficControl.GetMaxIterations() <= instance.Status.CurrentIteration ||
 		instance.Spec.Assessment != iter8v1alpha1.AssessmentNull {
 		log.Info("ExperimentCompleted")
-		// remove experiment labels
-		if err := removeExperimentLabel(context, r, baseline); err != nil {
-			return reconcile.Result{}, err
-		}
-		if err := removeExperimentLabel(context, r, candidate); err != nil {
-			return reconcile.Result{}, err
-		}
-
-		// Clear analysis state
-		instance.Status.AnalysisState.Raw = []byte("{}")
-
-		ts := metav1.NewTime(now).UTC().UnixNano() / int64(time.Millisecond)
-		instance.Status.EndTimestamp = strconv.FormatInt(ts, 10)
-		updateGrafanaURL(instance, serviceNamespace)
 
 		if instance.Spec.Assessment != iter8v1alpha1.AssessmentNull {
 			log.Info("ExperimentStopWithAssessmentFlagSet", "Action", instance.Spec.Assessment)
@@ -282,7 +251,9 @@ func (r *ReconcileExperiment) syncKubernetes(context context.Context, instance *
 
 		if experimentSucceeded(instance) {
 			// experiment is successful
-			log.Info("ExperimentSucceeded: AllSuccessCriteriaMet")
+			log.Info("ExperimentSucceeded")
+
+			msg := ""
 			switch instance.Spec.TrafficControl.GetOnSuccess() {
 			case "baseline":
 				// delete routing rules
@@ -294,7 +265,7 @@ func (r *ReconcileExperiment) syncKubernetes(context context.Context, instance *
 				if err := setStableRules(context, r, baseline, instance); err != nil {
 					return reconcile.Result{}, err
 				}
-				instance.Status.MarkNotRollForward("Roll Back to Baseline", "")
+				msg = "AllToBaseline"
 				instance.Status.TrafficSplit.Baseline = 100
 				instance.Status.TrafficSplit.Candidate = 0
 			case "candidate":
@@ -307,7 +278,7 @@ func (r *ReconcileExperiment) syncKubernetes(context context.Context, instance *
 				if err := setStableRules(context, r, candidate, instance); err != nil {
 					return reconcile.Result{}, err
 				}
-				instance.Status.MarkRollForward()
+				msg = "AllToCandidate"
 				instance.Status.TrafficSplit.Baseline = 0
 				instance.Status.TrafficSplit.Candidate = 100
 			case "both":
@@ -320,11 +291,14 @@ func (r *ReconcileExperiment) syncKubernetes(context context.Context, instance *
 				if err := r.Update(context, dr); err != nil {
 					return reconcile.Result{}, err
 				}
-				instance.Status.MarkNotRollForward("Traffic is maintained as end of experiment", "")
+				msg = "KeepOnBothVersions"
 			}
-		} else {
-			log.Info("ExperimentFailure: NotAllSuccessCriteriaMet")
 
+			markExperimentSuccessStatus(instance, msg)
+		} else {
+			log.Info("ExperimentFailure")
+
+			markExperimentFailureStatus(instance, "AllToBaseline")
 			// delete routing rules
 			if err := deleteRules(context, r, instance); err != nil {
 				return reconcile.Result{}, err
@@ -334,17 +308,22 @@ func (r *ReconcileExperiment) syncKubernetes(context context.Context, instance *
 			if err := setStableRules(context, r, baseline, instance); err != nil {
 				return reconcile.Result{}, err
 			}
-			instance.Status.MarkNotRollForward("ExperimentFailure: Roll Back to Baseline", "")
+
 			instance.Status.TrafficSplit.Baseline = 100
 			instance.Status.TrafficSplit.Candidate = 0
 		}
 
-		instance.Status.MarkExperimentCompleted()
+		markExperimentCompleted(instance)
 		// End experiment
 		err = r.Status().Update(context, instance)
 		return reconcile.Result{}, err
 	}
 
+	// Progressing on Experiment
+	traffic := instance.Spec.TrafficControl
+	now := time.Now()
+	// TODO: check err in getting the time value
+	interval, _ := traffic.GetIntervalDuration()
 	// Check experiment rollout status
 	rolloutPercent := float64(getWeight(Candidate, vs))
 	if now.After(instance.Status.LastIncrementTime.Add(interval)) {
@@ -357,7 +336,7 @@ func (r *ReconcileExperiment) syncKubernetes(context context.Context, instance *
 			payload := MakeRequest(instance, baseline, candidate)
 			response, err := checkandincrement.Invoke(log, instance.Spec.Analysis.GetServiceEndpoint(), payload)
 			if err != nil {
-				instance.Status.MarkExperimentNotCompleted("Istio Analytics Service is not reachable", "%v", err)
+				instance.Status.MarkAnalyticsServiceError("Istio Analytics Service is not reachable", "%v", err)
 				log.Info("Istio Analytics Service is not reachable", "err", err)
 				err = r.Status().Update(context, instance)
 				return reconcile.Result{RequeueAfter: 5 * time.Second}, err
@@ -375,23 +354,15 @@ func (r *ReconcileExperiment) syncKubernetes(context context.Context, instance *
 				if err := setStableRules(context, r, baseline, instance); err != nil {
 					return reconcile.Result{}, err
 				}
-				instance.Status.MarkNotRollForward("AbortExperiment: Roll Back to Baseline", "")
+
 				instance.Status.TrafficSplit.Baseline = 100
 				instance.Status.TrafficSplit.Candidate = 0
-				instance.Status.MarkExperimentCompleted()
-
-				ts := metav1.NewTime(now).UTC().UnixNano() / int64(time.Millisecond)
-				instance.Status.EndTimestamp = strconv.FormatInt(ts, 10)
-				updateGrafanaURL(instance, serviceNamespace)
+				markExperimentCompleted(instance)
+				instance.Status.MarkExperimentFailed("Aborted, Traffic: AllToBaseline.", "")
 				// End experiment
 				err = r.Status().Update(context, instance)
 				return reconcile.Result{}, err
 			}
-
-			baselineTraffic := response.Baseline.TrafficPercentage
-			candidateTraffic := response.Canary.TrafficPercentage
-			log.Info("NewTraffic", "Baseline", baselineTraffic, "Candidate", candidateTraffic)
-			rolloutPercent = candidateTraffic
 
 			instance.Status.AssessmentSummary = response.Assessment.Summary
 			if response.LastState == nil {
@@ -399,18 +370,22 @@ func (r *ReconcileExperiment) syncKubernetes(context context.Context, instance *
 			} else {
 				lastState, err := json.Marshal(response.LastState)
 				if err != nil {
-					instance.Status.MarkExperimentNotCompleted("ErrorAnalyticsResponse", "%v", err)
+					instance.Status.MarkAnalyticsServiceError("ErrorAnalyticsResponse", "%v", err)
 					err = r.Status().Update(context, instance)
 					return reconcile.Result{}, err
 				}
 				instance.Status.AnalysisState = runtime.RawExtension{Raw: lastState}
 			}
+
+			rolloutPercent = response.Canary.TrafficPercentage
+			instance.Status.MarkAnalyticsServiceRunning()
 		}
 
 		instance.Status.CurrentIteration++
 		log.Info("IterationUpdated", "count", instance.Status.CurrentIteration)
 		// Increase the traffic upto max traffic amount
-		if rolloutPercent <= traffic.GetMaxTrafficPercentage() && getWeight(Candidate, vs) != int(rolloutPercent) {
+		if rolloutPercent <= traffic.GetMaxTrafficPercentage() &&
+			getWeight(Candidate, vs) != int(rolloutPercent) {
 			// Update Traffic splitting rule
 			log.Info("RolloutPercentUpdated", "NewWeight", rolloutPercent)
 			vs = NewVirtualService(serviceName, instance.GetName(), instance.GetNamespace()).
@@ -430,24 +405,9 @@ func (r *ReconcileExperiment) syncKubernetes(context context.Context, instance *
 
 	instance.Status.LastIncrementTime = metav1.NewTime(now)
 
-	instance.Status.MarkExperimentNotCompleted("Progressing", "")
+	instance.Status.MarkExperimentNotCompleted(fmt.Sprintf("Iteration %d Completed", instance.Status.CurrentIteration), "")
 	err = r.Status().Update(context, instance)
 	return reconcile.Result{RequeueAfter: interval}, err
-}
-
-func updateGrafanaURL(instance *iter8v1alpha1.Experiment, namespace string) {
-	endTs := instance.Status.EndTimestamp
-	if endTs == "" {
-		endTs = "now"
-	}
-	instance.Status.GrafanaURL = instance.Spec.Analysis.GetGrafanaEndpoint() +
-		"/d/eXPEaNnZz/iter8-application-metrics?" +
-		"var-namespace=" + namespace +
-		"&var-service=" + instance.Spec.TargetService.Name +
-		"&var-baseline=" + instance.Spec.TargetService.Baseline +
-		"&var-candidate=" + instance.Spec.TargetService.Candidate +
-		"&from=" + instance.Status.StartTimestamp +
-		"&to=" + endTs
 }
 
 func removeExperimentLabel(context context.Context, r *ReconcileExperiment, d *appsv1.Deployment) (err error) {
@@ -551,10 +511,7 @@ func (r *ReconcileExperiment) finalizeIstio(context context.Context, instance *i
 		// Get baseline deployment
 		baselineName := instance.Spec.TargetService.Baseline
 		baseline := &appsv1.Deployment{}
-		serviceNamespace := instance.Spec.TargetService.Namespace
-		if serviceNamespace == "" {
-			serviceNamespace = instance.Namespace
-		}
+		serviceNamespace := getServiceNamespace(instance)
 
 		if err := r.Get(context, types.NamespacedName{Name: baselineName, Namespace: serviceNamespace}, baseline); err != nil {
 			Logger(context).Info("BaselineNotFoundWhenDeleted", "name", baselineName)
@@ -572,26 +529,4 @@ func (r *ReconcileExperiment) finalizeIstio(context context.Context, instance *i
 
 func getIstioRuleName(instance *iter8v1alpha1.Experiment) string {
 	return instance.GetName() + IstioRuleSuffix
-}
-
-func getStrategy(instance *iter8v1alpha1.Experiment) string {
-	strategy := instance.Spec.TrafficControl.GetStrategy()
-	if strategy == "check_and_increment" &&
-		(instance.Spec.Analysis.SuccessCriteria == nil || len(instance.Spec.Analysis.SuccessCriteria) == 0) {
-		strategy = "increment_without_check"
-	}
-	return strategy
-}
-
-func experimentSucceeded(instance *iter8v1alpha1.Experiment) bool {
-	switch getStrategy(instance) {
-	case "increment_without_check":
-		return instance.Spec.Assessment == iter8v1alpha1.AssessmentOverrideSuccess ||
-			instance.Spec.Assessment == iter8v1alpha1.AssessmentNull
-	case "check_and_increment":
-		return instance.Spec.Assessment == iter8v1alpha1.AssessmentOverrideSuccess ||
-			instance.Status.AssessmentSummary.AllSuccessCriteriaMet && instance.Spec.Assessment == iter8v1alpha1.AssessmentNull
-	default:
-		return false
-	}
 }
