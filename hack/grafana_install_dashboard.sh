@@ -25,4 +25,5 @@ else
     --header 'Content-Type: application/json' \
     $GRAFANA_URL/api/dashboards/db \
     --data @-
+  echo ""
 fi
