@@ -16,6 +16,7 @@ limitations under the License.
 package experiment
 
 import (
+	"fmt"
 	"time"
 
 	appsv1 "k8s.io/api/apps/v1"
@@ -30,7 +31,7 @@ const (
 	Iter8Namespace   = "iter8"
 )
 
-func MakeRequest(instance *iter8v1alpha1.Experiment, baseline, experiment interface{}) *checkandincrement.Request {
+func MakeRequest(instance *iter8v1alpha1.Experiment, baseline, experiment interface{}) (*checkandincrement.Request, error) {
 	spec := instance.Spec
 
 	criteria := make([]checkandincrement.SuccessCriterion, len(spec.Analysis.SuccessCriteria))
@@ -38,7 +39,7 @@ func MakeRequest(instance *iter8v1alpha1.Experiment, baseline, experiment interf
 		iter8metric, ok := instance.Metrics[criterion.MetricName]
 		if !ok {
 			// Metric template not found
-			return nil
+			return nil, fmt.Errorf("Metric %s Not Available", criterion.MetricName)
 		}
 		criteria[i] = checkandincrement.SuccessCriterion{
 			MetricName:         criterion.MetricName,
@@ -70,8 +71,7 @@ func MakeRequest(instance *iter8v1alpha1.Experiment, baseline, experiment interf
 		baseNsVal = baseline.(*corev1.Service).GetNamespace()
 		experimentNsVal = experiment.(*corev1.Service).GetNamespace()
 	default:
-		// TODO: add err information
-		return &checkandincrement.Request{}
+		return nil, fmt.Errorf("Unsupported API Version %s", instance.Spec.TargetService.APIVersion)
 	}
 
 	// TODO: change analytics server API to modify "canary" to "candidate"
@@ -105,5 +105,5 @@ func MakeRequest(instance *iter8v1alpha1.Experiment, baseline, experiment interf
 			SuccessCriteria:   criteria,
 		},
 		LastState: instance.Status.AnalysisState,
-	}
+	}, nil
 }
