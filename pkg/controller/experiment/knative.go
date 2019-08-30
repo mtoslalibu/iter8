@@ -257,7 +257,7 @@ func (r *ReconcileExperiment) syncKnative(context context.Context, instance *ite
 			}
 
 			baselineTraffic := response.Baseline.TrafficPercentage
-			candidateTraffic := response.Canary.TrafficPercentage
+			candidateTraffic := response.Candidate.TrafficPercentage
 			log.Info("NewTraffic", "baseline", baselineTraffic, "candidate", candidateTraffic)
 			newRolloutPercent = candidateTraffic
 

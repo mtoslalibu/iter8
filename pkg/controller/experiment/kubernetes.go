@@ -319,7 +319,7 @@ func (r *ReconcileExperiment) syncKubernetes(context context.Context, instance *
 				instance.Status.AnalysisState = runtime.RawExtension{Raw: lastState}
 			}
 
-			rolloutPercent = response.Canary.TrafficPercentage
+			rolloutPercent = response.Candidate.TrafficPercentage
 			instance.Status.MarkAnalyticsServiceRunning()
 		}
 

@@ -26,8 +26,8 @@ type Request struct {
 	// Specifies a time interval and key-value pairs for retrieving and processing data pertaining to the baseline version
 	Baseline Window `json:"baseline"`
 
-	// Specifies a time interval and key-value pairs for retrieving and processing data pertaining to the canary version
-	Canary Window `json:"canary"`
+	// Specifies a time interval and key-value pairs for retrieving and processing data pertaining to the candidate version
+	Candidate Window `json:"candidate"`
 
 	// Parameters controlling the behavior of the analytics
 	TrafficControl TrafficControl `json:"traffic_control"`
@@ -51,14 +51,14 @@ type TrafficControl struct {
 	// Parameters controlling the behavior of the analytics
 	WarmupRequestCount int `json:"warmup_request_count"`
 
-	// Maximum percentage of traffic that the canary version will receive during the experiment; defaults to 50%
+	// Maximum percentage of traffic that the candidate version will receive during the experiment; defaults to 50%
 	MaxTrafficPercent float64 `json:"max_traffic_percent"`
 
-	// Increment (in percent points) to be applied to the traffic received by the canary version
+	// Increment (in percent points) to be applied to the traffic received by the candidate version
 	// each time it passes the success criteria; defaults to 1 percent point
 	StepSize float64 `json:"step_size"`
 
-	// List of criteria for assessing the canary version
+	// List of criteria for assessing the candidate version
 	SuccessCriteria []SuccessCriterion `json:"success_criteria"`
 }
 
@@ -68,8 +68,8 @@ type SuccessCriterion struct {
 	MetricName string `json:"metric_name"`
 
 	// 	Criterion type. Options:
-	// "delta": compares the canary against the baseline version with respect to the metric;
-	// "threshold": checks the canary with respect to the metric
+	// "delta": compares the candidate against the baseline version with respect to the metric;
+	// "threshold": checks the candidate with respect to the metric
 	Type iter8v1alpha1.ToleranceType `json:"type"`
 
 	// MetricType of this metric
@@ -105,7 +105,7 @@ type Response struct {
 	// Measurements and traffic recommendation for the baseline version
 	Candidate MetricsTraffic `json:"candidate"`
 
-	// Summary of the canary assessment based on success criteria
+	// Summary of the candidate assessment based on success criteria
 	Assessment Assessment `json:"assessment"`
 
 	// State returned by the server, to be passed on the next call
@@ -113,7 +113,7 @@ type Response struct {
 }
 
 type Assessment struct {
-	// Summary of the canary assessment based on success criteria
+	// Summary of the candidate assessment based on success criteria
 	Summary iter8v1alpha1.Summary `json:"summary"`
 
 	// Summary of results for each success criterion
