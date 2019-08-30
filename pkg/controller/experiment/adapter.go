@@ -84,7 +84,7 @@ func MakeRequest(instance *iter8v1alpha1.Experiment, baseline, experiment interf
 				namespaceKey:   baseNsVal,
 			},
 		},
-		Canary: checkandincrement.Window{
+		Candidate: checkandincrement.Window{
 			StartTime: instance.ObjectMeta.GetCreationTimestamp().Format(time.RFC3339),
 			EndTime:   now,
 			Tags: map[string]string{

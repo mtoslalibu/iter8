@@ -125,7 +125,7 @@ func GetSuccessMockResponse() cai.Response {
 		Baseline: cai.MetricsTraffic{
 			TrafficPercentage: 50,
 		},
-		Canadidate: cai.MetricsTraffic{
+		Candidate: cai.MetricsTraffic{
 			TrafficPercentage: 50,
 		},
 		Assessment: cai.Assessment{
