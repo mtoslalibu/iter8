@@ -58,12 +58,6 @@ type TrafficControl struct {
 	// each time it passes the success criteria; defaults to 1 percent point
 	StepSize float64 `json:"step_size"`
 
-	// Determines how the traffic must be split at the end of the experiment; options:
-	// "baseline": all traffic goes to the baseline version;
-	// "canary": all traffic goes to the canary version;
-	// "both": traffic is split across baseline and canary. Defaults to “canary”
-	OnSuccess string `json:"on_success"`
-
 	// List of criteria for assessing the canary version
 	SuccessCriteria []SuccessCriterion `json:"success_criteria"`
 }
@@ -98,10 +92,6 @@ type SuccessCriterion struct {
 	// defaults to false
 	StopOnFailure bool `json:"stop_on_failure"`
 
-	// Indicates whether or not this criterion is considered for traffic-control decisions;
-	// defaults to true
-	EnableTrafficControl bool `json:"enable_traffic_control"`
-
 	// Indicates that this criterion is based on statistical confidence;
 	// for instance, one can specify a 98% confidence that the criterion is satisfied;
 	// if not specified, there is no confidence requirement
@@ -113,7 +103,7 @@ type Response struct {
 	Baseline MetricsTraffic `json:"baseline"`
 
 	// Measurements and traffic recommendation for the baseline version
-	Canary MetricsTraffic `json:"canary"`
+	Candidate MetricsTraffic `json:"candidate"`
 
 	// Summary of the canary assessment based on success criteria
 	Assessment Assessment `json:"assessment"`

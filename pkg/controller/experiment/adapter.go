@@ -74,12 +74,6 @@ func MakeRequest(instance *iter8v1alpha1.Experiment, baseline, experiment interf
 		return nil, fmt.Errorf("Unsupported API Version %s", instance.Spec.TargetService.APIVersion)
 	}
 
-	// TODO: change analytics server API to modify "canary" to "candidate"
-	onSuccess := instance.Spec.TrafficControl.GetOnSuccess()
-	if onSuccess == "candidate" {
-		onSuccess = "canary"
-	}
-
 	return &checkandincrement.Request{
 		Name: instance.Name,
 		Baseline: checkandincrement.Window{
@@ -101,7 +95,6 @@ func MakeRequest(instance *iter8v1alpha1.Experiment, baseline, experiment interf
 		TrafficControl: checkandincrement.TrafficControl{
 			MaxTrafficPercent: instance.Spec.TrafficControl.GetMaxTrafficPercentage(),
 			StepSize:          instance.Spec.TrafficControl.GetStepSize(),
-			OnSuccess:         onSuccess,
 			SuccessCriteria:   criteria,
 		},
 		LastState: instance.Status.AnalysisState,

@@ -310,11 +310,11 @@ func (t *TrafficControl) GetOnSuccess() string {
 	return *onsuccess
 }
 
-// GetServiceEndpoint returns the analytcis endpoint; Default is "http://iter8analytics:5555".
+// GetServiceEndpoint returns the analytcis endpoint; Default is "http://iter8-analytics:5555".
 func (a *Analysis) GetServiceEndpoint() string {
 	endpoint := a.AnalyticsService
 	if len(endpoint) == 0 {
-		endpoint = "http://iter8analytics:5555"
+		endpoint = "http://iter8-analytics:5555"
 	}
 
 	return endpoint
