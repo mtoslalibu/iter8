@@ -12,7 +12,7 @@ spec:
     spec:
       containers:
       - name: productpage
-        image: kimikowang/productpage:istio-v2
+        image: iter8/productpage:istio-v2
         imagePullPolicy: Always 
         ports:
         - containerPort: 9080
