@@ -46,7 +46,8 @@ func (r *ReconcileExperiment) syncKubernetes(context context.Context, instance *
 	err := r.Get(context, types.NamespacedName{Name: serviceName, Namespace: serviceNamespace}, service)
 	if err != nil {
 		log.Info("TargetServiceNotFound", "service", serviceName)
-		instance.Status.MarkTargetsError("Service Not Found", "")
+		instance.Status.MarkTargetsError("TargetServiceNotFound", "")
+		r.recorder.Event(instance, corev1.EventTypeWarning, "TargetServiceNotFound", "")
 		err = r.Status().Update(context, instance)
 		if err != nil {
 			return reconcile.Result{}, err
@@ -273,9 +274,10 @@ func (r *ReconcileExperiment) syncKubernetes(context context.Context, instance *
 			}
 			response, err := checkandincrement.Invoke(log, instance.Spec.Analysis.GetServiceEndpoint(), payload)
 			if err != nil {
-				instance.Status.MarkAnalyticsServiceError("Istio Analytics Service is not reachable", "%v", err)
-				log.Error(err, "Istio Analytics Service is not reachable")
+				instance.Status.MarkAnalyticsServiceError("FailedToConnectToAnalyticsServer", "%v", err)
+				log.Error(err, "FailedToConnectToAnalyticsServer")
 				r.Status().Update(context, instance)
+				r.recorder.Event(instance, corev1.EventTypeWarning, "FailedToConnectToAnalyticsServer", err.Error())
 				return reconcile.Result{RequeueAfter: 5 * time.Second}, err
 			}
 

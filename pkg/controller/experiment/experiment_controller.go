@@ -26,6 +26,7 @@ import (
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/apimachinery/pkg/runtime"
 	"k8s.io/apimachinery/pkg/types"
+	"k8s.io/client-go/tools/record"
 	"sigs.k8s.io/controller-runtime/pkg/client"
 	"sigs.k8s.io/controller-runtime/pkg/controller"
 	"sigs.k8s.io/controller-runtime/pkg/event"
@@ -51,8 +52,9 @@ const (
 	KubernetesService      = "v1"
 	KnativeServiceV1Alpha1 = "serving.knative.dev/v1alpha1"
 
-	Finalizer = "finalizer.iter8-tools"
-	loggerKey = loggerKeyType("logger")
+	Iter8Controller = "iter8-controller"
+	Finalizer       = "finalizer.iter8-tools"
+	loggerKey       = loggerKeyType("logger")
 )
 
 // Add creates a new Experiment Controller and adds it to the Manager with default RBAC. The Manager will set fields on the Controller
@@ -63,7 +65,11 @@ func Add(mgr manager.Manager) error {
 
 // newReconciler returns a new reconcile.Reconciler
 func newReconciler(mgr manager.Manager) reconcile.Reconciler {
-	return &ReconcileExperiment{Client: mgr.GetClient(), scheme: mgr.GetScheme()}
+	return &ReconcileExperiment{
+		Client:   mgr.GetClient(),
+		scheme:   mgr.GetScheme(),
+		recorder: mgr.GetRecorder(Iter8Controller),
+	}
 }
 
 // add adds a new Controller to mgr with r as the reconcile.Reconciler
@@ -131,7 +137,8 @@ var _ reconcile.Reconciler = &ReconcileExperiment{}
 // ReconcileExperiment reconciles a Experiment object
 type ReconcileExperiment struct {
 	client.Client
-	scheme *runtime.Scheme
+	scheme   *runtime.Scheme
+	recorder record.EventRecorder
 }
 
 // Reconcile reads that state of the cluster for a Experiment object and makes changes based on the state read
