@@ -218,10 +218,6 @@ const (
 // SuccessCriterion specifies the criteria for an experiment to succeed
 type SuccessCriterion struct {
 	// Name of the metric to which the criterion applies. Options:
-	// "iter8_latency": mean latency of the service
-	// "iter8_error_rate": mean error rate (~5** HTTP Status codes) of the service
-	// "iter8_error_count": total error count (~5** HTTP Status codes) of the service
-	//+kubebuilder:validation:Enum=iter8_latency,iter8_error_rate,iter8_error_count
 	MetricName string `json:"metricName"`
 
 	// 	Tolerance type. Options:
@@ -310,11 +306,11 @@ func (t *TrafficControl) GetOnSuccess() string {
 	return *onsuccess
 }
 
-// GetServiceEndpoint returns the analytcis endpoint; Default is "http://iter8analytics:5555".
+// GetServiceEndpoint returns the analytcis endpoint; Default is "http://iter8-analytics:5555".
 func (a *Analysis) GetServiceEndpoint() string {
 	endpoint := a.AnalyticsService
 	if len(endpoint) == 0 {
-		endpoint = "http://iter8analytics:5555"
+		endpoint = "http://iter8-analytics:5555"
 	}
 
 	return endpoint

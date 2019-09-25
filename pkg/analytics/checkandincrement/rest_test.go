@@ -40,7 +40,7 @@ func TestInvoke(t *testing.T) {
 				"destination_service_name": "reviews-v2",
 			},
 		},
-		Canary: Window{
+		Candidate: Window{
 			StartTime: "2019-05-01T18:53:35.163Z",
 			EndTime:   "2019-05-01T18:53:35.163Z",
 			Tags: map[string]string{
@@ -63,7 +63,7 @@ func TestInvoke(t *testing.T) {
 		Baseline: MetricsTraffic{
 			TrafficPercentage: 95,
 		},
-		Canary: MetricsTraffic{
+		Candidate: MetricsTraffic{
 			TrafficPercentage: 5,
 		},
 		Assessment: Assessment{

@@ -49,7 +49,7 @@ func dummyResponse() cai.Response {
 		Baseline: cai.MetricsTraffic{
 			TrafficPercentage: 95,
 		},
-		Canary: cai.MetricsTraffic{
+		Candidate: cai.MetricsTraffic{
 			TrafficPercentage: 5,
 		},
 		Assessment: cai.Assessment{

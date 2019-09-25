@@ -109,7 +109,7 @@ func GetDefaultMockResponse() cai.Response {
 		Baseline: cai.MetricsTraffic{
 			TrafficPercentage: 50,
 		},
-		Canary: cai.MetricsTraffic{
+		Candidate: cai.MetricsTraffic{
 			TrafficPercentage: 50,
 		},
 		Assessment: cai.Assessment{
@@ -125,7 +125,7 @@ func GetSuccessMockResponse() cai.Response {
 		Baseline: cai.MetricsTraffic{
 			TrafficPercentage: 50,
 		},
-		Canary: cai.MetricsTraffic{
+		Candidate: cai.MetricsTraffic{
 			TrafficPercentage: 50,
 		},
 		Assessment: cai.Assessment{
@@ -152,7 +152,7 @@ func GetFailureMockResponse() cai.Response {
 		Baseline: cai.MetricsTraffic{
 			TrafficPercentage: 50,
 		},
-		Canary: cai.MetricsTraffic{
+		Candidate: cai.MetricsTraffic{
 			TrafficPercentage: 50,
 		},
 		Assessment: cai.Assessment{

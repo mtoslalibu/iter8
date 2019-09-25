@@ -1,0 +1,18 @@
+apiVersion: extensions/v1beta1
+kind: Deployment
+metadata:
+  name: productpage-v2
+spec:
+  replicas: 1
+  template:
+    metadata:
+      labels:
+        app: productpage
+        version: v2
+    spec:
+      containers:
+      - name: productpage
+        image: iter8/productpage:istio-v2
+        imagePullPolicy: Always 
+        ports:
+        - containerPort: 9080
