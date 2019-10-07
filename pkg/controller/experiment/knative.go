@@ -169,7 +169,7 @@ func (r *ReconcileExperiment) syncKnative(context context.Context, instance *ite
 
 		labels := kservice.GetLabels()
 		_, has := labels[experimentLabel]
-		if has {
+		if has || update {
 			delete(labels, experimentLabel)
 		}
 
@@ -182,7 +182,7 @@ func (r *ReconcileExperiment) syncKnative(context context.Context, instance *ite
 
 		instance.Status.TrafficSplit.Baseline = baselineTraffic.Percent
 		instance.Status.TrafficSplit.Candidate = candidateTraffic.Percent
-		return reconcile.Result{}, err
+		return reconcile.Result{}, r.Status().Update(context, instance)
 	}
 
 	// Check if traffic should be updated.
