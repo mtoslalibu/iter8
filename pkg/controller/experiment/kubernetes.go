@@ -45,11 +45,8 @@ func (r *ReconcileExperiment) syncKubernetes(context context.Context, instance *
 	service := &corev1.Service{}
 	err := r.Get(context, types.NamespacedName{Name: serviceName, Namespace: serviceNamespace}, service)
 	if err != nil {
-		log.Info("TargetServiceNotFound", "service", serviceName)
-		instance.Status.MarkTargetsError("TargetServiceNotFound", "")
-		r.recorder.Event(instance, corev1.EventTypeWarning, "TargetServiceNotFound", "")
-		err = r.Status().Update(context, instance)
-		if err != nil {
+		r.MarkTargetsError(context, instance, "Missing Service %s", serviceName)
+		if err := r.Status().Update(context, instance); err != nil {
 			return reconcile.Result{}, err
 		}
 		return reconcile.Result{RequeueAfter: 5 * time.Second}, nil
@@ -71,22 +68,22 @@ func (r *ReconcileExperiment) syncKubernetes(context context.Context, instance *
 	if len(drl.Items) == 1 && len(vsl.Items) == 1 {
 		dr = drl.Items[0].DeepCopy()
 		vs = vsl.Items[0].DeepCopy()
-		log.Info("RoutingRules Found For Experiment", "dr", dr.GetName(), "vs", vs.GetName())
+		r.MarkRoutingRulesStatus(context, instance, false,
+			"RoutingRules Found For Experiment, DR: %s, VS: %s", dr.GetName(), vs.GetName())
 	} else if len(drl.Items) == 0 && len(vsl.Items) == 0 {
 		// Initialize routing rules if not existed
 		if ruleSet, err := initializeRoutingRules(context, r, instance); err != nil {
-			log.Error(err, "Fail To Init Routing Rules; Experiment Terminates")
-			// Termintate experiment
-			instance.Status.MarkExperimentCompleted()
-			err = r.Status().Update(context, instance)
-			return reconcile.Result{}, err
+			r.MarkExperimentFailed(context, instance, "Error in Initializing routing rules: %s, Experiment failed.", err.Error())
+			return reconcile.Result{}, r.Status().Update(context, instance)
 		} else {
 			dr = ruleSet.DestinationRules[0].DeepCopy()
 			vs = ruleSet.VirtualServices[0].DeepCopy()
-			log.Info("Init Routing Rules Suceeded", "dr", dr.GetName(), "vs", vs.GetName())
+			r.MarkRoutingRulesStatus(context, instance, true,
+				"Init Routing Rules Suceeded, DR: %s, VS: %s", dr.GetName(), vs.GetName())
 		}
 	} else {
-		log.Info("UnexpectedCondition, MultipleRoutingRulesFound, DeleteAll")
+		r.MarkRoutingRulesStatus(context, instance, true,
+			"Unexpected Condition, Multiple Routing Rules Found, Delete All")
 		if len(drl.Items) > 0 {
 			for _, dr := range drl.Items {
 				if err := r.Delete(context, &dr); err != nil {
@@ -113,10 +110,10 @@ func (r *ReconcileExperiment) syncKubernetes(context context.Context, instance *
 	baseline, candidate := &appsv1.Deployment{}, &appsv1.Deployment{}
 	// Get current deployment and candidate deployment
 	if err = r.Get(context, types.NamespacedName{Name: baselineName, Namespace: serviceNamespace}, baseline); err == nil {
-		log.Info("BaselineDeploymentFound", "Name", baselineName)
+		//	log.Info("BaselineDeploymentFound", "Name", baselineName)
 	}
 
-	// Convert state from stable to progressing
+	//	Convert state from stable to progressing
 	if stable && len(baseline.GetName()) > 0 {
 		// Need to pass baseline into the builder
 		dr = NewDestinationRuleBuilder(dr).
@@ -141,7 +138,7 @@ func (r *ReconcileExperiment) syncKubernetes(context context.Context, instance *
 	}
 
 	if err = r.Get(context, types.NamespacedName{Name: candidateName, Namespace: serviceNamespace}, candidate); err == nil {
-		log.Info("CandidateDeploymentFound", "Name", candidateName)
+		//	log.Info("CandidateDeploymentFound", "Name", candidateName)
 	}
 	if !stable {
 		if len(candidate.GetName()) > 0 {
@@ -157,14 +154,11 @@ func (r *ReconcileExperiment) syncKubernetes(context context.Context, instance *
 
 	if baseline.GetName() == "" || candidate.GetName() == "" {
 		if baseline.GetName() == "" && candidate.GetName() == "" {
-			log.Info("Missing Baseline and Candidate Deployments")
-			instance.Status.MarkTargetsError("MissingBaselineAndCandidate", "")
+			r.MarkTargetsError(context, instance, "%s", "Missing Baseline And Candidate")
 		} else if candidate.GetName() == "" {
-			log.Info("Missing Candidate Deployment")
-			instance.Status.MarkTargetsError("MissingCandidateDeployment", "")
+			r.MarkTargetsError(context, instance, "%s", "Missing Candidate")
 		} else {
-			log.Info("Missing Baseline Deployment")
-			instance.Status.MarkTargetsError("missingBaselineDeployment", "")
+			r.MarkTargetsError(context, instance, "%s", "Missing Baseline")
 		}
 
 		if len(baseline.GetName()) > 0 {
@@ -181,7 +175,7 @@ func (r *ReconcileExperiment) syncKubernetes(context context.Context, instance *
 		return reconcile.Result{RequeueAfter: 5 * time.Second}, nil
 	}
 
-	instance.Status.MarkTargetsFound()
+	r.MarkTargetsFound(context, instance)
 
 	// check experiment is finished
 	if instance.Spec.TrafficControl.GetMaxIterations() <= instance.Status.CurrentIteration ||
@@ -218,14 +212,13 @@ func (r *ReconcileExperiment) syncKubernetes(context context.Context, instance *
 				// Change the role of current rules as stable
 				vs.ObjectMeta.SetLabels(map[string]string{experimentRole: Stable})
 				dr.ObjectMeta.SetLabels(map[string]string{experimentRole: Stable})
-				msg = "KeepOnBothVersions"
+				msg = "KeepBothVersions"
 			}
 
-			markExperimentSuccessStatus(instance, msg)
+			r.MarkExperimentSucceeded(context, instance, "%s", SuccessMsg(instance, msg))
 		} else {
-			log.Info("ExperimentFailure")
 
-			markExperimentFailureStatus(instance, "AllToBaseline")
+			r.MarkExperimentFailed(context, instance, "%s", FailureMsg(instance, "AllToBaseline"))
 			dr = NewDestinationRuleBuilder(dr).WithProgressingToStable(baseline).Build()
 			vs = NewVirtualServiceBuilder(vs).
 				WithProgressingToStable(serviceName, serviceNamespace, Baseline).
@@ -245,10 +238,7 @@ func (r *ReconcileExperiment) syncKubernetes(context context.Context, instance *
 			return reconcile.Result{}, err
 		}
 
-		markExperimentCompleted(instance)
-		// End experiment
-		err = r.Status().Update(context, instance)
-		return reconcile.Result{}, err
+		return reconcile.Result{}, r.Status().Update(context, instance)
 	}
 
 	// Progressing on Experiment
@@ -267,18 +257,25 @@ func (r *ReconcileExperiment) syncKubernetes(context context.Context, instance *
 			// Get latest analysis
 			payload, err := MakeRequest(instance, baseline, candidate)
 			if err != nil {
-				instance.Status.MarkAnalyticsServiceError("CanNotComposePayload", "%v", err)
-				log.Error(err, "CanNotComposePayload")
-				r.Status().Update(context, instance)
+				r.MarkAnalyticsServiceError(context, instance, "Can Not Compose Payload %v", err)
+				if err := r.Status().Update(context, instance); err != nil {
+					return reconcile.Result{}, err
+				}
+
 				return reconcile.Result{RequeueAfter: 5 * time.Second}, err
 			}
+
 			response, err := checkandincrement.Invoke(log, instance.Spec.Analysis.GetServiceEndpoint(), payload)
 			if err != nil {
-				instance.Status.MarkAnalyticsServiceError("FailedToConnectToAnalyticsServer", "%v", err)
-				log.Error(err, "FailedToConnectToAnalyticsServer")
-				r.Status().Update(context, instance)
-				r.recorder.Event(instance, corev1.EventTypeWarning, "FailedToConnectToAnalyticsServer", err.Error())
-				return reconcile.Result{RequeueAfter: 5 * time.Second}, err
+				r.MarkAnalyticsServiceError(context, instance, "Error From Analytics: %s", err.Error())
+				if err := r.Status().Update(context, instance); err != nil {
+					return reconcile.Result{}, err
+				}
+				log.Info("Error From Analytics, requeue after 5s")
+				// TODO: not sure why getting the endpoint will cause requeue failing
+				// So a manual sleep interval is added here
+				time.Sleep(5 * time.Second)
+				return reconcile.Result{RequeueAfter: 5 * time.Second}, nil
 			}
 
 			if response.Assessment.Summary.AbortExperiment {
@@ -291,21 +288,17 @@ func (r *ReconcileExperiment) syncKubernetes(context context.Context, instance *
 
 				removeExperimentLabel(dr, vs)
 				if err := r.Update(context, vs); err != nil {
-					log.Error(err, "Fail to update vs %s", vs.GetName())
 					return reconcile.Result{}, err
 				}
 				if err := r.Update(context, dr); err != nil {
-					log.Error(err, "Fail to update dr %s", dr.GetName())
 					return reconcile.Result{}, err
 				}
 
 				instance.Status.TrafficSplit.Baseline = 100
 				instance.Status.TrafficSplit.Candidate = 0
-				markExperimentCompleted(instance)
-				instance.Status.MarkExperimentFailed("Aborted, Traffic: AllToBaseline.", "")
-				// End experiment
-				err = r.Status().Update(context, instance)
-				return reconcile.Result{}, err
+
+				r.MarkExperimentFailed(context, instance, "%s", "Aborted, Traffic: AllToBaseline.")
+				return reconcile.Result{}, r.Status().Update(context, instance)
 			}
 
 			instance.Status.AssessmentSummary = response.Assessment.Summary
@@ -314,43 +307,40 @@ func (r *ReconcileExperiment) syncKubernetes(context context.Context, instance *
 			} else {
 				lastState, err := json.Marshal(response.LastState)
 				if err != nil {
-					instance.Status.MarkAnalyticsServiceError("ErrorAnalyticsResponse", "%v", err)
-					err = r.Status().Update(context, instance)
-					return reconcile.Result{}, err
+					r.MarkAnalyticsServiceError(context, instance, "Error Analytics Response: %v", err)
+					return reconcile.Result{}, r.Status().Update(context, instance)
 				}
 				instance.Status.AnalysisState = runtime.RawExtension{Raw: lastState}
 			}
 
 			rolloutPercent = response.Candidate.TrafficPercentage
-			instance.Status.MarkAnalyticsServiceRunning()
+			r.MarkAnalyticsServiceRunning(context, instance)
 		}
 
 		instance.Status.CurrentIteration++
-		log.Info("IterationUpdated", "count", instance.Status.CurrentIteration)
 		// Increase the traffic upto max traffic amount
 		if rolloutPercent <= traffic.GetMaxTrafficPercentage() &&
 			getWeight(Candidate, vs) != int(rolloutPercent) {
 			// Update Traffic splitting rule
-			log.Info("RolloutPercentUpdated", "NewWeight", rolloutPercent)
 			vs = NewVirtualServiceBuilder(vs).
 				WithRolloutPercent(serviceName, serviceNamespace, int(rolloutPercent)).
 				Build()
 
-			err := r.Update(context, vs)
-			if err != nil {
-				log.Info("RuleUpdateError", "vs", vs)
+			if err := r.Update(context, vs); err != nil {
 				return reconcile.Result{}, err
 			}
 			instance.Status.TrafficSplit.Baseline = 100 - int(rolloutPercent)
 			instance.Status.TrafficSplit.Candidate = int(rolloutPercent)
+
+			r.MarkExperimentProgress(context, instance, true, "New Traffic, baseline: %d, candidate: %d",
+				instance.Status.TrafficSplit.Baseline, instance.Status.TrafficSplit.Candidate)
 		}
 	}
 
 	instance.Status.LastIncrementTime = metav1.NewTime(now)
 
-	instance.Status.MarkExperimentNotCompleted(fmt.Sprintf("Iteration %d Completed", instance.Status.CurrentIteration), "")
-	err = r.Status().Update(context, instance)
-	return reconcile.Result{RequeueAfter: interval}, err
+	r.MarkExperimentProgress(context, instance, false, "Iteration %d Completed", instance.Status.CurrentIteration)
+	return reconcile.Result{RequeueAfter: interval}, r.Status().Update(context, instance)
 }
 
 func removeExperimentLabel(objs ...runtime.Object) (err error) {
