@@ -66,132 +66,146 @@ func TestKubernetesExperiment(t *testing.T) {
 				getStableVirtualService("reviews", "rollforward"),
 			},
 		},
-		"rollbackward": testCase{
-			mocks: map[string]cai.Response{
-				"rollbackward": test.GetFailureMockResponse(),
-			},
-			initObjects: []runtime.Object{
-				getReviewsService(),
-				getRatingsService(),
-				getReviewsDeployment("v1"),
-				getReviewsDeployment("v2"),
-				getRatingsDeployment(),
-			},
-			object: getFastKubernetesExperiment("rollbackward", "reviews", "reviews-v1", "reviews-v2", service.GetURL()),
-			wantState: test.WantAllStates(
-				test.CheckExperimentFinished,
-				test.CheckExperimentFailure,
-			),
-			wantResults: []runtime.Object{
-				getStableDestinationRule("reviews", "rollbackward", getReviewsDeployment("v1")),
-				getStableVirtualService("reviews", "rollbackward"),
-			},
-		},
-		"ongoingdelete": testCase{
-			mocks: map[string]cai.Response{
-				"ongoingdelete": test.GetSuccessMockResponse(),
-			},
-			initObjects: []runtime.Object{
-				getReviewsService(),
-				getRatingsService(),
-				getReviewsDeployment("v1"),
-				getReviewsDeployment("v2"),
-				getRatingsDeployment(),
-			},
-			object:    getSlowKubernetesExperiment("ongoingdelete", "reviews", "reviews-v1", "reviews-v2", service.GetURL()),
-			wantState: test.CheckServiceFound,
-			wantResults: []runtime.Object{
-				// rollback to baseline
-				getStableDestinationRule("reviews", "ongoingdelete", getReviewsDeployment("v1")),
-				getStableVirtualService("reviews", "ongoingdelete"),
-			},
-			postHook: test.DeleteExperiment("ongoingdelete", Flags.Namespace),
-		},
-		"completedelete": testCase{
-			mocks: map[string]cai.Response{
-				"completedelete": test.GetSuccessMockResponse(),
-			},
-			initObjects: []runtime.Object{
-				getReviewsService(),
-				getRatingsService(),
-				getReviewsDeployment("v1"),
-				getReviewsDeployment("v2"),
-				getRatingsDeployment(),
-			},
-			object:    getFastKubernetesExperiment("completedelete", "reviews", "reviews-v1", "reviews-v2", service.GetURL()),
-			wantState: test.CheckExperimentFinished,
-			frozenObjects: []runtime.Object{
-				// desired end-of-experiment status
-				getStableDestinationRule("reviews", "completedelete", getReviewsDeployment("v2")),
-				getStableVirtualService("reviews", "completedelete"),
-			},
-			postHook: test.DeleteExperiment("completedelete", Flags.Namespace),
-		},
-		"abortexperiment": testCase{
-			mocks: map[string]cai.Response{
-				"abortexperiment": test.GetAbortExperimentResponse(),
-			},
-			initObjects: []runtime.Object{
-				getReviewsService(),
-				getRatingsService(),
-				getReviewsDeployment("v1"),
-				getReviewsDeployment("v2"),
-				getRatingsDeployment(),
-			},
-			object: getSlowKubernetesExperiment("abortexperiment", "reviews", "reviews-v1", "reviews-v2", service.GetURL()),
-			wantState: test.WantAllStates(
-				test.CheckExperimentFinished,
-				test.CheckExperimentFailure,
-			),
-			wantResults: []runtime.Object{
-				// rollback to baseline
-				getStableDestinationRule("reviews", "abortexperiment", getReviewsDeployment("v1")),
-				getStableVirtualService("reviews", "abortexperiment"),
-			},
-		},
-		"emptycriterion": testCase{
-			initObjects: []runtime.Object{
-				getReviewsService(),
-				getRatingsService(),
-				getReviewsDeployment("v1"),
-				getReviewsDeployment("v2"),
-				getRatingsDeployment(),
-			},
-			object: getDefaultKubernetesExperiment("emptycriterion", "reviews", "reviews-v1", "reviews-v2"),
-			wantState: test.WantAllStates(
-				test.CheckExperimentFinished,
-				test.CheckExperimentSuccess,
-			),
-			wantResults: []runtime.Object{
-				// rollforward
-				getStableDestinationRule("reviews", "emptycriterion", getReviewsDeployment("v2")),
-				getStableVirtualService("reviews", "emptycriterion"),
-			},
-		},
-		"externalference": testCase{
-			mocks: map[string]cai.Response{
-				"externalference": test.GetSuccessMockResponse(),
-			},
-			initObjects: []runtime.Object{
-				getReviewsService(),
-				getRatingsService(),
-				getReviewsDeployment("v1"),
-				getReviewsDeployment("v2"),
-				getRatingsDeployment(),
-				getSampleEdgeVirtualService(),
-			},
-			object:    getExperimentWithExternalReference("externalference", "reviews", "reviews-v1", "reviews-v2"),
-			wantState: test.CheckExperimentFinished,
-			wantResults: []runtime.Object{
-				// rollforward
-				getStableDestinationRule("reviews", "externalference", getReviewsDeployment("v2")),
-				getSampleStableEdgeVirtualService(),
-			},
-			finalizers: []test.Hook{
-				test.DeleteObject(getStableDestinationRule("reviews", "externalference", getReviewsDeployment("v2"))),
-				test.DeleteObject(getSampleStableEdgeVirtualService()),
-			},
-		},
+		// "rollbackward": testCase{
+		// 	mocks: map[string]cai.Response{
+		// 		"rollbackward": test.GetFailureMockResponse(),
+		// 	},
+		// 	initObjects: []runtime.Object{
+		// 		getReviewsService(),
+		// 		getRatingsService(),
+		// 		getReviewsDeployment("v1"),
+		// 		getReviewsDeployment("v2"),
+		// 		getRatingsDeployment(),
+		// 	},
+		// 	object: getFastKubernetesExperiment("rollbackward", "reviews", "reviews-v1", "reviews-v2", service.GetURL()),
+		// 	wantState: test.WantAllStates(
+		// 		test.CheckExperimentFinished,
+		// 		test.CheckExperimentFailure,
+		// 	),
+		// 	wantResults: []runtime.Object{
+		// 		getStableDestinationRule("reviews", "rollbackward", getReviewsDeployment("v1")),
+		// 		getStableVirtualService("reviews", "rollbackward"),
+		// 	},
+		// },
+		// "ongoingdelete": testCase{
+		// 	mocks: map[string]cai.Response{
+		// 		"ongoingdelete": test.GetSuccessMockResponse(),
+		// 	},
+		// 	initObjects: []runtime.Object{
+		// 		getReviewsService(),
+		// 		getRatingsService(),
+		// 		getReviewsDeployment("v1"),
+		// 		getReviewsDeployment("v2"),
+		// 		getRatingsDeployment(),
+		// 	},
+		// 	object:    getSlowKubernetesExperiment("ongoingdelete", "reviews", "reviews-v1", "reviews-v2", service.GetURL()),
+		// 	wantState: test.CheckServiceFound,
+		// 	wantResults: []runtime.Object{
+		// 		// rollback to baseline
+		// 		getStableDestinationRule("reviews", "ongoingdelete", getReviewsDeployment("v1")),
+		// 		getStableVirtualService("reviews", "ongoingdelete"),
+		// 	},
+		// 	postHook: test.DeleteExperiment("ongoingdelete", Flags.Namespace),
+		// },
+		// "completedelete": testCase{
+		// 	mocks: map[string]cai.Response{
+		// 		"completedelete": test.GetSuccessMockResponse(),
+		// 	},
+		// 	initObjects: []runtime.Object{
+		// 		getReviewsService(),
+		// 		getRatingsService(),
+		// 		getReviewsDeployment("v1"),
+		// 		getReviewsDeployment("v2"),
+		// 		getRatingsDeployment(),
+		// 	},
+		// 	object:    getFastKubernetesExperiment("completedelete", "reviews", "reviews-v1", "reviews-v2", service.GetURL()),
+		// 	wantState: test.CheckExperimentFinished,
+		// 	frozenObjects: []runtime.Object{
+		// 		// desired end-of-experiment status
+		// 		getStableDestinationRule("reviews", "completedelete", getReviewsDeployment("v2")),
+		// 		getStableVirtualService("reviews", "completedelete"),
+		// 	},
+		// 	postHook: test.DeleteExperiment("completedelete", Flags.Namespace),
+		// },
+		// "abortexperiment": testCase{
+		// 	mocks: map[string]cai.Response{
+		// 		"abortexperiment": test.GetAbortExperimentResponse(),
+		// 	},
+		// 	initObjects: []runtime.Object{
+		// 		getReviewsService(),
+		// 		getRatingsService(),
+		// 		getReviewsDeployment("v1"),
+		// 		getReviewsDeployment("v2"),
+		// 		getRatingsDeployment(),
+		// 	},
+		// 	object: getSlowKubernetesExperiment("abortexperiment", "reviews", "reviews-v1", "reviews-v2", service.GetURL()),
+		// 	wantState: test.WantAllStates(
+		// 		test.CheckExperimentFinished,
+		// 		test.CheckExperimentFailure,
+		// 	),
+		// 	wantResults: []runtime.Object{
+		// 		// rollback to baseline
+		// 		getStableDestinationRule("reviews", "abortexperiment", getReviewsDeployment("v1")),
+		// 		getStableVirtualService("reviews", "abortexperiment"),
+		// 	},
+		// },
+		// "emptycriterion": testCase{
+		// 	initObjects: []runtime.Object{
+		// 		getReviewsService(),
+		// 		getRatingsService(),
+		// 		getReviewsDeployment("v1"),
+		// 		getReviewsDeployment("v2"),
+		// 		getRatingsDeployment(),
+		// 	},
+		// 	object: getDefaultKubernetesExperiment("emptycriterion", "reviews", "reviews-v1", "reviews-v2"),
+		// 	wantState: test.WantAllStates(
+		// 		test.CheckExperimentFinished,
+		// 		test.CheckExperimentSuccess,
+		// 	),
+		// 	wantResults: []runtime.Object{
+		// 		// rollforward
+		// 		getStableDestinationRule("reviews", "emptycriterion", getReviewsDeployment("v2")),
+		// 		getStableVirtualService("reviews", "emptycriterion"),
+		// 	},
+		// },
+		// "externalference": testCase{
+		// 	initObjects: []runtime.Object{
+		// 		getReviewsService(),
+		// 		getRatingsService(),
+		// 		getReviewsDeployment("v1"),
+		// 		getReviewsDeployment("v2"),
+		// 		getRatingsDeployment(),
+		// 		getSampleEdgeVirtualService(),
+		// 	},
+		// 	object:    getExperimentWithExternalReference("externalference", "reviews", "reviews-v1", "reviews-v2"),
+		// 	wantState: test.CheckExperimentFinished,
+		// 	wantResults: []runtime.Object{
+		// 		// rollforward
+		// 		getStableDestinationRule("reviews", "externalference", getReviewsDeployment("v2")),
+		// 		getSampleStableEdgeVirtualService(),
+		// 	},
+		// 	finalizers: []test.Hook{
+		// 		test.DeleteObject(getStableDestinationRule("reviews", "externalference", getReviewsDeployment("v2"))),
+		// 		test.DeleteObject(getSampleStableEdgeVirtualService()),
+		// 	},
+		// },
+		// "cleanupdelete": testCase{
+		// 	initObjects: []runtime.Object{
+		// 		getReviewsService(),
+		// 		getRatingsService(),
+		// 		getReviewsDeployment("v1"),
+		// 		getReviewsDeployment("v2"),
+		// 		getRatingsDeployment(),
+		// 	},
+		// 	object: getCleanUpDeleteExperiment("cleanupdelete", "reviews", "reviews-v1", "reviews-v2"),
+		// 	wantState: test.WantAllStates(
+		// 		test.CheckExperimentFinished,
+		// 		test.CheckExperimentSuccess,
+		// 	),
+		// 	postHook: test.CheckObjectDeleted(getReviewsDeployment("v1"),
+		// 		experiment.NewDestinationRule("reviews", "cleanupdelete", Flags.Namespace).Build(),
+		// 		experiment.NewVirtualService("reviews", "cleanupdelete", Flags.Namespace).Build()),
+		// },
 	}
 
 	runTestCases(t, service, testCases)
@@ -246,6 +260,12 @@ func getRatingsDeployment() runtime.Object {
 		WithLabels(labels).
 		WithContainer("ratings", RatingsImage, RatingsPort).
 		Build()
+}
+
+func getCleanUpDeleteExperiment(name, serviceName, baseline, candidate string) *iter8v1alpha1.Experiment {
+	exp := getDefaultKubernetesExperiment(name, serviceName, baseline, candidate)
+	exp.Spec.CleanUp = iter8v1alpha1.CleanUpDelete
+	return exp
 }
 
 func getDefaultKubernetesExperiment(name, serviceName, baseline, candidate string) *iter8v1alpha1.Experiment {
