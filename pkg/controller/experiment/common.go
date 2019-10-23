@@ -117,7 +117,7 @@ func markExperimentCompleted(instance *iter8v1alpha1.Experiment) {
 	instance.Status.MarkExperimentCompleted()
 }
 
-func SuccessMsg(instance *iter8v1alpha1.Experiment, trafficMsg string) string {
+func successMsg(instance *iter8v1alpha1.Experiment, trafficMsg string) string {
 	if instance.Spec.Assessment == iter8v1alpha1.AssessmentOverrideSuccess {
 		return fmt.Sprintf("OverrideSuccess, Traffic: %s", trafficMsg)
 	} else if instance.Status.AssessmentSummary.AllSuccessCriteriaMet {
@@ -127,7 +127,7 @@ func SuccessMsg(instance *iter8v1alpha1.Experiment, trafficMsg string) string {
 	}
 }
 
-func FailureMsg(instance *iter8v1alpha1.Experiment, trafficMsg string) string {
+func failureMsg(instance *iter8v1alpha1.Experiment, trafficMsg string) string {
 	if instance.Spec.Assessment == iter8v1alpha1.AssessmentOverrideFailure {
 		return fmt.Sprintf("OverrideFailure, Traffic: %s", trafficMsg)
 	} else if !instance.Status.AssessmentSummary.AllSuccessCriteriaMet {
