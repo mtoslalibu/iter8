@@ -55,6 +55,7 @@ func (r *ReconcileExperiment) syncKubernetes(context context.Context, instance *
 	// Set up vs and dr for experiment
 	dr := &v1alpha3.DestinationRule{}
 	vs := &v1alpha3.VirtualService{}
+	isInit := false
 
 	drl := &v1alpha3.DestinationRuleList{}
 	vsl := &v1alpha3.VirtualServiceList{}
@@ -80,6 +81,9 @@ func (r *ReconcileExperiment) syncKubernetes(context context.Context, instance *
 			vs = ruleSet.VirtualServices[0].DeepCopy()
 			r.MarkRoutingRulesStatus(context, instance, true,
 				"Init Routing Rules Suceeded, DR: %s, VS: %s", dr.GetName(), vs.GetName())
+			if instance.Spec.RoutingReference == nil {
+				isInit = true
+			}
 		}
 	} else {
 		r.MarkRoutingRulesStatus(context, instance, true,
@@ -183,16 +187,24 @@ func (r *ReconcileExperiment) syncKubernetes(context context.Context, instance *
 
 		switch instance.Spec.CleanUp {
 		case iter8v1alpha1.CleanUpDelete:
-			err = r.handleDeletion(context, instance, vs, dr, baseline, candidate)
+			if err := r.handleDeletion(context, instance, baseline, candidate); err != nil {
+				return reconcile.Result{}, err
+			}
+			if isInit {
+				if err := deleteObjects(context, r.Client, vs, dr); err != nil {
+					return reconcile.Result{}, err
+				}
+			} else {
+				if err := r.keepRoutingRules(context, instance, vs, dr, baseline, candidate); err != nil {
+					return reconcile.Result{}, err
+				}
+			}
 		default:
 			fallthrough
 		case iter8v1alpha1.CleanUpNull:
-			err = r.keepRoutingRules(context, instance, vs, dr, baseline, candidate)
-		}
-
-		if err != nil {
-			// retry
-			return reconcile.Result{}, err
+			if err := r.keepRoutingRules(context, instance, vs, dr, baseline, candidate); err != nil {
+				return reconcile.Result{}, err
+			}
 		}
 
 		return reconcile.Result{}, r.Status().Update(context, instance)
@@ -237,26 +249,27 @@ func (r *ReconcileExperiment) syncKubernetes(context context.Context, instance *
 
 			if response.Assessment.Summary.AbortExperiment {
 				log.Info("ExperimentAborted. Rollback to Baseline.")
-				// rollback to baseline and mark experiment as complelete
-
+				// rollback to baseline and mark experiment as complete
 				switch instance.Spec.CleanUp {
 				case iter8v1alpha1.CleanUpDelete:
 					if err := deleteObjects(context, r.Client, candidate); err != nil {
 						return reconcile.Result{}, err
 					}
+					if isInit {
+						if err := deleteObjects(context, r.Client, vs, dr); err != nil {
+							return reconcile.Result{}, err
+						}
+					} else {
+						if err := r.setStableRoutingRules(context, vs, dr, baseline, Baseline,
+							serviceName, serviceNamespace); err != nil {
+							return reconcile.Result{}, err
+						}
+					}
 				default:
 					fallthrough
 				case iter8v1alpha1.CleanUpNull:
-					dr = NewDestinationRuleBuilder(dr).WithProgressingToStable(baseline).Build()
-					vs = NewVirtualServiceBuilder(vs).
-						WithProgressingToStable(serviceName, serviceNamespace, Baseline).
-						Build()
-
-					removeExperimentLabel(dr, vs)
-					if err := r.Update(context, vs); err != nil {
-						return reconcile.Result{}, err
-					}
-					if err := r.Update(context, dr); err != nil {
+					if err := r.setStableRoutingRules(context, vs, dr, baseline, Baseline,
+						serviceName, serviceNamespace); err != nil {
 						return reconcile.Result{}, err
 					}
 				}
@@ -390,49 +403,24 @@ func (r *ReconcileExperiment) finalizeIstio(context context.Context, instance *i
 		if err := r.Get(context, types.NamespacedName{Name: baselineName, Namespace: serviceNamespace}, baseline); err != nil {
 			Logger(context).Info("BaselineNotFoundWhenDeleted", "name", baselineName)
 		} else {
-			switch instance.Spec.CleanUp {
-			case iter8v1alpha1.CleanUpDelete:
-				candidateName := instance.Spec.TargetService.Candidate
-				candidate := &appsv1.Deployment{}
-				if err := r.Get(context, types.NamespacedName{Name: candidateName, Namespace: serviceNamespace}, candidate); err == nil {
-					if err := deleteObjects(context, r.Client, candidate); err != nil {
-						return reconcile.Result{}, err
-					}
+			// Do a rollback
+			// Find routing rules
+			drl := &v1alpha3.DestinationRuleList{}
+			vsl := &v1alpha3.VirtualServiceList{}
+			listOptions := (&client.ListOptions{}).
+				MatchingLabels(map[string]string{experimentLabel: instance.Name, experimentHost: instance.Spec.TargetService.Name}).
+				InNamespace(instance.GetNamespace())
+			// No need to retry if non-empty error returned(empty results are expected)
+			r.List(context, listOptions, drl)
+			r.List(context, listOptions, vsl)
+
+			if len(drl.Items) > 0 && len(vsl.Items) > 0 {
+				if err := r.setStableRoutingRules(context, &vsl.Items[0], &drl.Items[0], baseline, Baseline,
+					instance.Spec.TargetService.Name, serviceNamespace); err != nil {
+					return reconcile.Result{}, err
 				}
-			default:
-				fallthrough
-			case iter8v1alpha1.CleanUpNull:
-				// Do a rollback
-				// Find routing rules
-				drl := &v1alpha3.DestinationRuleList{}
-				vsl := &v1alpha3.VirtualServiceList{}
-				dr := &v1alpha3.DestinationRule{}
-				vs := &v1alpha3.VirtualService{}
-				listOptions := (&client.ListOptions{}).
-					MatchingLabels(map[string]string{experimentLabel: instance.Name, experimentHost: instance.Spec.TargetService.Name}).
-					InNamespace(instance.GetNamespace())
-				// No need to retry if non-empty error returned(empty results are expected)
-				r.List(context, listOptions, drl)
-				r.List(context, listOptions, vsl)
-
-				if len(drl.Items) > 0 && len(vsl.Items) > 0 {
-					dr = NewDestinationRuleBuilder(&drl.Items[0]).WithProgressingToStable(baseline).Build()
-					vs = NewVirtualServiceBuilder(&vsl.Items[0]).WithProgressingToStable(instance.Spec.TargetService.Name, serviceNamespace, Baseline).Build()
-
-					Logger(context).Info("StableRoutingRulesAfterFinalizing", "dr", dr, "vs", vs)
-
-					removeExperimentLabel(dr, vs)
-					if err := r.Update(context, vs); err != nil {
-						log.Error(err, "Fail to update vs %s", vs.GetName())
-						return reconcile.Result{}, err
-					}
-					if err := r.Update(context, dr); err != nil {
-						log.Error(err, "Fail to update dr %s", dr.GetName())
-						return reconcile.Result{}, err
-					}
-				}
+				Logger(context).Info("StableRoutingRulesAfterFinalizing", "dr", drl.Items[0], "vs", vsl.Items[0])
 			}
-
 		}
 	}
 
@@ -661,7 +649,7 @@ func initializeRoutingRules(context context.Context, c client.Client, instance *
 }
 
 func (r *ReconcileExperiment) handleDeletion(context context.Context, instance *iter8v1alpha1.Experiment,
-	vs *v1alpha3.VirtualService, dr *v1alpha3.DestinationRule, baseline, candidate *appsv1.Deployment) error {
+	baseline, candidate *appsv1.Deployment) error {
 	if experimentSucceeded(instance) {
 		// experiment is successful
 		msg := ""
@@ -676,8 +664,6 @@ func (r *ReconcileExperiment) handleDeletion(context context.Context, instance *
 			instance.Status.TrafficSplit.Candidate = 100
 		case "both":
 			msg = "KeepBaselineAndCandidate"
-			instance.Status.TrafficSplit.Baseline = 50
-			instance.Status.TrafficSplit.Candidate = 50
 		case "baseline":
 			// delete candidate deployment
 			msg = "AllToBaseline"
@@ -698,17 +684,11 @@ func (r *ReconcileExperiment) handleDeletion(context context.Context, instance *
 		instance.Status.TrafficSplit.Candidate = 0
 	}
 
-	// delete routing rules
-	if err := deleteObjects(context, r.Client, vs, dr); err != nil {
-		return err
-	}
-
 	return nil
 }
 
 func (r *ReconcileExperiment) keepRoutingRules(context context.Context, instance *iter8v1alpha1.Experiment,
 	vs *v1alpha3.VirtualService, dr *v1alpha3.DestinationRule, baseline, candidate *appsv1.Deployment) (err error) {
-	log := Logger(context)
 	serviceName := instance.Spec.TargetService.Name
 	serviceNamespace := getServiceNamespace(instance)
 	if experimentSucceeded(instance) {
@@ -717,18 +697,14 @@ func (r *ReconcileExperiment) keepRoutingRules(context context.Context, instance
 		msg := ""
 		switch instance.Spec.TrafficControl.GetOnSuccess() {
 		case "baseline":
-			dr = NewDestinationRuleBuilder(dr).WithProgressingToStable(baseline).Build()
-			vs = NewVirtualServiceBuilder(vs).
-				WithProgressingToStable(serviceName, serviceNamespace, Baseline).
-				Build()
+			err = r.setStableRoutingRules(context, vs, dr, baseline, Baseline, serviceName,
+				serviceNamespace)
 			msg = "AllToBaseline"
 			instance.Status.TrafficSplit.Baseline = 100
 			instance.Status.TrafficSplit.Candidate = 0
 		case "candidate":
-			dr = NewDestinationRuleBuilder(dr).WithProgressingToStable(candidate).Build()
-			vs = NewVirtualServiceBuilder(vs).
-				WithProgressingToStable(serviceName, serviceNamespace, Candidate).
-				Build()
+			err = r.setStableRoutingRules(context, vs, dr, candidate, Candidate, serviceName,
+				serviceNamespace)
 			msg = "AllToCandidate"
 			instance.Status.TrafficSplit.Baseline = 0
 			instance.Status.TrafficSplit.Candidate = 100
@@ -736,6 +712,7 @@ func (r *ReconcileExperiment) keepRoutingRules(context context.Context, instance
 			// Change the role of current rules as stable
 			vs.ObjectMeta.SetLabels(map[string]string{experimentRole: Stable})
 			dr.ObjectMeta.SetLabels(map[string]string{experimentRole: Stable})
+			err = r.updateRemoveRules(context, vs, dr)
 			msg = "KeepBothVersions"
 		}
 
@@ -743,15 +720,25 @@ func (r *ReconcileExperiment) keepRoutingRules(context context.Context, instance
 	} else {
 
 		r.MarkExperimentFailed(context, instance, "%s", failureMsg(instance, "AllToBaseline"))
-		dr = NewDestinationRuleBuilder(dr).WithProgressingToStable(baseline).Build()
-		vs = NewVirtualServiceBuilder(vs).
-			WithProgressingToStable(serviceName, serviceNamespace, Baseline).
-			Build()
-
+		err = r.setStableRoutingRules(context, vs, dr, baseline, Baseline, serviceName, serviceNamespace)
 		instance.Status.TrafficSplit.Baseline = 100
 		instance.Status.TrafficSplit.Candidate = 0
 	}
 
+	return
+}
+
+func (r *ReconcileExperiment) setStableRoutingRules(context context.Context, vs *v1alpha3.VirtualService, dr *v1alpha3.DestinationRule,
+	stableDeployment *appsv1.Deployment, stableName, serviceName, serviceNamespace string) error {
+	dr = NewDestinationRuleBuilder(dr).WithProgressingToStable(stableDeployment).Build()
+	vs = NewVirtualServiceBuilder(vs).
+		WithProgressingToStable(serviceName, serviceNamespace, stableName).
+		Build()
+
+	return r.updateRemoveRules(context, vs, dr)
+}
+
+func (r *ReconcileExperiment) updateRemoveRules(context context.Context, vs *v1alpha3.VirtualService, dr *v1alpha3.DestinationRule) error {
 	removeExperimentLabel(dr, vs)
 	if err := r.Update(context, vs); err != nil {
 		log.Error(err, "Fail to update vs %s", vs.GetName())
@@ -761,5 +748,5 @@ func (r *ReconcileExperiment) keepRoutingRules(context context.Context, instance
 		log.Error(err, "Fail to update dr %s", dr.GetName())
 		return err
 	}
-	return
+	return nil
 }
