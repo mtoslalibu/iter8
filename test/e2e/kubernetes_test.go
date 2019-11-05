@@ -202,9 +202,7 @@ func TestKubernetesExperiment(t *testing.T) {
 				test.CheckExperimentFinished,
 				test.CheckExperimentSuccess,
 			),
-			postHook: test.CheckObjectDeleted(getReviewsDeployment("v1"),
-				experiment.NewDestinationRule("reviews", "cleanupdelete", Flags.Namespace).Build(),
-				experiment.NewVirtualService("reviews", "cleanupdelete", Flags.Namespace).Build()),
+			postHook: test.CheckObjectDeleted(getReviewsDeployment("v1")),
 		},
 	}
 

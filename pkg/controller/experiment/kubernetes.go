@@ -55,7 +55,6 @@ func (r *ReconcileExperiment) syncKubernetes(context context.Context, instance *
 	// Set up vs and dr for experiment
 	dr := &v1alpha3.DestinationRule{}
 	vs := &v1alpha3.VirtualService{}
-	isInit := false
 
 	drl := &v1alpha3.DestinationRuleList{}
 	vsl := &v1alpha3.VirtualServiceList{}
@@ -81,9 +80,6 @@ func (r *ReconcileExperiment) syncKubernetes(context context.Context, instance *
 			vs = ruleSet.VirtualServices[0].DeepCopy()
 			r.MarkRoutingRulesStatus(context, instance, true,
 				"Init Routing Rules Suceeded, DR: %s, VS: %s", dr.GetName(), vs.GetName())
-			if instance.Spec.RoutingReference == nil {
-				isInit = true
-			}
 		}
 	} else {
 		r.MarkRoutingRulesStatus(context, instance, true,
@@ -102,7 +98,7 @@ func (r *ReconcileExperiment) syncKubernetes(context context.Context, instance *
 				}
 			}
 		}
-		return reconcile.Result{}, fmt.Errorf("UnexpectedContidtion, retrying")
+		return reconcile.Result{}, fmt.Errorf("UnexpectedContidtion1")
 	}
 
 	stable := false
@@ -190,7 +186,7 @@ func (r *ReconcileExperiment) syncKubernetes(context context.Context, instance *
 			if err := r.handleDeletion(context, instance, baseline, candidate); err != nil {
 				return reconcile.Result{}, err
 			}
-			if isInit {
+			if isInit(vs, dr) {
 				if err := deleteObjects(context, r.Client, vs, dr); err != nil {
 					return reconcile.Result{}, err
 				}
@@ -255,7 +251,7 @@ func (r *ReconcileExperiment) syncKubernetes(context context.Context, instance *
 					if err := deleteObjects(context, r.Client, candidate); err != nil {
 						return reconcile.Result{}, err
 					}
-					if isInit {
+					if isInit(vs, dr) {
 						if err := deleteObjects(context, r.Client, vs, dr); err != nil {
 							return reconcile.Result{}, err
 						}
@@ -331,6 +327,9 @@ func removeExperimentLabel(objs ...runtime.Object) (err error) {
 		}
 		labels := accessor.GetLabels()
 		delete(labels, experimentLabel)
+		if _, ok := labels[experimentInit]; ok {
+			delete(labels, experimentInit)
+		}
 		accessor.SetLabels(labels)
 	}
 
@@ -399,6 +398,7 @@ func (r *ReconcileExperiment) finalizeIstio(context context.Context, instance *i
 		baselineName := instance.Spec.TargetService.Baseline
 		baseline := &appsv1.Deployment{}
 		serviceNamespace := getServiceNamespace(instance)
+		serviceName := instance.Spec.TargetService.Name
 
 		if err := r.Get(context, types.NamespacedName{Name: baselineName, Namespace: serviceNamespace}, baseline); err != nil {
 			Logger(context).Info("BaselineNotFoundWhenDeleted", "name", baselineName)
@@ -407,6 +407,8 @@ func (r *ReconcileExperiment) finalizeIstio(context context.Context, instance *i
 			// Find routing rules
 			drl := &v1alpha3.DestinationRuleList{}
 			vsl := &v1alpha3.VirtualServiceList{}
+			dr := &v1alpha3.DestinationRule{}
+			vs := &v1alpha3.VirtualService{}
 			listOptions := (&client.ListOptions{}).
 				MatchingLabels(map[string]string{experimentLabel: instance.Name, experimentHost: instance.Spec.TargetService.Name}).
 				InNamespace(instance.GetNamespace())
@@ -415,11 +417,41 @@ func (r *ReconcileExperiment) finalizeIstio(context context.Context, instance *i
 			r.List(context, listOptions, vsl)
 
 			if len(drl.Items) > 0 && len(vsl.Items) > 0 {
-				if err := r.setStableRoutingRules(context, &vsl.Items[0], &drl.Items[0], baseline, Baseline,
-					instance.Spec.TargetService.Name, serviceNamespace); err != nil {
-					return reconcile.Result{}, err
+				dr = &drl.Items[0]
+				vs = &vsl.Items[0]
+			}
+
+			switch instance.Spec.CleanUp {
+			case iter8v1alpha1.CleanUpDelete:
+				candidate := &appsv1.Deployment{}
+				if err := r.Get(context, types.NamespacedName{Name: instance.Spec.TargetService.Candidate, Namespace: serviceNamespace}, candidate); err == nil {
+					if err := deleteObjects(context, r.Client, candidate); err != nil {
+						return reconcile.Result{}, err
+					}
 				}
-				Logger(context).Info("StableRoutingRulesAfterFinalizing", "dr", drl.Items[0], "vs", vsl.Items[0])
+				if len(vs.GetName()) > 0 && len(dr.GetName()) > 0 {
+					if isInit(vs, dr) {
+						if err := deleteObjects(context, r.Client, vs, dr); err != nil {
+							return reconcile.Result{}, err
+						}
+					} else {
+						if err := r.setStableRoutingRules(context, vs, dr, baseline, Baseline,
+							serviceName, serviceNamespace); err != nil {
+							return reconcile.Result{}, err
+						}
+						Logger(context).Info("StableRoutingRulesAfterFinalizing", "dr", drl.Items[0], "vs", vsl.Items[0])
+					}
+				}
+			default:
+				fallthrough
+			case iter8v1alpha1.CleanUpNull:
+				if len(vs.GetName()) > 0 && len(dr.GetName()) > 0 {
+					if err := r.setStableRoutingRules(context, vs, dr, baseline, Baseline,
+						serviceName, serviceNamespace); err != nil {
+						return reconcile.Result{}, err
+					}
+					Logger(context).Info("StableRoutingRulesAfterFinalizing", "dr", drl.Items[0], "vs", vsl.Items[0])
+				}
 			}
 		}
 	}
@@ -624,7 +656,7 @@ func initializeRoutingRules(context context.Context, c client.Client, instance *
 		log.Info("StableRuleCreated", "vs", vs)
 	} else {
 		//Unexpected condition, delete all before progressing rules are created
-		log.Info("UnexpectedCondition")
+		log.Info("UnexpectedCondition2")
 		if len(drs) > 0 {
 			for _, dr := range drs {
 				if err := c.Delete(context, dr); err != nil {
@@ -642,6 +674,8 @@ func initializeRoutingRules(context context.Context, c client.Client, instance *
 		return nil, fmt.Errorf("UnexpectedContidtion, retrying")
 	}
 
+	setLabels(dr, map[string]string{experimentInit: "true"})
+	setLabels(vs, map[string]string{experimentInit: "true"})
 	return &IstioRoutingSet{
 		VirtualServices:  []*v1alpha3.VirtualService{vs},
 		DestinationRules: []*v1alpha3.DestinationRule{dr},
@@ -749,4 +783,11 @@ func (r *ReconcileExperiment) updateRemoveRules(context context.Context, vs *v1a
 		return err
 	}
 	return nil
+}
+
+func isInit(vs *v1alpha3.VirtualService, dr *v1alpha3.DestinationRule) bool {
+	_, vsok := vs.GetLabels()[experimentInit]
+	_, drok := dr.GetLabels()[experimentInit]
+
+	return vsok && drok
 }
