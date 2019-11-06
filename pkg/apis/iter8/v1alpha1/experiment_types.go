@@ -63,6 +63,13 @@ const (
 	AssessmentNull            AssessmentType = ""
 )
 
+type CleanUpType string
+
+const (
+	CleanUpDelete CleanUpType = "delete"
+	CleanUpNull   CleanUpType = ""
+)
+
 // ExperimentSpec defines the desired state of Experiment
 type ExperimentSpec struct {
 	// TargetService is a reference to an object to use as target service
@@ -80,6 +87,11 @@ type ExperimentSpec struct {
 	// +optional.
 	//+kubebuilder:validation:Enum=override_success,override_failure
 	Assessment AssessmentType `json:"assessment,omitempty"`
+
+	// CleanUp is a flag to determine the action to take at the end of experiment
+	// +optional.
+	//+kubebuilder:validation:Enum=delete
+	CleanUp CleanUpType `json:"cleanup,omitempty"`
 
 	// RoutingReference provides references to routing rules set by users
 	// +optional
