@@ -16,9 +16,9 @@ script:
 
 after_success:
   - if [ "$TRAVIS_BRANCH" == "master" ]; then
-      export IMG="iter8/iter8-controller:$TRAVIS_BUILD-$TRAVIS_COMMIT";
+      export IMG="iter8/iter8-controller:$TRAVIS_BUILD_ID-$TRAVIS_COMMIT";
       echo "Building Docker image - $IMG";
-      docker login -u $DOCKERHUB_USERNAME -p $DOCKERHUB_TOKEN;
+      echo $DOCKERHUB_TOKEN | docker login -u $DOCKERHUB_USERNAME --password-stdin;
       make docker-build;
       make docker-push;
     fi
