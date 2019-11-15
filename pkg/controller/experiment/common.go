@@ -30,6 +30,11 @@ import (
 	iter8v1alpha1 "github.com/iter8-tools/iter8-controller/pkg/apis/iter8/v1alpha1"
 )
 
+const (
+	MetricsConfigMap = "iter8-metrics"
+	Iter8Namespace   = "iter8"
+)
+
 func addFinalizerIfAbsent(context context.Context, c client.Client, instance *iter8v1alpha1.Experiment, fName string) (err error) {
 	for _, finalizer := range instance.ObjectMeta.GetFinalizers() {
 		if finalizer == fName {
@@ -86,24 +91,20 @@ func updateGrafanaURL(instance *iter8v1alpha1.Experiment, namespace string) {
 
 func getStrategy(instance *iter8v1alpha1.Experiment) string {
 	strategy := instance.Spec.TrafficControl.GetStrategy()
-	if strategy == "check_and_increment" &&
+	if strategy != iter8v1alpha1.StrategyIncrementWithoutCheck &&
 		(instance.Spec.Analysis.SuccessCriteria == nil || len(instance.Spec.Analysis.SuccessCriteria) == 0) {
-		strategy = "increment_without_check"
+		strategy = iter8v1alpha1.StrategyIncrementWithoutCheck
 	}
 	return strategy
 }
 
 func experimentSucceeded(instance *iter8v1alpha1.Experiment) bool {
-	switch getStrategy(instance) {
-	case "increment_without_check":
+	if getStrategy(instance) == iter8v1alpha1.StrategyIncrementWithoutCheck {
 		return instance.Spec.Assessment == iter8v1alpha1.AssessmentOverrideSuccess ||
 			instance.Spec.Assessment == iter8v1alpha1.AssessmentNull
-	case "check_and_increment":
-		return instance.Spec.Assessment == iter8v1alpha1.AssessmentOverrideSuccess ||
-			instance.Status.AssessmentSummary.AllSuccessCriteriaMet && instance.Spec.Assessment == iter8v1alpha1.AssessmentNull
-	default:
-		return false
 	}
+	return instance.Spec.Assessment == iter8v1alpha1.AssessmentOverrideSuccess ||
+		instance.Status.AssessmentSummary.AllSuccessCriteriaMet && instance.Spec.Assessment == iter8v1alpha1.AssessmentNull
 }
 
 func markExperimentCompleted(instance *iter8v1alpha1.Experiment) {

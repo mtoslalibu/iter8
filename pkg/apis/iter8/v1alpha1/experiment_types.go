@@ -70,6 +70,11 @@ const (
 	CleanUpNull   CleanUpType = ""
 )
 
+const (
+	StrategyIncrementWithoutCheck string = "increment_without_check"
+	StrategyCheckAndIncrement     string = "check_and_increment"
+)
+
 // ExperimentSpec defines the desired state of Experiment
 type ExperimentSpec struct {
 	// TargetService is a reference to an object to use as target service
@@ -168,7 +173,7 @@ type TrafficControl struct {
 	// "check_and_increment": get decision on traffic increament from analytics
 	// "increment_without_check": increase traffic each interval without calling analytics
 	// +optional. Default is "check_and_increment".
-	//+kubebuilder:validation:Enum=check_and_increment,increment_without_check
+	//+kubebuilder:validation:Enum=check_and_increment,increment_without_check,epsilon_greedy
 	Strategy *string `json:"strategy,omitempty"`
 
 	// MaxTrafficPercentage is the maximum traffic ratio to send to the candidate. Default is 50
@@ -256,7 +261,7 @@ type SuccessCriterion struct {
 func (t *TrafficControl) GetStrategy() string {
 	strategy := t.Strategy
 	if strategy == nil {
-		defaultValue := "check_and_increment"
+		defaultValue := StrategyCheckAndIncrement
 		strategy = &defaultValue
 	}
 	return *strategy

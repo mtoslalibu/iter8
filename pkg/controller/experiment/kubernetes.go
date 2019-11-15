@@ -22,7 +22,9 @@ import (
 	"strconv"
 	"time"
 
+	"github.com/iter8-tools/iter8-controller/pkg/analytics"
 	"github.com/iter8-tools/iter8-controller/pkg/analytics/checkandincrement"
+	"github.com/iter8-tools/iter8-controller/pkg/analytics/epsilongreedy"
 	iter8v1alpha1 "github.com/iter8-tools/iter8-controller/pkg/apis/iter8/v1alpha1"
 	"sigs.k8s.io/controller-runtime/pkg/client"
 	"sigs.k8s.io/controller-runtime/pkg/reconcile"
@@ -223,12 +225,20 @@ func (r *ReconcileExperiment) syncKubernetes(context context.Context, instance *
 	rolloutPercent := float64(getWeight(Candidate, vs))
 	if now.After(instance.Status.LastIncrementTime.Add(interval)) {
 
-		switch getStrategy(instance) {
-		case "increment_without_check":
+		strategy := getStrategy(instance)
+		if iter8v1alpha1.StrategyIncrementWithoutCheck == strategy {
 			rolloutPercent += traffic.GetStepSize()
-		case "check_and_increment":
+		} else {
+			var analyticsService analytics.AnalyticsService
+			switch getStrategy(instance) {
+			case checkandincrement.Strategy:
+				analyticsService = checkandincrement.GetService()
+			case epsilongreedy.Strategy:
+				analyticsService = epsilongreedy.GetService()
+			}
+
 			// Get latest analysis
-			payload, err := MakeRequest(instance, baseline, candidate)
+			payload, err := analyticsService.MakeRequest(instance, baseline, candidate)
 			if err != nil {
 				r.MarkAnalyticsServiceError(context, instance, "Can Not Compose Payload %v", err)
 				if err := r.Status().Update(context, instance); err != nil {
@@ -238,7 +248,7 @@ func (r *ReconcileExperiment) syncKubernetes(context context.Context, instance *
 				return reconcile.Result{RequeueAfter: 5 * time.Second}, err
 			}
 
-			response, err := checkandincrement.Invoke(log, instance.Spec.Analysis.GetServiceEndpoint(), payload)
+			response, err := analyticsService.Invoke(log, instance.Spec.Analysis.GetServiceEndpoint(), payload, analyticsService.GetPath())
 			if err != nil {
 				r.MarkAnalyticsServiceError(context, instance, "Error From Analytics: %s", err.Error())
 				if err := r.Status().Update(context, instance); err != nil {
@@ -299,6 +309,7 @@ func (r *ReconcileExperiment) syncKubernetes(context context.Context, instance *
 
 			rolloutPercent = response.Candidate.TrafficPercentage
 			r.MarkAnalyticsServiceRunning(context, instance)
+
 		}
 
 		instance.Status.CurrentIteration++
