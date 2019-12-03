@@ -42,7 +42,7 @@ import (
 	corev1 "k8s.io/api/core/v1"
 
 	iter8v1alpha1 "github.com/iter8-tools/iter8-controller/pkg/apis/iter8/v1alpha1"
-	istioclient "istio.io/client-go/pkg/clientset/versioned"
+	versionedclient "istio.io/client-go/pkg/clientset/versioned"
 )
 
 var log = logf.Log.WithName("experiment-controller")
@@ -68,9 +68,9 @@ func Add(mgr manager.Manager, istioClient *versionedclient.Clientset) error {
 func newReconciler(mgr manager.Manager, istioClient *versionedclient.Clientset) reconcile.Reconciler {
 	return &ReconcileExperiment{
 		Client:        mgr.GetClient(),
+		Interface:     istioClient,
 		scheme:        mgr.GetScheme(),
 		eventRecorder: mgr.GetRecorder(Iter8Controller),
-		istioclient:   istioClient,
 	}
 }
 
@@ -129,9 +129,9 @@ var _ reconcile.Reconciler = &ReconcileExperiment{}
 // ReconcileExperiment reconciles a Experiment object
 type ReconcileExperiment struct {
 	client.Client
+	versionedclient.Interface
 	scheme        *runtime.Scheme
 	eventRecorder record.EventRecorder
-	istioclient.Interface
 }
 
 // Reconcile reads that state of the cluster for a Experiment object and makes changes based on the state read
