@@ -42,6 +42,7 @@ import (
 	corev1 "k8s.io/api/core/v1"
 
 	iter8v1alpha1 "github.com/iter8-tools/iter8-controller/pkg/apis/iter8/v1alpha1"
+	istioclient "istio.io/client-go/pkg/clientset/versioned"
 )
 
 var log = logf.Log.WithName("experiment-controller")
@@ -59,16 +60,17 @@ const (
 
 // Add creates a new Experiment Controller and adds it to the Manager with default RBAC. The Manager will set fields on the Controller
 // and Start it when the Manager is Started.
-func Add(mgr manager.Manager) error {
-	return add(mgr, newReconciler(mgr))
+func Add(mgr manager.Manager, istioClient *versionedclient.Clientset) error {
+	return add(mgr, newReconciler(mgr, istioClient))
 }
 
 // newReconciler returns a new reconcile.Reconciler
-func newReconciler(mgr manager.Manager) reconcile.Reconciler {
+func newReconciler(mgr manager.Manager, istioClient *versionedclient.Clientset) reconcile.Reconciler {
 	return &ReconcileExperiment{
 		Client:        mgr.GetClient(),
 		scheme:        mgr.GetScheme(),
 		eventRecorder: mgr.GetRecorder(Iter8Controller),
+		istioclient:   istioClient,
 	}
 }
 
@@ -129,6 +131,7 @@ type ReconcileExperiment struct {
 	client.Client
 	scheme        *runtime.Scheme
 	eventRecorder record.EventRecorder
+	istioclient.Interface
 }
 
 // Reconcile reads that state of the cluster for a Experiment object and makes changes based on the state read

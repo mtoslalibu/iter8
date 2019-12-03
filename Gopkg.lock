@@ -18,6 +18,26 @@
   version = "1.0.0"
 
 [[projects]]
+  branch = "master"
+  digest = "1:baf3843be31dc03e2986f64834971ecd321131516977b279d6d335c0eae3b5ad"
+  name = "github.com/aspenmesh/istio-client-go"
+  packages = [
+    "pkg/apis/authentication",
+    "pkg/apis/authentication/v1alpha1",
+    "pkg/apis/networking",
+    "pkg/apis/networking/v1alpha3",
+    "pkg/apis/rbac",
+    "pkg/apis/rbac/v1alpha1",
+    "pkg/client/clientset/versioned",
+    "pkg/client/clientset/versioned/scheme",
+    "pkg/client/clientset/versioned/typed/authentication/v1alpha1",
+    "pkg/client/clientset/versioned/typed/networking/v1alpha3",
+    "pkg/client/clientset/versioned/typed/rbac/v1alpha1",
+  ]
+  pruneopts = "T"
+  revision = "4de6e89009c427dbc602b0c6bbdc8840ef1905e6"
+
+[[projects]]
   digest = "1:7679b7fa4a39470d9ed29a6026bf1ab4a679d82414e24867f4ffc3e5875ecf54"
   name = "github.com/beorn7/perks"
   packages = ["quantile"]
@@ -88,8 +108,12 @@
   digest = "1:c6e109ed32d266dea072dd6d00e3ee26fb960f86ed0ba7f6a07e5d2bfdeab868"
   name = "github.com/gogo/protobuf"
   packages = [
+    "gogoproto",
+    "jsonpb",
     "proto",
+    "protoc-gen-gogo/descriptor",
     "sortkeys",
+    "types",
   ]
   pruneopts = "T"
   revision = "ba06b47c162d49f2af050fb4c75bcbc86a159d5c"
@@ -550,6 +574,8 @@
     "http2",
     "http2/hpack",
     "idna",
+    "internal/timeseries",
+    "trace",
   ]
   pruneopts = "T"
   revision = "1da14a5a36f220ea3f03470682b737b1dfd5de22"
@@ -662,6 +688,58 @@
   version = "v1.5.0"
 
 [[projects]]
+  branch = "master"
+  digest = "1:1b028a8d750789d0723ab886c8b2853ee2d00539da8ce19a7ef77952900936b6"
+  name = "google.golang.org/genproto"
+  packages = ["googleapis/rpc/status"]
+  pruneopts = "T"
+  revision = "049a07e0debe1a8cd87b6d392cfdb5ac558c7ddf"
+
+[[projects]]
+  digest = "1:54f2aed064941eb30abd71034e0f8d4bb702891667dec4a1fa6a63742305e2ef"
+  name = "google.golang.org/grpc"
+  packages = [
+    ".",
+    "backoff",
+    "balancer",
+    "balancer/base",
+    "balancer/roundrobin",
+    "binarylog/grpc_binarylog_v1",
+    "codes",
+    "connectivity",
+    "credentials",
+    "credentials/internal",
+    "encoding",
+    "encoding/proto",
+    "grpclog",
+    "internal",
+    "internal/backoff",
+    "internal/balancerload",
+    "internal/binarylog",
+    "internal/buffer",
+    "internal/channelz",
+    "internal/envconfig",
+    "internal/grpcrand",
+    "internal/grpcsync",
+    "internal/resolver/dns",
+    "internal/resolver/passthrough",
+    "internal/syscall",
+    "internal/transport",
+    "keepalive",
+    "metadata",
+    "naming",
+    "peer",
+    "resolver",
+    "serviceconfig",
+    "stats",
+    "status",
+    "tap",
+  ]
+  pruneopts = "T"
+  revision = "1a3960e4bd028ac0cec0a2afd27d7d8e67c11514"
+  version = "v1.25.1"
+
+[[projects]]
   digest = "1:7fc160b460a6fc506b37fcca68332464c3f2cd57b6e3f111f26c5bbfd2d5518e"
   name = "gopkg.in/fsnotify.v1"
   packages = ["."]
@@ -693,6 +771,55 @@
   pruneopts = "T"
   revision = "51d6538a90f86fe93ac480b35f37b2be17fef232"
   version = "v2.2.2"
+
+[[projects]]
+  digest = "1:9bb1b224f3db75fb350895d81660d46f5535e916aa42901419f5bba8a4f666aa"
+  name = "istio.io/api"
+  packages = [
+    "authentication/v1alpha1",
+    "mixer/v1",
+    "mixer/v1/config/client",
+    "networking/v1alpha3",
+    "policy/v1beta1",
+    "rbac/v1alpha1",
+    "security/v1beta1",
+    "type/v1beta1",
+  ]
+  pruneopts = "T"
+  revision = "35e06ef8d83858a2ccabd7a0d57128879b40a586"
+  version = "1.4.0"
+
+[[projects]]
+  digest = "1:ac0827ff711b61880fcd7a842eea073c47623e0b53429b8ed27479f7bcaec0e6"
+  name = "istio.io/client-go"
+  packages = [
+    "pkg/apis/authentication/v1alpha1",
+    "pkg/apis/config/v1alpha2",
+    "pkg/apis/networking/v1alpha3",
+    "pkg/apis/rbac/v1alpha1",
+    "pkg/apis/security/v1beta1",
+    "pkg/clientset/versioned",
+    "pkg/clientset/versioned/scheme",
+    "pkg/clientset/versioned/typed/authentication/v1alpha1",
+    "pkg/clientset/versioned/typed/config/v1alpha2",
+    "pkg/clientset/versioned/typed/networking/v1alpha3",
+    "pkg/clientset/versioned/typed/rbac/v1alpha1",
+    "pkg/clientset/versioned/typed/security/v1beta1",
+  ]
+  pruneopts = "T"
+  revision = "9bd0ba57c3d24745eac756d3df8411d969f94d34"
+  version = "1.4.0"
+
+[[projects]]
+  digest = "1:08fc4e9de7826015a01fab79f1e21a9261dfd3dab3b696f5f8023177312f1173"
+  name = "istio.io/gogo-genproto"
+  packages = [
+    "googleapis/google/api",
+    "googleapis/google/rpc",
+  ]
+  pruneopts = "T"
+  revision = "f7d19ec0141d49ac9efc83b5e61fa81ba103b445"
+  version = "1.4.0"
 
 [[projects]]
   digest = "1:a361d526b77e9f68ba9f5d6f2f24e58e00d87f837b1d4cfc977047a37a7522cf"
@@ -1013,12 +1140,15 @@
   digest = "1:fbd9138a454764d4037f8edeb7bdea3f4ef4ad24b672a52cceff2a9609aacf91"
   name = "sigs.k8s.io/controller-runtime"
   packages = [
+    ".",
+    "pkg/builder",
     "pkg/cache",
     "pkg/cache/internal",
     "pkg/client",
     "pkg/client/apiutil",
     "pkg/client/config",
     "pkg/controller",
+    "pkg/controller/controllerutil",
     "pkg/envtest",
     "pkg/envtest/printer",
     "pkg/event",
@@ -1091,6 +1221,7 @@
   analyzer-name = "dep"
   analyzer-version = 1
   input-imports = [
+    "github.com/aspenmesh/istio-client-go/pkg/client/clientset/versioned",
     "github.com/emicklei/go-restful",
     "github.com/go-logr/logr",
     "github.com/google/go-cmp/cmp",
@@ -1105,6 +1236,8 @@
     "github.com/pkg/errors",
     "go.uber.org/zap",
     "golang.org/x/net/context",
+    "gopkg.in/yaml.v2",
+    "istio.io/client-go/pkg/clientset/versioned",
     "k8s.io/api/apps/v1",
     "k8s.io/api/core/v1",
     "k8s.io/apiextensions-apiserver/pkg/apis/apiextensions/v1beta1",
@@ -1119,8 +1252,10 @@
     "k8s.io/client-go/plugin/pkg/client/auth/gcp",
     "k8s.io/client-go/plugin/pkg/client/auth/oidc",
     "k8s.io/client-go/rest",
+    "k8s.io/client-go/tools/record",
     "k8s.io/code-generator/cmd/client-gen",
     "k8s.io/code-generator/cmd/deepcopy-gen",
+    "sigs.k8s.io/controller-runtime",
     "sigs.k8s.io/controller-runtime/pkg/client",
     "sigs.k8s.io/controller-runtime/pkg/client/config",
     "sigs.k8s.io/controller-runtime/pkg/controller",
