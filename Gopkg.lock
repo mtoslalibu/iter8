@@ -18,26 +18,6 @@
   version = "1.0.0"
 
 [[projects]]
-  branch = "master"
-  digest = "1:baf3843be31dc03e2986f64834971ecd321131516977b279d6d335c0eae3b5ad"
-  name = "github.com/aspenmesh/istio-client-go"
-  packages = [
-    "pkg/apis/authentication",
-    "pkg/apis/authentication/v1alpha1",
-    "pkg/apis/networking",
-    "pkg/apis/networking/v1alpha3",
-    "pkg/apis/rbac",
-    "pkg/apis/rbac/v1alpha1",
-    "pkg/client/clientset/versioned",
-    "pkg/client/clientset/versioned/scheme",
-    "pkg/client/clientset/versioned/typed/authentication/v1alpha1",
-    "pkg/client/clientset/versioned/typed/networking/v1alpha3",
-    "pkg/client/clientset/versioned/typed/rbac/v1alpha1",
-  ]
-  pruneopts = "T"
-  revision = "4de6e89009c427dbc602b0c6bbdc8840ef1905e6"
-
-[[projects]]
   digest = "1:7679b7fa4a39470d9ed29a6026bf1ab4a679d82414e24867f4ffc3e5875ecf54"
   name = "github.com/beorn7/perks"
   packages = ["quantile"]
@@ -105,7 +85,7 @@
   version = "v1.6.15"
 
 [[projects]]
-  digest = "1:c6e109ed32d266dea072dd6d00e3ee26fb960f86ed0ba7f6a07e5d2bfdeab868"
+  digest = "1:6ba54872416168c7f2a8349a681f919ead947cacde2d8e663dfbafeeaf13b17a"
   name = "github.com/gogo/protobuf"
   packages = [
     "gogoproto",
@@ -116,8 +96,8 @@
     "types",
   ]
   pruneopts = "T"
-  revision = "ba06b47c162d49f2af050fb4c75bcbc86a159d5c"
-  version = "v1.2.1"
+  revision = "5628607bb4c51c3157aacc3a50f0ab707582b805"
+  version = "v1.3.1"
 
 [[projects]]
   branch = "master"
@@ -1221,7 +1201,6 @@
   analyzer-name = "dep"
   analyzer-version = 1
   input-imports = [
-    "github.com/aspenmesh/istio-client-go/pkg/client/clientset/versioned",
     "github.com/emicklei/go-restful",
     "github.com/go-logr/logr",
     "github.com/google/go-cmp/cmp",
