@@ -21,7 +21,7 @@ import (
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/apimachinery/pkg/runtime"
 
-	cai "github.com/iter8-tools/iter8-controller/pkg/analytics/checkandincrement"
+	"github.com/iter8-tools/iter8-controller/pkg/analytics"
 	iter8v1alpha1 "github.com/iter8-tools/iter8-controller/pkg/apis/iter8/v1alpha1"
 	"github.com/iter8-tools/iter8-controller/pkg/controller/experiment"
 	"github.com/iter8-tools/iter8-controller/test"
@@ -46,7 +46,7 @@ func TestKubernetesExperiment(t *testing.T) {
 	defer service.Close()
 	testCases := map[string]testCase{
 		"rollforward": testCase{
-			mocks: map[string]cai.Response{
+			mocks: map[string]analytics.Response{
 				"rollforward": test.GetSuccessMockResponse(),
 			},
 			initObjects: []runtime.Object{
@@ -67,7 +67,7 @@ func TestKubernetesExperiment(t *testing.T) {
 			},
 		},
 		"rollbackward": testCase{
-			mocks: map[string]cai.Response{
+			mocks: map[string]analytics.Response{
 				"rollbackward": test.GetFailureMockResponse(),
 			},
 			initObjects: []runtime.Object{
@@ -88,7 +88,7 @@ func TestKubernetesExperiment(t *testing.T) {
 			},
 		},
 		"ongoingdelete": testCase{
-			mocks: map[string]cai.Response{
+			mocks: map[string]analytics.Response{
 				"ongoingdelete": test.GetSuccessMockResponse(),
 			},
 			initObjects: []runtime.Object{
@@ -108,7 +108,7 @@ func TestKubernetesExperiment(t *testing.T) {
 			postHook: test.DeleteExperiment("ongoingdelete", Flags.Namespace),
 		},
 		"completedelete": testCase{
-			mocks: map[string]cai.Response{
+			mocks: map[string]analytics.Response{
 				"completedelete": test.GetSuccessMockResponse(),
 			},
 			initObjects: []runtime.Object{
@@ -128,7 +128,7 @@ func TestKubernetesExperiment(t *testing.T) {
 			postHook: test.DeleteExperiment("completedelete", Flags.Namespace),
 		},
 		"abortexperiment": testCase{
-			mocks: map[string]cai.Response{
+			mocks: map[string]analytics.Response{
 				"abortexperiment": test.GetAbortExperimentResponse(),
 			},
 			initObjects: []runtime.Object{
@@ -169,9 +169,6 @@ func TestKubernetesExperiment(t *testing.T) {
 			},
 		},
 		"externalference": testCase{
-			mocks: map[string]cai.Response{
-				"externalference": test.GetSuccessMockResponse(),
-			},
 			initObjects: []runtime.Object{
 				getReviewsService(),
 				getRatingsService(),
@@ -190,6 +187,63 @@ func TestKubernetesExperiment(t *testing.T) {
 			finalizers: []test.Hook{
 				test.DeleteObject(getStableDestinationRule("reviews", "externalference", getReviewsDeployment("v2"))),
 				test.DeleteObject(getSampleStableEdgeVirtualService()),
+			},
+		},
+		"cleanupdelete": testCase{
+			initObjects: []runtime.Object{
+				getReviewsService(),
+				getRatingsService(),
+				getReviewsDeployment("v1"),
+				getReviewsDeployment("v2"),
+				getRatingsDeployment(),
+			},
+			object: getCleanUpDeleteExperiment("cleanupdelete", "reviews", "reviews-v1", "reviews-v2"),
+			wantState: test.WantAllStates(
+				test.CheckExperimentFinished,
+				test.CheckExperimentSuccess,
+			),
+			postHook: test.CheckObjectDeleted(getReviewsDeployment("v1")),
+		},
+		"greedy-rollforward": testCase{
+			mocks: map[string]analytics.Response{
+				"greedy-rollforward": test.GetSuccessMockResponse(),
+			},
+			initObjects: []runtime.Object{
+				getReviewsService(),
+				getRatingsService(),
+				getReviewsDeployment("v1"),
+				getReviewsDeployment("v2"),
+				getRatingsDeployment(),
+			},
+			object: getGreedyFastKubernetesExperiment("greedy-rollforward", "reviews", "reviews-v1", "reviews-v2", service.GetURL()),
+			wantState: test.WantAllStates(
+				test.CheckExperimentFinished,
+				test.CheckExperimentSuccess,
+			),
+			wantResults: []runtime.Object{
+				getStableDestinationRule("reviews", "greedy-rollforward", getReviewsDeployment("v2")),
+				getStableVirtualService("reviews", "greedy-rollforward"),
+			},
+		},
+		"greedy-rollbackward": testCase{
+			mocks: map[string]analytics.Response{
+				"greedy-rollbackward": test.GetFailureMockResponse(),
+			},
+			initObjects: []runtime.Object{
+				getReviewsService(),
+				getRatingsService(),
+				getReviewsDeployment("v1"),
+				getReviewsDeployment("v2"),
+				getRatingsDeployment(),
+			},
+			object: getGreedyFastKubernetesExperiment("greedy-rollbackward", "reviews", "reviews-v1", "reviews-v2", service.GetURL()),
+			wantState: test.WantAllStates(
+				test.CheckExperimentFinished,
+				test.CheckExperimentFailure,
+			),
+			wantResults: []runtime.Object{
+				getStableDestinationRule("reviews", "greedy-rollbackward", getReviewsDeployment("v1")),
+				getStableVirtualService("reviews", "greedy-rollbackward"),
 			},
 		},
 	}
@@ -248,6 +302,12 @@ func getRatingsDeployment() runtime.Object {
 		Build()
 }
 
+func getCleanUpDeleteExperiment(name, serviceName, baseline, candidate string) *iter8v1alpha1.Experiment {
+	exp := getDefaultKubernetesExperiment(name, serviceName, baseline, candidate)
+	exp.Spec.CleanUp = iter8v1alpha1.CleanUpDelete
+	return exp
+}
+
 func getDefaultKubernetesExperiment(name, serviceName, baseline, candidate string) *iter8v1alpha1.Experiment {
 	exp := test.NewExperiment(name, Flags.Namespace).
 		WithKubernetesTargetService(serviceName, baseline, candidate).
@@ -283,6 +343,23 @@ func getFastKubernetesExperiment(name, serviceName, baseline, candidate, analyti
 	one := 1
 	experiment.Spec.TrafficControl.Interval = &onesec
 	experiment.Spec.TrafficControl.MaxIterations = &one
+
+	return experiment
+}
+
+func getGreedyFastKubernetesExperiment(name, serviceName, baseline, candidate, analyticsHost string) *iter8v1alpha1.Experiment {
+	experiment := test.NewExperiment(name, Flags.Namespace).
+		WithKubernetesTargetService(serviceName, baseline, candidate).
+		WithAnalyticsHost(analyticsHost).
+		WithDummySuccessCriterion().
+		Build()
+
+	onesec := "1s"
+	one := 1
+	greedy := "epsilon_greedy"
+	experiment.Spec.TrafficControl.Interval = &onesec
+	experiment.Spec.TrafficControl.MaxIterations = &one
+	experiment.Spec.TrafficControl.Strategy = &greedy
 
 	return experiment
 }

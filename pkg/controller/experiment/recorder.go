@@ -35,12 +35,14 @@ func (r *ReconcileExperiment) MarkTargetsError(context context.Context, instance
 	r.eventRecorder.Eventf(instance, corev1.EventTypeWarning, reason, messageFormat, messageA...)
 }
 
-func (r *ReconcileExperiment) MarkTargetsFound(context context.Context, instance *iter8v1alpha1.Experiment) {
+func (r *ReconcileExperiment) MarkTargetsFound(context context.Context, instance *iter8v1alpha1.Experiment) bool {
 	reason := "TargetsFound"
 	//	Logger(context).Info(reason)
-	if instance.Status.MarkTargetsFound() {
+	value := instance.Status.MarkTargetsFound()
+	if value {
 		r.recordNormalEvent(true, instance, reason, "")
 	}
+	return value
 }
 
 func (r *ReconcileExperiment) MarkAnalyticsServiceError(context context.Context, instance *iter8v1alpha1.Experiment,
@@ -97,7 +99,7 @@ func (r *ReconcileExperiment) MarkSyncMetrics(context context.Context, instance 
 	reason := "SyncMetricsSucceeded"
 	Logger(context).Info(reason)
 	if instance.Status.MarkMetricsSynced() {
-		r.recordNormalEvent(false, instance, reason, "")
+		r.recordNormalEvent(true, instance, reason, "")
 	}
 }
 

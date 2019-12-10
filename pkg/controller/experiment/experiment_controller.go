@@ -133,15 +133,15 @@ type ReconcileExperiment struct {
 
 // Reconcile reads that state of the cluster for a Experiment object and makes changes based on the state read
 // and what is in the Experiment.Spec
-// +kubebuilder:rbac:groups=iter8-tools,resources=experiments,verbs=get;list;watch;create;update;patch;delete
-// +kubebuilder:rbac:groups=iter8-tools,resources=experiments/status,verbs=get;update;patch
+// +kubebuilder:rbac:groups=iter8.tools,resources=experiments,verbs=get;list;watch;create;update;patch;delete
+// +kubebuilder:rbac:groups=iter8.tools,resources=experiments/status,verbs=get;update;patch
 // +kubebuilder:rbac:groups=networking.istio.io,resources=destinationrules,verbs=get;list;watch;create;update;patch;delete
 // +kubebuilder:rbac:groups=networking.istio.io,resources=virtualservices,verbs=get;list;watch;create;update;patch;delete
 // +kubebuilder:rbac:groups=serving.knative.dev,resources=services,verbs=get;list;watch;update;patch
 // +kubebuilder:rbac:groups=serving.knative.dev,resources=services/status,verbs=get
 // +kubebuilder:rbac:groups=serving.knative.dev,resources=revisions,verbs=get;list;watch
 // +kubebuilder:rbac:groups=serving.knative.dev,resources=revisions/status,verbs=get
-// +kubebuilder:rbac:groups=apps,resources=deployments,verbs=get;list;watch;update;patch
+// +kubebuilder:rbac:groups=apps,resources=deployments,verbs=get;list;watch;update;patch;delete
 // +kubebuilder:rbac:groups=apps,resources=deployments/status,verbs=get;update;patch
 func (r *ReconcileExperiment) Reconcile(request reconcile.Request) (reconcile.Result, error) {
 	ctx := context.Background()
@@ -214,10 +214,6 @@ func (r *ReconcileExperiment) Reconcile(request reconcile.Request) (reconcile.Re
 			return reconcile.Result{}, r.Status().Update(ctx, instance)
 		}
 		r.MarkSyncMetrics(ctx, instance)
-		// err = r.Status().Update(ctx, instance)
-		// if err != nil {
-		// 	return reconcile.Result{}, err
-		// }
 	}
 
 	apiVersion := instance.Spec.TargetService.APIVersion

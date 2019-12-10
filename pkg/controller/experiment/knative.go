@@ -27,7 +27,9 @@ import (
 	"k8s.io/apimachinery/pkg/types"
 	"sigs.k8s.io/controller-runtime/pkg/reconcile"
 
+	"github.com/iter8-tools/iter8-controller/pkg/analytics"
 	"github.com/iter8-tools/iter8-controller/pkg/analytics/checkandincrement"
+	"github.com/iter8-tools/iter8-controller/pkg/analytics/epsilongreedy"
 	iter8v1alpha1 "github.com/iter8-tools/iter8-controller/pkg/apis/iter8/v1alpha1"
 )
 
@@ -120,7 +122,6 @@ func (r *ReconcileExperiment) syncKnative(context context.Context, instance *ite
 
 		update := false
 		if experimentSucceeded(instance) {
-			log.Info("Experiment completed with success", "onsuccess", traffic.GetOnSuccess())
 			// experiment is successful
 			msg := ""
 			switch traffic.GetOnSuccess() {
@@ -151,10 +152,9 @@ func (r *ReconcileExperiment) syncKnative(context context.Context, instance *ite
 			case "both":
 				msg = "KeepOnBothVersions"
 			}
-			r.MarkExperimentSucceeded(context, instance, "%s", SuccessMsg(instance, msg))
+			r.MarkExperimentSucceeded(context, instance, "%s", successMsg(instance, msg))
 		} else {
-			log.Info("Experiment completed with failure")
-			r.MarkExperimentFailed(context, instance, "%s", FailureMsg(instance, "AllToBaseline"))
+			r.MarkExperimentFailed(context, instance, "%s", failureMsg(instance, "AllToBaseline"))
 
 			// Switch traffic back to baseline
 			if candidateTraffic.Percent != 0 {
@@ -191,10 +191,18 @@ func (r *ReconcileExperiment) syncKnative(context context.Context, instance *ite
 
 		newRolloutPercent := float64(candidateTraffic.Percent)
 
-		switch getStrategy(instance) {
-		case "increment_without_check":
+		strategy := getStrategy(instance)
+		if iter8v1alpha1.StrategyIncrementWithoutCheck == strategy {
 			newRolloutPercent += traffic.GetStepSize()
-		case "check_and_increment":
+		} else {
+			var analyticsService analytics.AnalyticsService
+			switch getStrategy(instance) {
+			case checkandincrement.Strategy:
+				analyticsService = checkandincrement.GetService()
+			case epsilongreedy.Strategy:
+				analyticsService = epsilongreedy.GetService()
+			}
+
 			// Get underlying k8s services
 			// TODO: should just get the service name. See issue #83
 			baselineService, err := r.getServiceForRevision(context, kservice, baselineTraffic.RevisionName)
@@ -212,7 +220,7 @@ func (r *ReconcileExperiment) syncKnative(context context.Context, instance *ite
 			}
 
 			// Get latest analysis
-			payload, err := MakeRequest(instance, baselineService, candidateService)
+			payload, err := analyticsService.MakeRequest(instance, baselineService, candidateService)
 			if err != nil {
 				r.MarkAnalyticsServiceError(context, instance, "Can Not Compose Payload: %v", err)
 				if err := r.Status().Update(context, instance); err != nil {
@@ -220,7 +228,7 @@ func (r *ReconcileExperiment) syncKnative(context context.Context, instance *ite
 				}
 				return reconcile.Result{RequeueAfter: 5 * time.Second}, r.Status().Update(context, instance)
 			}
-			response, err := checkandincrement.Invoke(log, instance.Spec.Analysis.GetServiceEndpoint(), payload)
+			response, err := analyticsService.Invoke(log, instance.Spec.Analysis.GetServiceEndpoint(), payload, analyticsService.GetPath())
 			if err != nil {
 				r.MarkAnalyticsServiceError(context, instance, "%s", err.Error())
 				if err := r.Status().Update(context, instance); err != nil {
