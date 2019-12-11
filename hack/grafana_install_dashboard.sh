@@ -22,7 +22,7 @@ function get_config {
 }
 
 status=$(curl -Is --header 'Accept: application/json' $GRAFANA_URL/api/dashboards/uid/$DASHBOARD_UID 2>/dev/null | head -n 1 | cut -d$' ' -f2)
-echo $status
+
 if [[ "$status" == "200" ]]; then
   echo "Canary Dashboard already defined in $GRAFANA_URL"
   # Could update by copying id, version from current dashboard
