@@ -29,6 +29,8 @@ type KnativeServiceBuilder servingalpha1.Service
 
 // NewKnativeService creates a default Knative service with one revision
 func NewKnativeService(name string, namespace string) *KnativeServiceBuilder {
+	t := int64(300)
+
 	s := &servingalpha1.Service{
 		TypeMeta: metav1.TypeMeta{
 			APIVersion: servingalpha1.SchemeGroupVersion.String(),
@@ -40,7 +42,13 @@ func NewKnativeService(name string, namespace string) *KnativeServiceBuilder {
 		},
 		Spec: servingalpha1.ServiceSpec{
 			ConfigurationSpec: servingalpha1.ConfigurationSpec{
-				Template: &servingalpha1.RevisionTemplateSpec{},
+				Template: &servingalpha1.RevisionTemplateSpec{
+					Spec: servingalpha1.RevisionSpec{
+						RevisionSpec: v1.RevisionSpec{
+							TimeoutSeconds: &t,
+						},
+					},
+				},
 			},
 			RouteSpec: servingalpha1.RouteSpec{
 				Traffic: []servingalpha1.TrafficTarget{},
