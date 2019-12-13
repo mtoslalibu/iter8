@@ -24,7 +24,7 @@ import (
 	"go.uber.org/zap"
 	"k8s.io/apimachinery/pkg/api/errors"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
-	"k8s.io/apimachinery/pkg/runtime"
+	runtime "k8s.io/apimachinery/pkg/runtime"
 	"k8s.io/apimachinery/pkg/types"
 	"k8s.io/client-go/tools/record"
 	"sigs.k8s.io/controller-runtime/pkg/client"
@@ -38,11 +38,10 @@ import (
 	"sigs.k8s.io/controller-runtime/pkg/source"
 
 	servingv1alpha1 "github.com/knative/serving/pkg/apis/serving/v1alpha1"
-	//	appsv1 "k8s.io/api/apps/v1"
 	corev1 "k8s.io/api/core/v1"
 
 	iter8v1alpha1 "github.com/iter8-tools/iter8-controller/pkg/apis/iter8/v1alpha1"
-	versionedclient "istio.io/client-go/pkg/clientset/versioned"
+	istioclient "istio.io/client-go/pkg/clientset/versioned"
 )
 
 var log = logf.Log.WithName("experiment-controller")
@@ -60,17 +59,17 @@ const (
 
 // Add creates a new Experiment Controller and adds it to the Manager with default RBAC. The Manager will set fields on the Controller
 // and Start it when the Manager is Started.
-func Add(mgr manager.Manager, istioClient *versionedclient.Clientset) error {
+func Add(mgr manager.Manager, istioClient *istioclient.Clientset) error {
 	return add(mgr, newReconciler(mgr, istioClient))
 }
 
 // newReconciler returns a new reconcile.Reconciler
-func newReconciler(mgr manager.Manager, istioClient *versionedclient.Clientset) reconcile.Reconciler {
+func newReconciler(mgr manager.Manager, istioClient *istioclient.Clientset) reconcile.Reconciler {
 	return &ReconcileExperiment{
 		Client:        mgr.GetClient(),
-		Interface:     istioClient,
+		istioClient:   istioClient,
 		scheme:        mgr.GetScheme(),
-		eventRecorder: mgr.GetRecorder(Iter8Controller),
+		eventRecorder: mgr.GetEventRecorderFor(Iter8Controller),
 	}
 }
 
@@ -129,9 +128,12 @@ var _ reconcile.Reconciler = &ReconcileExperiment{}
 // ReconcileExperiment reconciles a Experiment object
 type ReconcileExperiment struct {
 	client.Client
-	versionedclient.Interface
 	scheme        *runtime.Scheme
 	eventRecorder record.EventRecorder
+
+	istioClient istioclient.Interface
+	targets     *Targets
+	rules       *IstioRoutingRules
 }
 
 // Reconcile reads that state of the cluster for a Experiment object and makes changes based on the state read

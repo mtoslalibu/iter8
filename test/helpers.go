@@ -89,6 +89,30 @@ func DeleteObject(obj runtime.Object) Hook {
 		if err := cl.Delete(ctx, obj); err != nil {
 			return err
 		}
+
+		if err := WaitForDelete(ctx, cl, obj); err != nil {
+			return err
+		}
+		return nil
+	}
+}
+
+func DeleteObjectIfExists(obj runtime.Object) Hook {
+	return func(ctx context.Context, cl client.Client) error {
+		accessor, err := meta.Accessor(obj)
+		if err != nil {
+			return err
+		}
+
+		key := client.ObjectKey{Namespace: accessor.GetNamespace(), Name: accessor.GetName()}
+		if err := cl.Get(ctx, key, obj); err != nil {
+			return nil
+		}
+
+		if err := cl.Delete(ctx, obj); err != nil {
+			return err
+		}
+
 		if err := WaitForDelete(ctx, cl, obj); err != nil {
 			return err
 		}

@@ -15,38 +15,19 @@ limitations under the License.
 package experiment
 
 import (
-	"fmt"
-
 	appsv1 "k8s.io/api/apps/v1"
-	"k8s.io/apimachinery/pkg/api/meta"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
-	"k8s.io/apimachinery/pkg/runtime"
 
-	"github.com/knative/pkg/apis/istio/v1alpha3"
+	networkingv1alpha3 "istio.io/api/networking/v1alpha3"
+	"istio.io/client-go/pkg/apis/networking/v1alpha3"
 )
 
 const (
 	IstioRuleSuffix = ".iter8-experiment"
-
-	Baseline  = "baseline"
-	Candidate = "candidate"
-
-	Stable      = "stable"
-	Progressing = "progressing"
-
-	experimentInit  = "iter8-tools/init"
-	experimentRole  = "iter8-tools/role"
-	experimentLabel = "iter8-tools/experiment"
-	experimentHost  = "iter8-tools/host"
 )
 
 type DestinationRuleBuilder v1alpha3.DestinationRule
 type VirtualServiceBuilder v1alpha3.VirtualService
-
-type IstioRoutingSet struct {
-	VirtualServices  []*v1alpha3.VirtualService
-	DestinationRules []*v1alpha3.DestinationRule
-}
 
 func NewVirtualServiceBuilder(vs *v1alpha3.VirtualService) *VirtualServiceBuilder {
 	return (*VirtualServiceBuilder)(vs)
@@ -70,9 +51,9 @@ func NewDestinationRule(serviceName, name, namespace string) *DestinationRuleBui
 				experimentHost:  serviceName,
 			},
 		},
-		Spec: v1alpha3.DestinationRuleSpec{
+		Spec: networkingv1alpha3.DestinationRule{
 			Host:    serviceName,
-			Subsets: []v1alpha3.Subset{},
+			Subsets: []*networkingv1alpha3.Subset{},
 		},
 	}
 
@@ -81,7 +62,7 @@ func NewDestinationRule(serviceName, name, namespace string) *DestinationRuleBui
 
 func (b *DestinationRuleBuilder) WithStableDeployment(d *appsv1.Deployment) *DestinationRuleBuilder {
 	b.ObjectMeta.Labels[experimentRole] = Stable
-	b.Spec.Subsets = append(b.Spec.Subsets, v1alpha3.Subset{
+	b.Spec.Subsets = append(b.Spec.Subsets, &networkingv1alpha3.Subset{
 		Name:   Stable,
 		Labels: d.Spec.Template.Labels,
 	})
@@ -91,6 +72,22 @@ func (b *DestinationRuleBuilder) WithStableDeployment(d *appsv1.Deployment) *Des
 
 func (b *DestinationRuleBuilder) WithStableLabel() *DestinationRuleBuilder {
 	b.ObjectMeta.Labels[experimentRole] = Stable
+	return b
+}
+
+func (b *DestinationRuleBuilder) RemoveExperimentLabel() *DestinationRuleBuilder {
+	if _, ok := b.ObjectMeta.Labels[experimentLabel]; ok {
+		delete(b.ObjectMeta.Labels, experimentLabel)
+	}
+
+	if _, ok := b.ObjectMeta.Labels[experimentInit]; ok {
+		delete(b.ObjectMeta.Labels, experimentInit)
+	}
+	return b
+}
+
+func (b *DestinationRuleBuilder) WithExperimentRegisterd(exp string) *DestinationRuleBuilder {
+	b.ObjectMeta.Labels[experimentLabel] = exp
 	return b
 }
 
@@ -132,7 +129,7 @@ func (b *DestinationRuleBuilder) WithSubset(name string, d *appsv1.Deployment) *
 	}
 
 	// Add new subset to the slice
-	b.Spec.Subsets = append(b.Spec.Subsets, v1alpha3.Subset{
+	b.Spec.Subsets = append(b.Spec.Subsets, &networkingv1alpha3.Subset{
 		Name:   name,
 		Labels: d.Spec.Template.Labels,
 	})
@@ -167,7 +164,7 @@ func NewVirtualService(serviceName, name, namespace string) *VirtualServiceBuild
 				experimentHost:  serviceName,
 			},
 		},
-		Spec: v1alpha3.VirtualServiceSpec{
+		Spec: networkingv1alpha3.VirtualService{
 			Hosts: []string{serviceName},
 		},
 	}
@@ -185,32 +182,43 @@ func (b *VirtualServiceBuilder) WithStableLabel() *VirtualServiceBuilder {
 	return b
 }
 
-func (b *VirtualServiceBuilder) WithRolloutPercent(service, ns string, rolloutPercent int) *VirtualServiceBuilder {
-	if b.Spec.HTTP != nil || len(b.Spec.HTTP) > 0 {
-		for i, http := range b.Spec.HTTP {
+func (b *VirtualServiceBuilder) RemoveExperimentLabel() *VirtualServiceBuilder {
+	if _, ok := b.ObjectMeta.Labels[experimentLabel]; ok {
+		delete(b.ObjectMeta.Labels, experimentLabel)
+	}
+
+	if _, ok := b.ObjectMeta.Labels[experimentInit]; ok {
+		delete(b.ObjectMeta.Labels, experimentInit)
+	}
+	return b
+}
+
+func (b *VirtualServiceBuilder) WithRolloutPercent(service, ns string, rolloutPercent int32) *VirtualServiceBuilder {
+	if b.Spec.Http != nil || len(b.Spec.Http) > 0 {
+		for i, http := range b.Spec.Http {
 			for j, route := range http.Route {
 				if equalHost(route.Destination.Host, ns, service, ns) {
 					if route.Destination.Subset == Baseline {
-						b.Spec.HTTP[i].Route[j].Weight = 100 - rolloutPercent
+						b.Spec.Http[i].Route[j].Weight = 100 - rolloutPercent
 					} else if route.Destination.Subset == Candidate {
-						b.Spec.HTTP[i].Route[j].Weight = rolloutPercent
+						b.Spec.Http[i].Route[j].Weight = rolloutPercent
 					}
 				}
 			}
 		}
 	} else {
 		b.Spec.Hosts = []string{service}
-		b.Spec.HTTP = append(b.Spec.HTTP, v1alpha3.HTTPRoute{
-			Route: []v1alpha3.HTTPRouteDestination{
+		b.Spec.Http = append(b.Spec.Http, &networkingv1alpha3.HTTPRoute{
+			Route: []*networkingv1alpha3.HTTPRouteDestination{
 				{
-					Destination: v1alpha3.Destination{
+					Destination: &networkingv1alpha3.Destination{
 						Host:   service,
 						Subset: Baseline,
 					},
 					Weight: 100 - rolloutPercent,
 				},
 				{
-					Destination: v1alpha3.Destination{
+					Destination: &networkingv1alpha3.Destination{
 						Host:   service,
 						Subset: Candidate,
 					},
@@ -224,10 +232,10 @@ func (b *VirtualServiceBuilder) WithRolloutPercent(service, ns string, rolloutPe
 }
 
 func (b *VirtualServiceBuilder) AppendStableSubset(service, ns string) *VirtualServiceBuilder {
-	for i, http := range b.Spec.HTTP {
+	for i, http := range b.Spec.Http {
 		for j, route := range http.Route {
 			if equalHost(route.Destination.Host, ns, service, ns) {
-				b.Spec.HTTP[i].Route[j].Destination.Subset = Stable
+				b.Spec.Http[i].Route[j].Destination.Subset = Stable
 				break
 			}
 		}
@@ -237,13 +245,13 @@ func (b *VirtualServiceBuilder) AppendStableSubset(service, ns string) *VirtualS
 
 func (b *VirtualServiceBuilder) WithNewStableSet(service string) *VirtualServiceBuilder {
 	b.ObjectMeta.Labels[experimentRole] = Stable
-	b.Spec = v1alpha3.VirtualServiceSpec{
+	b.Spec = networkingv1alpha3.VirtualService{
 		Hosts: []string{service},
-		HTTP: []v1alpha3.HTTPRoute{
+		Http: []*networkingv1alpha3.HTTPRoute{
 			{
-				Route: []v1alpha3.HTTPRouteDestination{
+				Route: []*networkingv1alpha3.HTTPRouteDestination{
 					{
-						Destination: v1alpha3.Destination{
+						Destination: &networkingv1alpha3.Destination{
 							Host:   service,
 							Subset: Stable,
 						},
@@ -257,10 +265,15 @@ func (b *VirtualServiceBuilder) WithNewStableSet(service string) *VirtualService
 	return b
 }
 
+func (b *VirtualServiceBuilder) WithExperimentRegisterd(exp string) *VirtualServiceBuilder {
+	b.ObjectMeta.Labels[experimentLabel] = exp
+	return b
+}
+
 // WithStableToProgressing removes Stable subset while adds Baseline and Candidate subsets to the route
 func (b *VirtualServiceBuilder) WithStableToProgressing(service, ns string) *VirtualServiceBuilder {
 	b = b.WithProgressingLabel()
-	for i, http := range b.Spec.HTTP {
+	for i, http := range b.Spec.Http {
 		stableIndex := -1
 		for j, route := range http.Route {
 			if equalHost(route.Destination.Host, ns, service, ns) {
@@ -269,29 +282,29 @@ func (b *VirtualServiceBuilder) WithStableToProgressing(service, ns string) *Vir
 			}
 		}
 		if stableIndex >= 0 {
-			stablePort := b.Spec.HTTP[i].Route[stableIndex].Destination.Port
+			stablePort := b.Spec.Http[i].Route[stableIndex].Destination.Port
 			// Add Baseline and Candidate entries in this HTTP section
-			b.Spec.HTTP[i].Route = append(b.Spec.HTTP[i].Route, []v1alpha3.HTTPRouteDestination{
+			b.Spec.Http[i].Route = append(b.Spec.Http[i].Route, []*networkingv1alpha3.HTTPRouteDestination{
 				{
-					Destination: v1alpha3.Destination{
+					Destination: &networkingv1alpha3.Destination{
 						Host:   service,
 						Subset: Baseline,
-						Port:   *(stablePort.DeepCopy()),
+						Port:   stablePort,
 					},
 					Weight: 100,
 				},
 				{
-					Destination: v1alpha3.Destination{
+					Destination: &networkingv1alpha3.Destination{
 						Host:   service,
 						Subset: Candidate,
-						Port:   *(stablePort.DeepCopy()),
+						Port:   stablePort,
 					},
 					Weight: 0,
 				},
 			}...)
 			// Remove Stable entry
-			b.Spec.HTTP[i].Route[stableIndex] = b.Spec.HTTP[i].Route[0]
-			b.Spec.HTTP[i].Route = b.Spec.HTTP[i].Route[1:]
+			b.Spec.Http[i].Route[stableIndex] = b.Spec.Http[i].Route[0]
+			b.Spec.Http[i].Route = b.Spec.Http[i].Route[1:]
 			break
 		}
 	}
@@ -300,7 +313,7 @@ func (b *VirtualServiceBuilder) WithStableToProgressing(service, ns string) *Vir
 
 func (b *VirtualServiceBuilder) WithProgressingToStable(service, ns string, subset string) *VirtualServiceBuilder {
 	b = b.WithStableLabel()
-	for i, http := range b.Spec.HTTP {
+	for i, http := range b.Spec.Http {
 		stableIndex := -1
 		for j, route := range http.Route {
 			if equalHost(route.Destination.Host, ns, service, ns) && route.Destination.Subset == subset {
@@ -310,11 +323,11 @@ func (b *VirtualServiceBuilder) WithProgressingToStable(service, ns string, subs
 		}
 		if stableIndex >= 0 {
 			// Convert this to stable
-			b.Spec.HTTP[i].Route[stableIndex].Destination.Subset = Stable
-			b.Spec.HTTP[i].Route[stableIndex].Weight = 100
+			b.Spec.Http[i].Route[stableIndex].Destination.Subset = Stable
+			b.Spec.Http[i].Route[stableIndex].Weight = 100
 			// Remove other entries
-			b.Spec.HTTP[i].Route[0] = b.Spec.HTTP[i].Route[stableIndex]
-			b.Spec.HTTP[i].Route = b.Spec.HTTP[i].Route[:1]
+			b.Spec.Http[i].Route[0] = b.Spec.Http[i].Route[stableIndex]
+			b.Spec.Http[i].Route = b.Spec.Http[i].Route[:1]
 
 			break
 		}
@@ -336,18 +349,6 @@ func (b *VirtualServiceBuilder) Build() *v1alpha3.VirtualService {
 	return (*v1alpha3.VirtualService)(b)
 }
 
-func isStable(obj runtime.Object) (bool, error) {
-	accessor, err := meta.Accessor(obj)
-	if err != nil {
-		return false, err
-	}
-
-	if role, ok := accessor.GetLabels()[experimentRole]; ok {
-		return (role == Stable), nil
-	}
-	return false, fmt.Errorf("Label %s not found", experimentRole)
-}
-
 func equalHost(host1, ns1, host2, ns2 string) bool {
 	if host1 == host2 ||
 		host1 == host2+"."+ns2+".svc.cluster.local" ||
@@ -355,4 +356,38 @@ func equalHost(host1, ns1, host2, ns2 string) bool {
 		return true
 	}
 	return false
+}
+
+func updateSubset(dr *v1alpha3.DestinationRule, d *appsv1.Deployment, name string) bool {
+	update, found := true, false
+	for idx, subset := range dr.Spec.Subsets {
+		if subset.Name == Stable && name == Baseline {
+			dr.Spec.Subsets[idx].Name = name
+			dr.Spec.Subsets[idx].Labels = d.Spec.Template.Labels
+			found = true
+			break
+		}
+		if subset.Name == name {
+			found = true
+			update = false
+			break
+		}
+	}
+
+	if !found {
+		dr.Spec.Subsets = append(dr.Spec.Subsets, &networkingv1alpha3.Subset{
+			Name:   name,
+			Labels: d.Spec.Template.Labels,
+		})
+	}
+	return update
+}
+
+func getWeight(subset string, vs *v1alpha3.VirtualService) int32 {
+	for _, route := range vs.Spec.Http[0].Route {
+		if route.Destination.Subset == subset {
+			return route.Weight
+		}
+	}
+	return 0
 }

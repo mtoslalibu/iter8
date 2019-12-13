@@ -18,10 +18,10 @@ import (
 	"fmt"
 
 	servingalpha1 "github.com/knative/serving/pkg/apis/serving/v1alpha1"
-	servingbeta1 "github.com/knative/serving/pkg/apis/serving/v1beta1"
 	corev1 "k8s.io/api/core/v1"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/apimachinery/pkg/runtime"
+	v1 "knative.dev/serving/pkg/apis/serving/v1"
 )
 
 // KnativeServiceBuilder builds Knative service object
@@ -64,13 +64,13 @@ func (b *KnativeServiceBuilder) WithImage(name string) *KnativeServiceBuilder {
 	return b
 }
 
-func (b *KnativeServiceBuilder) WithRevision(revisionName string, percent int) *KnativeServiceBuilder {
+func (b *KnativeServiceBuilder) WithRevision(revisionName string, percent int64) *KnativeServiceBuilder {
 	b.Spec.Template.Name = revisionName
 	nottrue := false
 	b.Spec.Traffic = append(b.Spec.Traffic, servingalpha1.TrafficTarget{
-		TrafficTarget: servingbeta1.TrafficTarget{
+		TrafficTarget: v1.TrafficTarget{
 			RevisionName:   revisionName,
-			Percent:        percent,
+			Percent:        &percent,
 			LatestRevision: &nottrue,
 		},
 	})

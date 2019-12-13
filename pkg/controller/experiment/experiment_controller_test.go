@@ -22,6 +22,7 @@ import (
 	iter8v1alpha1 "github.com/iter8-tools/iter8-controller/pkg/apis/iter8/v1alpha1"
 	"github.com/onsi/gomega"
 	"golang.org/x/net/context"
+	versionedclient "istio.io/client-go/pkg/clientset/versioned"
 	apierrors "k8s.io/apimachinery/pkg/api/errors"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/apimachinery/pkg/types"
@@ -46,7 +47,10 @@ func TestReconcile(t *testing.T) {
 	g.Expect(err).NotTo(gomega.HaveOccurred())
 	c = mgr.GetClient()
 
-	recFn, requests := SetupTestReconcile(newReconciler(mgr))
+	ic, err := versionedclient.NewForConfig(cfg)
+	g.Expect(err).NotTo(gomega.HaveOccurred())
+
+	recFn, requests := SetupTestReconcile(newReconciler(mgr, ic))
 	g.Expect(add(mgr, recFn)).NotTo(gomega.HaveOccurred())
 
 	stopMgr, mgrStopped := StartTestManager(mgr, g)

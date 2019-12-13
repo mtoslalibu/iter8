@@ -28,8 +28,9 @@ import (
 	logf "sigs.k8s.io/controller-runtime/pkg/runtime/log"
 	"sigs.k8s.io/controller-runtime/pkg/runtime/signals"
 
-	istiov1alpha3 "github.com/knative/pkg/apis/istio/v1alpha3"
 	servingv1alpha1 "github.com/knative/serving/pkg/apis/serving/v1alpha1"
+	istiov1alpha3 "istio.io/client-go/pkg/apis/networking/v1alpha3"
+	versionedclient "istio.io/client-go/pkg/clientset/versioned"
 )
 
 func main() {
@@ -44,6 +45,13 @@ func main() {
 	cfg, err := config.GetConfig()
 	if err != nil {
 		log.Error(err, "unable to set up client config")
+		os.Exit(1)
+	}
+
+	log.Info("setting up istioclient for manager")
+	ic, err := versionedclient.NewForConfig(cfg)
+	if err != nil {
+		log.Error(err, "Failed to create istio client")
 		os.Exit(1)
 	}
 
@@ -82,7 +90,7 @@ func main() {
 
 	// Setup all Controllers
 	log.Info("Setting up controller")
-	if err := controller.AddToManager(mgr); err != nil {
+	if err := controller.AddToManager(mgr, ic); err != nil {
 		log.Error(err, "unable to register controllers to the manager")
 		os.Exit(1)
 	}

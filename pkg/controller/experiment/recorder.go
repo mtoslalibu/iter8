@@ -106,7 +106,7 @@ func (r *ReconcileExperiment) MarkSyncMetrics(context context.Context, instance 
 func (r *ReconcileExperiment) MarkRoutingRulesStatus(context context.Context, instance *iter8v1alpha1.Experiment,
 	broadcast bool, messageFormat string, messageA ...interface{}) {
 	reason := "RoutingRulesUpdate"
-	//	Logger(context).Info(reason + ", " + fmt.Sprintf(messageFormat, messageA...))
+	Logger(context).Info(reason + ", " + fmt.Sprintf(messageFormat, messageA...))
 	r.recordNormalEvent(broadcast, instance, reason, messageFormat, messageA...)
 }
 

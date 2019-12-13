@@ -23,9 +23,9 @@ import (
 
 	"github.com/google/go-cmp/cmp"
 	"github.com/google/go-cmp/cmp/cmpopts"
-	istiov1alpha3 "github.com/knative/pkg/apis/istio/v1alpha3"
+	v1 "github.com/knative/serving/pkg/apis/serving/v1"
 	servingalpha1 "github.com/knative/serving/pkg/apis/serving/v1alpha1"
-	servingbeta1 "github.com/knative/serving/pkg/apis/serving/v1beta1"
+	istiov1alpha3 "istio.io/client-go/pkg/apis/networking/v1alpha3"
 	corev1 "k8s.io/api/core/v1"
 	"k8s.io/apimachinery/pkg/api/meta"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
@@ -46,7 +46,7 @@ var Flags = initializeFlags()
 var compoptions = []cmp.Option{
 	cmpopts.IgnoreTypes(metav1.TypeMeta{}, metav1.ObjectMeta{}, metav1.Time{},
 		corev1.ResourceRequirements{}, servingalpha1.ServiceStatus{}),
-	cmpopts.IgnoreFields(servingbeta1.RevisionSpec{}, "TimeoutSeconds"),
+	cmpopts.IgnoreFields(v1.RevisionSpec{}, "TimeoutSeconds"),
 }
 
 // EnvironmentFlags define the flags that are needed to run the e2e tests.
@@ -79,7 +79,7 @@ func GetClient() client.Client {
 	if err := servingalpha1.AddToScheme(sch); err != nil {
 		panic(fmt.Errorf("unable to add scheme (%v)", err))
 	}
-	if err := servingbeta1.AddToScheme(sch); err != nil {
+	if err := v1.AddToScheme(sch); err != nil {
 		panic(fmt.Errorf("unable to add scheme (%v)", err))
 	}
 	if err := istiov1alpha3.AddToScheme(sch); err != nil {
@@ -101,7 +101,7 @@ type testCase struct {
 	initObjects []runtime.Object
 
 	// Pre-reconcile hook
-	preHook test.Hook
+	preHook []test.Hook
 
 	// Object to reconcile
 	object runtime.Object
@@ -148,7 +148,12 @@ func (tc *testCase) runPreHook(ctx context.Context, cl client.Client) error {
 	if tc.preHook == nil {
 		return nil
 	}
-	return tc.preHook(ctx, cl)
+	for _, f := range tc.preHook {
+		if err := f(ctx, cl); err != nil {
+			return err
+		}
+	}
+	return nil
 }
 
 func (tc *testCase) runPostHook(ctx context.Context, cl client.Client) error {
@@ -279,6 +284,8 @@ func runTestCases(t *testing.T, service *test.AnalyticsService, testCases map[st
 			if err := tc.runFinalizers(ctx, client); err != nil {
 				t.Fatalf("Failed running finalizers %v", err)
 			}
+
+			time.Sleep(time.Second * 3)
 		})
 	}
 }

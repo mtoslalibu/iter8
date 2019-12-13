@@ -23,7 +23,9 @@ import (
 	"gopkg.in/yaml.v2"
 
 	corev1 "k8s.io/api/core/v1"
+	"k8s.io/apimachinery/pkg/api/meta"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
+	runtime "k8s.io/apimachinery/pkg/runtime"
 	"k8s.io/apimachinery/pkg/types"
 	"sigs.k8s.io/controller-runtime/pkg/client"
 
@@ -33,6 +35,16 @@ import (
 const (
 	MetricsConfigMap = "iter8-metrics"
 	Iter8Namespace   = "iter8"
+
+	Baseline    = "baseline"
+	Candidate   = "candidate"
+	Stable      = "stable"
+	Progressing = "progressing"
+
+	experimentInit  = "iter8-tools/init"
+	experimentRole  = "iter8-tools/role"
+	experimentLabel = "iter8-tools/experiment"
+	experimentHost  = "iter8-tools/host"
 )
 
 func addFinalizerIfAbsent(context context.Context, c client.Client, instance *iter8v1alpha1.Experiment, fName string) (err error) {
@@ -204,4 +216,54 @@ func readMetrics(context context.Context, c client.Client, instance *iter8v1alph
 
 	err = c.Update(context, instance)
 	return err
+}
+
+func (r *ReconcileExperiment) executeStatusUpdate(ctx context.Context, instance *iter8v1alpha1.Experiment) (err error) {
+	trial := 3
+	for trial > 0 {
+		if err = r.Status().Update(ctx, instance); err == nil {
+			break
+		}
+		time.Sleep(time.Second * 5)
+		trial--
+	}
+	return
+}
+
+func removeExperimentLabel(objs ...runtime.Object) (err error) {
+	for _, obj := range objs {
+		accessor, err := meta.Accessor(obj)
+		if err != nil {
+			return err
+		}
+		labels := accessor.GetLabels()
+		delete(labels, experimentLabel)
+		if _, ok := labels[experimentInit]; ok {
+			delete(labels, experimentInit)
+		}
+		accessor.SetLabels(labels)
+	}
+
+	return nil
+}
+
+func deleteObjects(context context.Context, client client.Client, objs ...runtime.Object) error {
+	for _, obj := range objs {
+		if err := client.Delete(context, obj); err != nil {
+			return err
+		}
+	}
+	return nil
+}
+
+func setLabels(obj runtime.Object, newLabels map[string]string) error {
+	accessor, err := meta.Accessor(obj)
+	if err != nil {
+		return err
+	}
+	labels := accessor.GetLabels()
+	for key, val := range newLabels {
+		labels[key] = val
+	}
+	return nil
 }
