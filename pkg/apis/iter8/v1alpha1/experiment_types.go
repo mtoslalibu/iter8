@@ -90,7 +90,7 @@ type ExperimentSpec struct {
 
 	// Assessment is a flag to terminate experiment with action
 	// +optional.
-	//+kubebuilder:validation:Enum=override_success,override_failure
+	//+kubebuilder:validation:Enum={override_success,override_failure}
 	Assessment AssessmentType `json:"assessment,omitempty"`
 
 	// CleanUp is a flag to determine the action to take at the end of experiment
@@ -173,7 +173,7 @@ type TrafficControl struct {
 	// "check_and_increment": get decision on traffic increament from analytics
 	// "increment_without_check": increase traffic each interval without calling analytics
 	// +optional. Default is "check_and_increment".
-	//+kubebuilder:validation:Enum=check_and_increment,increment_without_check,epsilon_greedy
+	//+kubebuilder:validation:Enum={check_and_increment,increment_without_check,epsilon_greedy}
 	Strategy *string `json:"strategy,omitempty"`
 
 	// MaxTrafficPercentage is the maximum traffic ratio to send to the candidate. Default is 50
@@ -198,7 +198,7 @@ type TrafficControl struct {
 	// "both": traffic is split across baseline and candidate.
 	// Defaults to “candidate”
 	// +optional
-	//+kubebuilder:validation:Enum=baseline,candidate,both
+	//+kubebuilder:validation:Enum={baseline,candidate,both}
 	OnSuccess *string `json:"onSuccess,omitempty"`
 }
 
@@ -240,7 +240,7 @@ type SuccessCriterion struct {
 	// 	Tolerance type. Options:
 	// "delta": compares the candidate against the baseline version with respect to the metric;
 	// "threshold": checks the candidate with respect to the metric
-	//+kubebuilder:validation:Enum=threshold,delta
+	//+kubebuilder:validation:Enum={threshold,delta}
 	ToleranceType ToleranceType `json:"toleranceType"`
 
 	// Value to check

@@ -18,5 +18,5 @@ limitations under the License.
 // +k8s:deepcopy-gen=package,register
 // +k8s:conversion-gen=github.com/iter8-tools/iter8-controller/pkg/apis/iter8
 // +k8s:defaulter-gen=TypeMeta
-// +groupName=iter8-tools
+// +groupName=iter8.tools
 package v1alpha1

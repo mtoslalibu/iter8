@@ -123,6 +123,14 @@
   version = "v4.1.0"
 
 [[projects]]
+  digest = "1:865079840386857c809b72ce300be7580cb50d3d3129ce11bf9aa6ca2bc1934a"
+  name = "github.com/fatih/color"
+  packages = ["."]
+  pruneopts = "T"
+  revision = "5b77d2a35fb0ede96d138fc9a99f5c9b6aef11b4"
+  version = "v1.7.0"
+
+[[projects]]
   digest = "1:2cd7915ab26ede7d95b8749e6b1f933f1c6d5398030684e6505940a10f31cfda"
   name = "github.com/ghodss/yaml"
   packages = ["."]
@@ -147,12 +155,12 @@
   version = "v0.1.1"
 
 [[projects]]
-  digest = "1:74c676217f6583261297ef51c00d945ab470ff5ec5db5a9bf3dcd4cce85ea95f"
-  name = "github.com/gobuffalo/envy"
+  digest = "1:5493dc98747430493c8f015d42274f94e100a8f204a493d18b087ee405597d82"
+  name = "github.com/gobuffalo/flect"
   packages = ["."]
   pruneopts = "T"
-  revision = "fa0dfdc10b5366ce365b7d9d1755a03e4e797bc5"
-  version = "v1.6.15"
+  revision = "0a3cf2268bc5eae46015fc680e8ca07a8a95f34c"
+  version = "v0.1.7"
 
 [[projects]]
   digest = "1:6ba54872416168c7f2a8349a681f919ead947cacde2d8e663dfbafeeaf13b17a"
@@ -309,14 +317,6 @@
   revision = "c2b33e84"
 
 [[projects]]
-  digest = "1:ee5840274624ad20cac08227aeca582fbdaf3727ef9dd37ae935706240679e09"
-  name = "github.com/joho/godotenv"
-  packages = ["."]
-  pruneopts = "T"
-  revision = "23d116af351c84513e1946b527c88823e476be13"
-  version = "v1.3.0"
-
-[[projects]]
   digest = "1:e4f630893d2bbf8c268eba14e7cc92ef8844ee259a45e21ea77cf7656544cb7e"
   name = "github.com/json-iterator/go"
   packages = ["."]
@@ -328,10 +328,7 @@
   branch = "release-0.10"
   digest = "1:c8e5c718f2e77979f4e1262a4388105057305cbb20904c6dc61af6332e24e394"
   name = "github.com/knative/pkg"
-  packages = [
-    "apis/duck/v1alpha1",
-    "apis/istio/v1alpha3",
-  ]
+  packages = ["apis/duck/v1alpha1"]
   pruneopts = "T"
   revision = "884d50f09454909de6f343c165fdba5f59c5c19a"
 
@@ -339,20 +336,12 @@
   digest = "1:3d2153bc30524a5db3a7ea621c301c462ea077efd0a1eb4e5c53cb66c9b78872"
   name = "github.com/knative/serving"
   packages = [
+    "pkg/apis/serving/v1",
     "pkg/apis/serving/v1alpha1",
-    "pkg/apis/serving/v1beta1",
   ]
   pruneopts = "T"
   revision = "a1a35b117afe15ca2c5bd4aec5bb3574a44e802d"
   version = "v0.10.0"
-
-[[projects]]
-  digest = "1:3804a3a02964db8e6db3e5e7960ac1c1a9b12835642dd4f4ac4e56c749ec73eb"
-  name = "github.com/markbates/inflect"
-  packages = ["."]
-  pruneopts = "T"
-  revision = "24b83195037b3bc61fcda2d28b7b0518bce293b6"
-  version = "v1.0.4"
 
 [[projects]]
   branch = "master"
@@ -361,6 +350,22 @@
   packages = ["."]
   pruneopts = "T"
   revision = "81af80346b1a01caae0cbc27fd3c1ba5b11e189f"
+
+[[projects]]
+  digest = "1:b168836ecd85a2d138391dbc464d2442ea9400c29cc0636f2c6056b996692e29"
+  name = "github.com/mattn/go-colorable"
+  packages = ["."]
+  pruneopts = "T"
+  revision = "167de6bfdfba052fa6b2d3664c8f5272e23c9072"
+  version = "v0.0.9"
+
+[[projects]]
+  digest = "1:3307e98afdf1710eefc8a814bc6bf06c03524eca8e8e8345ffd5307e800ada8e"
+  name = "github.com/mattn/go-isatty"
+  packages = ["."]
+  pruneopts = "T"
+  revision = "31745d66dd679ac0ac4f8d3ecff168fce6170c6a"
+  version = "v0.0.11"
 
 [[projects]]
   digest = "1:a8e3d14801bed585908d130ebfc3b925ba642208e6f30d879437ddfc7bb9b413"
@@ -483,28 +488,6 @@
   packages = ["."]
   pruneopts = "T"
   revision = "8368d24ba045f26503eb745b624d930cbe214c79"
-
-[[projects]]
-  digest = "1:6bf92a8e99e77c46904e997462adc9c3e6372063cb54f31ed3fd8a2ea2e95869"
-  name = "github.com/rogpeppe/go-internal"
-  packages = [
-    "modfile",
-    "module",
-    "semver",
-  ]
-  pruneopts = "T"
-  revision = "4bbc89b6501cca7dd6b5557d78d70c8d2c6e8b97"
-
-[[projects]]
-  digest = "1:dee0cc3252ce6fcc3334c9529abd32925f2aaf072c90336a5a38254953564aa5"
-  name = "github.com/spf13/afero"
-  packages = [
-    ".",
-    "mem",
-  ]
-  pruneopts = "T"
-  revision = "588a75ec4f32903aa5e39a2619ba6a4631e28424"
-  version = "v1.2.2"
 
 [[projects]]
   digest = "1:8be8b3743fc9795ec21bbd3e0fc28ff6234018e1a269b0a7064184be95ac13e0"
@@ -872,6 +855,14 @@
   pruneopts = "T"
   revision = "51d6538a90f86fe93ac480b35f37b2be17fef232"
   version = "v2.2.2"
+
+[[projects]]
+  branch = "v3"
+  digest = "1:3f3455f22627a44aab35023af8336ffc40df4d6180ef56bfceb7f51ecada3ef2"
+  name = "gopkg.in/yaml.v3"
+  packages = ["."]
+  pruneopts = "T"
+  revision = "4206685974f28e3178b35fa198a59899aa4dee3a"
 
 [[projects]]
   digest = "1:9bb1b224f3db75fb350895d81660d46f5535e916aa42901419f5bba8a4f666aa"
@@ -1289,8 +1280,6 @@
     "apis/duck/v1",
     "apis/duck/v1alpha1",
     "apis/duck/v1beta1",
-    "apis/istio",
-    "apis/istio/common/v1alpha1",
     "apis/v1alpha1",
     "changeset",
     "configmap",
@@ -1378,22 +1367,27 @@
   version = "v0.4.0"
 
 [[projects]]
-  digest = "1:2aec1bbf1553a2d433b3a85f9359930655de83e2dceed4aca44577a720396da8"
+  digest = "1:e2b98a688da55773c128c7443ba42589850df9246550ad69fe7102eea6074aac"
   name = "sigs.k8s.io/controller-tools"
   packages = [
     "cmd/controller-gen",
-    "pkg/crd/generator",
-    "pkg/crd/util",
-    "pkg/internal/codegen",
-    "pkg/internal/codegen/parse",
-    "pkg/internal/general",
+    "pkg/crd",
+    "pkg/crd/markers",
+    "pkg/deepcopy",
+    "pkg/genall",
+    "pkg/genall/help",
+    "pkg/genall/help/pretty",
+    "pkg/loader",
+    "pkg/markers",
     "pkg/rbac",
-    "pkg/util",
+    "pkg/schemapatcher",
+    "pkg/schemapatcher/internal/yaml",
+    "pkg/version",
     "pkg/webhook",
   ]
   pruneopts = "T"
-  revision = "b8adde9bc6d7f3fba449d306613a9daed23676c8"
-  version = "v0.1.10"
+  revision = "00e41399e96f29ac5a53e2dc91bb5526a1960300"
+  version = "v0.2.4"
 
 [[projects]]
   digest = "1:290b4da306982122bcdff12dbababbb95c6e4a94a2995db88baf235ef2f6e93e"
@@ -1425,15 +1419,16 @@
     "github.com/google/go-cmp/cmp/cmpopts",
     "github.com/gorilla/mux",
     "github.com/knative/pkg/apis/duck/v1alpha1",
-    "github.com/knative/pkg/apis/istio/v1alpha3",
+    "github.com/knative/serving/pkg/apis/serving/v1",
     "github.com/knative/serving/pkg/apis/serving/v1alpha1",
-    "github.com/knative/serving/pkg/apis/serving/v1beta1",
     "github.com/onsi/ginkgo",
     "github.com/onsi/gomega",
     "github.com/pkg/errors",
     "go.uber.org/zap",
     "golang.org/x/net/context",
     "gopkg.in/yaml.v2",
+    "istio.io/api/networking/v1alpha3",
+    "istio.io/client-go/pkg/apis/networking/v1alpha3",
     "istio.io/client-go/pkg/clientset/versioned",
     "k8s.io/api/apps/v1",
     "k8s.io/api/core/v1",
@@ -1441,6 +1436,7 @@
     "k8s.io/apimachinery/pkg/api/errors",
     "k8s.io/apimachinery/pkg/api/meta",
     "k8s.io/apimachinery/pkg/apis/meta/v1",
+    "k8s.io/apimachinery/pkg/labels",
     "k8s.io/apimachinery/pkg/runtime",
     "k8s.io/apimachinery/pkg/runtime/schema",
     "k8s.io/apimachinery/pkg/types",
@@ -1452,6 +1448,7 @@
     "k8s.io/client-go/tools/record",
     "k8s.io/code-generator/cmd/client-gen",
     "k8s.io/code-generator/cmd/deepcopy-gen",
+    "knative.dev/serving/pkg/apis/serving/v1",
     "sigs.k8s.io/controller-runtime",
     "sigs.k8s.io/controller-runtime/pkg/client",
     "sigs.k8s.io/controller-runtime/pkg/client/config",

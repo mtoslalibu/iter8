@@ -189,11 +189,11 @@ func (r *ReconcileExperiment) syncKnative(context context.Context, instance *ite
 	if now.After(instance.Status.LastIncrementTime.Add(interval)) {
 		log.Info("process iteration.")
 
-		newRolloutPercent := float64(*candidateTraffic.Percent)
+		newRolloutPercent := *candidateTraffic.Percent
 
 		strategy := getStrategy(instance)
 		if iter8v1alpha1.StrategyIncrementWithoutCheck == strategy {
-			newRolloutPercent += traffic.GetStepSize()
+			newRolloutPercent += int64(traffic.GetStepSize())
 		} else {
 			var analyticsService analytics.AnalyticsService
 			switch getStrategy(instance) {
@@ -261,7 +261,7 @@ func (r *ReconcileExperiment) syncKnative(context context.Context, instance *ite
 			baselineTraffic := response.Baseline.TrafficPercentage
 			candidateTraffic := response.Candidate.TrafficPercentage
 			log.Info("NewTraffic", "baseline", baselineTraffic, "candidate", candidateTraffic)
-			newRolloutPercent = candidateTraffic
+			newRolloutPercent = int64(candidateTraffic)
 
 			if response.LastState == nil {
 				instance.Status.AnalysisState.Raw = []byte("{}")
