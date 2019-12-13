@@ -90,8 +90,11 @@ type SuccessCriterion struct {
 	// "threshold": checks the candidate with respect to the metric
 	Type iter8v1alpha1.ToleranceType `json:"type"`
 
-	// MetricType of this metric
-	MetricType string `json:"metric_type"`
+	// IsCounter boolean is a counter
+	IsCounter bool `json:"is_counter"`
+
+	// AbsentValue is default value when data source does not return one
+	AbsentValue string `json:"absent_value"`
 
 	// Template specifies the query template for the metric
 	Template string `json:"metric_query_template"`
@@ -182,7 +185,8 @@ func (a BasicAnalyticsService) MakeRequest(instance *iter8v1alpha1.Experiment, b
 			Value:              criterion.Tolerance,
 			Template:           iter8metric.QueryTemplate,
 			SampleSizeTemplate: iter8metric.SampleSizeTemplate,
-			MetricType:         iter8metric.Type,
+			IsCounter:          iter8metric.IsCounter,
+			AbsentValue:        iter8metric.AbsentValue,
 		}
 
 		criteria[i].SampleSize = criterion.GetSampleSize()

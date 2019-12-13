@@ -11,12 +11,12 @@ data:
     iter8_error_rate: "sum(increase(istio_requests_total{source_workload_namespace!='knative-serving',response_code=~'5..',reporter='source'}[$interval]$offset_str)) by ($entity_labels) / sum(increase(istio_requests_total{source_workload_namespace!='knative-serving',reporter='source'}[$interval]$offset_str)) by ($entity_labels)"
   metrics: |-
     - name: iter8_latency
-      metric_type: Performance
+      is_counter: False
+      absent_value: "None"
       sample_size_query_template: iter8_sample_size
     - name: iter8_error_count
-      metric_type: Correctness
+      is_counter: True
       sample_size_query_template: iter8_sample_size
     - name: iter8_error_rate
-      metric_type: Correctness
+      is_counter: False
       sample_size_query_template: iter8_sample_size
-

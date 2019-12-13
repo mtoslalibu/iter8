@@ -495,4 +495,10 @@ type ExperimentMetric struct {
 
 	// Type is the type of this metric
 	Type string `json:"type"`
+
+	// IsCounter indicates metric is a monotonically increasing counter
+	IsCounter bool `json:"is_counter"`
+
+	// AbsentValue  is default value when data source does not provide a value
+	AbsentValue string `json:"absent_value"`
 }
