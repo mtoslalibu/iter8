@@ -152,10 +152,14 @@ func failureMsg(instance *iter8v1alpha1.Experiment, trafficMsg string) string {
 	}
 }
 
+// Metrics list of Metric
 type Metrics []Metric
+
+// Metric structure of cm/iter8_metric
 type Metric struct {
 	Name               string `yaml:"name"`
-	Type               string `yaml:"metric_type"`
+	IsCounter          bool   `yaml:"is_counter"`
+	AbsentValue        string `yaml:"absent_value"`
 	SampleSizeTemplate string `yaml:"sample_size_query_template"`
 }
 
@@ -199,7 +203,8 @@ func readMetrics(context context.Context, c client.Client, instance *iter8v1alph
 		}
 
 		m := iter8v1alpha1.ExperimentMetric{
-			Type: metric.Type,
+			IsCounter:   metric.IsCounter,
+			AbsentValue: metric.AbsentValue,
 		}
 		qTpl, ok := templates[metric.Name]
 		if !ok {
