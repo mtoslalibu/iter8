@@ -21,23 +21,18 @@ import (
 	"time"
 
 	"github.com/go-logr/logr"
-	"go.uber.org/zap"
 	"k8s.io/apimachinery/pkg/api/errors"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	runtime "k8s.io/apimachinery/pkg/runtime"
-	"k8s.io/apimachinery/pkg/types"
 	"k8s.io/client-go/tools/record"
 	"sigs.k8s.io/controller-runtime/pkg/client"
 	"sigs.k8s.io/controller-runtime/pkg/controller"
-	"sigs.k8s.io/controller-runtime/pkg/event"
 	"sigs.k8s.io/controller-runtime/pkg/handler"
 	"sigs.k8s.io/controller-runtime/pkg/manager"
-	"sigs.k8s.io/controller-runtime/pkg/predicate"
 	"sigs.k8s.io/controller-runtime/pkg/reconcile"
 	logf "sigs.k8s.io/controller-runtime/pkg/runtime/log"
 	"sigs.k8s.io/controller-runtime/pkg/source"
 
-	servingv1alpha1 "github.com/knative/serving/pkg/apis/serving/v1alpha1"
 	corev1 "k8s.io/api/core/v1"
 
 	iter8v1alpha1 "github.com/iter8-tools/iter8-controller/pkg/apis/iter8/v1alpha1"
@@ -87,39 +82,40 @@ func add(mgr manager.Manager, r reconcile.Reconciler) error {
 		return err
 	}
 
-	p := predicate.Funcs{
-		UpdateFunc: func(e event.UpdateEvent) bool {
-			if _, ok := e.MetaOld.GetLabels()[experimentLabel]; !ok {
-				return false
-			}
-			return e.ObjectOld != e.ObjectNew
-		},
-		CreateFunc: func(e event.CreateEvent) bool {
-			_, ok := e.Meta.GetLabels()[experimentLabel]
-			return ok
-		},
-	}
+	// ****** Skip knative logic for now *******
+	// p := predicate.Funcs{
+	// 	UpdateFunc: func(e event.UpdateEvent) bool {
+	// 		if _, ok := e.MetaOld.GetLabels()[experimentLabel]; !ok {
+	// 			return false
+	// 		}
+	// 		return e.ObjectOld != e.ObjectNew
+	// 	},
+	// 	CreateFunc: func(e event.CreateEvent) bool {
+	// 		_, ok := e.Meta.GetLabels()[experimentLabel]
+	// 		return ok
+	// 	},
+	// }
 
 	// Watch for Knative services changes
-	mapFn := handler.ToRequestsFunc(
-		func(a handler.MapObject) []reconcile.Request {
-			experiment := a.Meta.GetLabels()[experimentLabel]
-			return []reconcile.Request{
-				{NamespacedName: types.NamespacedName{
-					Name:      experiment,
-					Namespace: a.Meta.GetNamespace(),
-				}},
-			}
-		})
+	// mapFn := handler.ToRequestsFunc(
+	// 	func(a handler.MapObject) []reconcile.Request {
+	// 		experiment := a.Meta.GetLabels()[experimentLabel]
+	// 		return []reconcile.Request{
+	// 			{NamespacedName: types.NamespacedName{
+	// 				Name:      experiment,
+	// 				Namespace: a.Meta.GetNamespace(),
+	// 			}},
+	// 		}
+	// 	})
 
-	err = c.Watch(&source.Kind{Type: &servingv1alpha1.Service{}},
-		&handler.EnqueueRequestsFromMapFunc{ToRequests: mapFn},
-		p)
+	// err = c.Watch(&source.Kind{Type: &servingv1alpha1.Service{}},
+	// 	&handler.EnqueueRequestsFromMapFunc{ToRequests: mapFn},
+	// 	p)
 
-	if err != nil {
-		log.Info("NoKnativeServingWatch", zap.Error(err))
-	}
-
+	// if err != nil {
+	// 	log.Info("NoKnativeServingWatch", zap.Error(err))
+	// }
+	// ****** Skip knative logic for now *******
 	return nil
 }
 
