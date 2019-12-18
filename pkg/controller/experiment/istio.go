@@ -75,6 +75,11 @@ func (b *DestinationRuleBuilder) WithStableLabel() *DestinationRuleBuilder {
 	return b
 }
 
+func (b *DestinationRuleBuilder) WithInitLabel() *DestinationRuleBuilder {
+	b.ObjectMeta.Labels[experimentInit] = "True"
+	return b
+}
+
 func (b *DestinationRuleBuilder) RemoveExperimentLabel() *DestinationRuleBuilder {
 	if _, ok := b.ObjectMeta.Labels[experimentLabel]; ok {
 		delete(b.ObjectMeta.Labels, experimentLabel)
@@ -262,6 +267,11 @@ func (b *VirtualServiceBuilder) WithNewStableSet(service string) *VirtualService
 		},
 	}
 
+	return b
+}
+
+func (b *VirtualServiceBuilder) WithInitLabel() *VirtualServiceBuilder {
+	b.ObjectMeta.Labels[experimentInit] = "True"
 	return b
 }
 

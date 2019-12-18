@@ -39,13 +39,13 @@ func (r *ReconcileExperiment) checkExperimentComplete(context context.Context, i
 	// check experiment is finished
 	if instance.Spec.TrafficControl.GetMaxIterations() < instance.Status.CurrentIteration ||
 		instance.Spec.Assessment != iter8v1alpha1.AssessmentNull {
-
 		if err := r.targets.Cleanup(context, instance, r.Client); err != nil {
 			return true, err
 		}
 		if err := r.rules.Cleanup(instance, r.targets, r.istioClient); err != nil {
 			return true, err
 		}
+		log.Info("Cleanup of experiment is done.")
 		r.setExperimentEndStatus(context, instance)
 		return true, nil
 	}
@@ -81,7 +81,6 @@ func (r *ReconcileExperiment) checkOrInitRules(context context.Context, instance
 			r.MarkRoutingRulesStatus(context, instance, true, "Error in Initializing routing rules: %s, Experiment Ended.", err.Error())
 			r.MarkExperimentFailed(context, instance, "Error in Initializing routing rules: %s, Experiment Ended.", err.Error())
 		} else {
-			log.Info("CheckNilStatus", "rules.dr", r.rules.DestinationRule == nil)
 			r.MarkRoutingRulesStatus(context, instance, true,
 				"Init Routing Rules Suceeded, DR: %s, VS: %s",
 				r.rules.DestinationRule.GetName(), r.rules.VirtualService.GetName())
@@ -120,6 +119,7 @@ func (r *ReconcileExperiment) initializeRoutingRules(instance *iter8v1alpha1.Exp
 		// Create Dummy Stable rules
 		dr := NewDestinationRule(serviceName, instance.GetName(), serviceNamespace).
 			WithStableLabel().
+			WithInitLabel().
 			Build()
 		dr, err = r.istioClient.NetworkingV1alpha3().DestinationRules(serviceNamespace).Create(dr)
 		if err != nil {
@@ -130,6 +130,7 @@ func (r *ReconcileExperiment) initializeRoutingRules(instance *iter8v1alpha1.Exp
 
 		vs := NewVirtualService(serviceName, instance.GetName(), serviceNamespace).
 			WithNewStableSet(serviceName).
+			WithInitLabel().
 			Build()
 		vs, err = r.istioClient.NetworkingV1alpha3().VirtualServices(serviceNamespace).Create(vs)
 		if err != nil {
@@ -287,81 +288,42 @@ func (r *ReconcileExperiment) detectTargets(context context.Context, instance *i
 
 // To validate whether the detected rules can be handled by the experiment
 func validateDetectedRules(drl *v1alpha3.DestinationRuleList, vsl *v1alpha3.VirtualServiceList, instance *iter8v1alpha1.Experiment) (*IstioRoutingRules, error) {
-	stableDrIdx, stableVsIdx := -1, -1
-	expDrIdx, expVsIdx := -1, -1
-	drRegistered, vsRegistered := false, false
-	expName := instance.GetName()
-
-	for idx, dr := range drl.Items {
-		labels := dr.GetLabels()
-		exp, hasExp := labels[experimentLabel]
-		role, hasRole := labels[experimentRole]
-		if hasRole && role == Progressing {
-			drRegistered = true
-			if hasExp {
-				if exp == expName {
-					if expDrIdx == -1 {
-						expDrIdx = idx
+	out := &IstioRoutingRules{}
+	// should only be one set of rules for stable or progressing
+	if len(drl.Items) == 1 && len(vsl.Items) == 1 {
+		drrole, drok := drl.Items[0].GetLabels()[experimentRole]
+		vsrole, vsok := vsl.Items[0].GetLabels()[experimentRole]
+		if drok && vsok {
+			if drrole == Stable && vsrole == Stable {
+				// Valid stable rules detected
+				out.DestinationRule = drl.Items[0].DeepCopy()
+				out.VirtualService = vsl.Items[0].DeepCopy()
+			} else if drrole == Progressing && vsrole == Progressing {
+				drLabel, drok := drl.Items[0].GetLabels()[experimentLabel]
+				vsLabel, vsok := vsl.Items[0].GetLabels()[experimentLabel]
+				if drok && vsok {
+					expName := instance.GetName()
+					if drLabel == expName && vsLabel == expName {
+						// valid progressing rules found
+						out.DestinationRule = drl.Items[0].DeepCopy()
+						out.VirtualService = vsl.Items[0].DeepCopy()
 					} else {
-						return nil, fmt.Errorf("More than one dr exist for experiment")
+						return nil, fmt.Errorf("Progressing rules of other experiment are detected")
 					}
+				} else {
+					return nil, fmt.Errorf("Host label missing in dr or vs")
 				}
 			} else {
-				return nil, fmt.Errorf("Missing experiment label for progressing rule")
+				return nil, fmt.Errorf("Invalid role specified in dr or vs")
 			}
+		} else {
+			return nil, fmt.Errorf("experiment role label missing in dr or vs")
 		}
-
-		if hasRole && role == Stable {
-			stableDrIdx = idx
-		}
+	} else {
+		return nil, fmt.Errorf("%d dr and %d vs detected", len(drl.Items), len(vsl.Items))
 	}
 
-	for idx, vs := range vsl.Items {
-		labels := vs.GetLabels()
-		exp, hasExp := labels[experimentLabel]
-		role, hasRole := labels[experimentRole]
-		if hasRole && role == Progressing {
-			vsRegistered = true
-			if hasExp {
-				if exp == expName {
-					if expVsIdx == -1 {
-						expVsIdx = idx
-					} else {
-						return nil, fmt.Errorf("More than one vs exist for experiment")
-					}
-				}
-			} else {
-				return nil, fmt.Errorf("Missing experiment label for progressing rule")
-			}
-		}
-
-		if hasRole && role == Stable {
-			stableVsIdx = idx
-		}
-	}
-
-	if stableDrIdx >= 0 && stableVsIdx >= 0 {
-		if drRegistered || vsRegistered {
-			return nil, fmt.Errorf("Experiment registered rules found in addition to stable rules")
-		}
-		return &IstioRoutingRules{
-			DestinationRule: drl.Items[stableDrIdx].DeepCopy(),
-			VirtualService:  vsl.Items[stableVsIdx].DeepCopy(),
-		}, nil
-	}
-
-	if expDrIdx >= 0 && expVsIdx >= 0 {
-		if stableDrIdx >= 0 || stableVsIdx >= 0 {
-			return nil, fmt.Errorf("Experiment registered rules found in addition to stable rules")
-		}
-		return &IstioRoutingRules{
-			DestinationRule: drl.Items[expDrIdx].DeepCopy(),
-			VirtualService:  vsl.Items[expVsIdx].DeepCopy(),
-		}, nil
-	}
-
-	log.Info("Indexs", "stableDrIdx", stableDrIdx, "stableVsIdx", stableVsIdx, "expDrIdx", expDrIdx, "expVsIdx", expVsIdx)
-	return nil, fmt.Errorf("Invalid set of routing rules detected")
+	return out, nil
 }
 
 func validateVirtualService(instance *iter8v1alpha1.Experiment, vs *v1alpha3.VirtualService) error {

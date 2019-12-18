@@ -93,10 +93,8 @@ func (r *IstioRoutingRules) DeleteAll(ic istioclient.Interface) (err error) {
 }
 
 func (r *IstioRoutingRules) Cleanup(instance *iter8v1alpha1.Experiment, targets *Targets, ic istioclient.Interface) (err error) {
-	if instance.Spec.CleanUp == iter8v1alpha1.CleanUpDelete {
-		if r.IsInit() {
-			err = r.DeleteAll(ic)
-		}
+	if instance.Spec.CleanUp == iter8v1alpha1.CleanUpDelete && r.IsInit() {
+		err = r.DeleteAll(ic)
 	} else {
 		serviceName := instance.Spec.TargetService.Name
 		if experimentSucceeded(instance) {

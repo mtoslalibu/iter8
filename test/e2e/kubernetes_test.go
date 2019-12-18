@@ -182,7 +182,7 @@ func TestKubernetesExperiment(t *testing.T) {
 				test.DeleteObjectIfExists(getStableDestinationRule("reviews", "", getReviewsDeployment("v2"))),
 				test.DeleteObjectIfExists(getStableVirtualService("reviews", "")),
 			},
-			object:    getExperimentWithExternalReference("externalference", "reviews", "reviews-v1", "reviews-v2"),
+			object:    getExperimentWithExternalReference("externalreference", "reviews", "reviews-v1", "reviews-v2"),
 			wantState: test.CheckExperimentFinished,
 			wantResults: []runtime.Object{
 				// rollforward
@@ -376,9 +376,9 @@ func getSlowKubernetesExperiment(name, serviceName, baseline, candidate, analyti
 		WithDummySuccessCriterion().
 		Build()
 
-	twentysecs := "10s"
+	tensecs := "10s"
 	two := 2
-	experiment.Spec.TrafficControl.Interval = &twentysecs
+	experiment.Spec.TrafficControl.Interval = &tensecs
 	experiment.Spec.TrafficControl.MaxIterations = &two
 
 	return experiment
