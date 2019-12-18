@@ -69,6 +69,14 @@ spec:
             description: ExperimentMetric stores details of a metric query template
               to
             properties:
+              absent_value:
+                description: AbsentValue  is default value when data source does not
+                  provide a value
+                type: string
+              is_counter:
+                description: IsCounter indicates metric is a monotonically increasing
+                  counter
+                type: boolean
               query_template:
                 description: QueryTemplate is the query template for metric
                 type: string
@@ -79,6 +87,8 @@ spec:
                 description: Type is the type of this metric
                 type: string
             required:
+            - absent_value
+            - is_counter
             - query_template
             - sample_size_template
             - type
