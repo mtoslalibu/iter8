@@ -161,6 +161,7 @@ type Metric struct {
 	IsCounter          bool   `yaml:"is_counter"`
 	AbsentValue        string `yaml:"absent_value"`
 	SampleSizeTemplate string `yaml:"sample_size_query_template"`
+	Type               string `yaml:"metric_type"`
 }
 
 func readMetrics(context context.Context, c client.Client, instance *iter8v1alpha1.Experiment) error {
@@ -205,6 +206,7 @@ func readMetrics(context context.Context, c client.Client, instance *iter8v1alph
 		m := iter8v1alpha1.ExperimentMetric{
 			IsCounter:   metric.IsCounter,
 			AbsentValue: metric.AbsentValue,
+			Type:        metric.Type,
 		}
 		qTpl, ok := templates[metric.Name]
 		if !ok {
