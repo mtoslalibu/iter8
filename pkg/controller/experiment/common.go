@@ -18,12 +18,15 @@ import (
 	"context"
 	"fmt"
 	"strconv"
+	"strings"
 	"time"
 
 	"gopkg.in/yaml.v2"
 
 	corev1 "k8s.io/api/core/v1"
+	"k8s.io/apimachinery/pkg/api/meta"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
+	runtime "k8s.io/apimachinery/pkg/runtime"
 	"k8s.io/apimachinery/pkg/types"
 	"sigs.k8s.io/controller-runtime/pkg/client"
 
@@ -33,6 +36,16 @@ import (
 const (
 	MetricsConfigMap = "iter8-metrics"
 	Iter8Namespace   = "iter8"
+
+	Baseline    = "baseline"
+	Candidate   = "candidate"
+	Stable      = "stable"
+	Progressing = "progressing"
+
+	experimentInit  = "iter8-tools/init"
+	experimentRole  = "iter8-tools/role"
+	experimentLabel = "iter8-tools/experiment"
+	experimentHost  = "iter8-tools/host"
 )
 
 func addFinalizerIfAbsent(context context.Context, c client.Client, instance *iter8v1alpha1.Experiment, fName string) (err error) {
@@ -119,24 +132,24 @@ func markExperimentCompleted(instance *iter8v1alpha1.Experiment) {
 	instance.Status.MarkExperimentCompleted()
 }
 
-func successMsg(instance *iter8v1alpha1.Experiment, trafficMsg string) string {
+func successMsg(instance *iter8v1alpha1.Experiment) string {
 	if instance.Spec.Assessment == iter8v1alpha1.AssessmentOverrideSuccess {
-		return fmt.Sprintf("OverrideSuccess, Traffic: %s", trafficMsg)
+		return "OverrideSuccess"
 	} else if instance.Status.AssessmentSummary.AllSuccessCriteriaMet {
-		return fmt.Sprintf("AllSuccessCriteriaMet, Traffic: %s", trafficMsg)
+		return "AllSuccessCriteriaMet"
 	} else {
-		return fmt.Sprintf("IterationsExhausted, Traffic: %s", trafficMsg)
+		return "IterationsExhausted"
 	}
 }
 
-func failureMsg(instance *iter8v1alpha1.Experiment, trafficMsg string) string {
+func failureMsg(instance *iter8v1alpha1.Experiment) string {
 	if instance.Spec.Assessment == iter8v1alpha1.AssessmentOverrideFailure {
-		return fmt.Sprintf("OverrideFailure, Traffic: %s", trafficMsg)
+		return "OverrideFailure"
 	} else if !instance.Status.AssessmentSummary.AllSuccessCriteriaMet {
-		return fmt.Sprintf("NotAllSuccessCriteriaMet, Traffic: %s", trafficMsg)
+		return "NotAllSuccessCriteriaMet"
 	} else {
 		// Should not be reached
-		return fmt.Sprintf("UnexpectedCondition")
+		return "UnexpectedCondition"
 	}
 }
 
@@ -209,4 +222,79 @@ func readMetrics(context context.Context, c client.Client, instance *iter8v1alph
 
 	err = c.Update(context, instance)
 	return err
+}
+
+func (r *ReconcileExperiment) executeStatusUpdate(ctx context.Context, instance *iter8v1alpha1.Experiment) (err error) {
+	trial := 3
+	for trial > 0 {
+		if err = r.Status().Update(ctx, instance); err == nil {
+			break
+		}
+		time.Sleep(time.Second * 5)
+		trial--
+	}
+	return
+}
+
+func removeExperimentLabel(objs ...runtime.Object) (err error) {
+	for _, obj := range objs {
+		accessor, err := meta.Accessor(obj)
+		if err != nil {
+			return err
+		}
+		labels := accessor.GetLabels()
+		delete(labels, experimentLabel)
+		if _, ok := labels[experimentInit]; ok {
+			delete(labels, experimentInit)
+		}
+		accessor.SetLabels(labels)
+	}
+
+	return nil
+}
+
+func deleteObjects(context context.Context, client client.Client, objs ...runtime.Object) error {
+	for _, obj := range objs {
+		if err := client.Delete(context, obj); err != nil {
+			return err
+		}
+	}
+	return nil
+}
+
+func setLabels(obj runtime.Object, newLabels map[string]string) error {
+	accessor, err := meta.Accessor(obj)
+	if err != nil {
+		return err
+	}
+	labels := accessor.GetLabels()
+	for key, val := range newLabels {
+		labels[key] = val
+	}
+	return nil
+}
+
+func validUpdateErr(err error) bool {
+	benignMsg := "the object has been modified"
+	return strings.Contains(err.Error(), benignMsg)
+}
+
+func withRecheckRequirement(instance *iter8v1alpha1.Experiment) bool {
+	analyticsCondition := instance.Status.GetCondition(iter8v1alpha1.ExperimentConditionAnalyticsServiceNormal)
+
+	if analyticsCondition != nil && analyticsCondition.Status == corev1.ConditionFalse {
+		return true
+	}
+
+	rulesCondition := instance.Status.GetCondition(iter8v1alpha1.ExperimentConditionRoutingRulesReady)
+
+	if rulesCondition != nil && rulesCondition.Status == corev1.ConditionFalse {
+		return true
+	}
+
+	return false
+}
+
+func experimentCompleted(instance *iter8v1alpha1.Experiment) bool {
+	return instance.Spec.TrafficControl.GetMaxIterations() < instance.Status.CurrentIteration
 }

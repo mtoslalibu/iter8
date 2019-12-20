@@ -25,7 +25,8 @@ import (
 	iter8v1alpha1 "github.com/iter8-tools/iter8-controller/pkg/apis/iter8/v1alpha1"
 	"github.com/iter8-tools/iter8-controller/pkg/controller/experiment"
 	"github.com/iter8-tools/iter8-controller/test"
-	"github.com/knative/pkg/apis/istio/v1alpha3"
+	networkingv1alpha3 "istio.io/api/networking/v1alpha3"
+	"istio.io/client-go/pkg/apis/networking/v1alpha3"
 	appsv1 "k8s.io/api/apps/v1"
 )
 
@@ -168,7 +169,7 @@ func TestKubernetesExperiment(t *testing.T) {
 				getStableVirtualService("reviews", "emptycriterion"),
 			},
 		},
-		"externalference": testCase{
+		"externalreference": testCase{
 			initObjects: []runtime.Object{
 				getReviewsService(),
 				getRatingsService(),
@@ -177,15 +178,19 @@ func TestKubernetesExperiment(t *testing.T) {
 				getRatingsDeployment(),
 				getSampleEdgeVirtualService(),
 			},
-			object:    getExperimentWithExternalReference("externalference", "reviews", "reviews-v1", "reviews-v2"),
+			preHook: []test.Hook{
+				test.DeleteObjectIfExists(getStableDestinationRule("reviews", "", getReviewsDeployment("v2"))),
+				test.DeleteObjectIfExists(getStableVirtualService("reviews", "")),
+			},
+			object:    getExperimentWithExternalReference("externalreference", "reviews", "reviews-v1", "reviews-v2"),
 			wantState: test.CheckExperimentFinished,
 			wantResults: []runtime.Object{
 				// rollforward
-				getStableDestinationRule("reviews", "externalference", getReviewsDeployment("v2")),
+				getStableDestinationRule("reviews", "externalreference", getReviewsDeployment("v2")),
 				getSampleStableEdgeVirtualService(),
 			},
 			finalizers: []test.Hook{
-				test.DeleteObject(getStableDestinationRule("reviews", "externalference", getReviewsDeployment("v2"))),
+				test.DeleteObject(getStableDestinationRule("reviews", "externalreference", getReviewsDeployment("v2"))),
 				test.DeleteObject(getSampleStableEdgeVirtualService()),
 			},
 		},
@@ -371,9 +376,9 @@ func getSlowKubernetesExperiment(name, serviceName, baseline, candidate, analyti
 		WithDummySuccessCriterion().
 		Build()
 
-	twentysecs := "10s"
+	tensecs := "10s"
 	two := 2
-	experiment.Spec.TrafficControl.Interval = &twentysecs
+	experiment.Spec.TrafficControl.Interval = &tensecs
 	experiment.Spec.TrafficControl.MaxIterations = &two
 
 	return experiment
@@ -403,16 +408,16 @@ func getSampleEdgeVirtualService() runtime.Object {
 			Name:      "reviews-external",
 			Namespace: Flags.Namespace,
 		},
-		Spec: v1alpha3.VirtualServiceSpec{
+		Spec: networkingv1alpha3.VirtualService{
 			Hosts:    []string{"reviews.com"},
 			Gateways: []string{"reviews-gateway"},
-			HTTP: []v1alpha3.HTTPRoute{
+			Http: []*networkingv1alpha3.HTTPRoute{
 				{
-					Route: []v1alpha3.HTTPRouteDestination{
+					Route: []*networkingv1alpha3.HTTPRouteDestination{
 						{
-							Destination: v1alpha3.Destination{
+							Destination: &networkingv1alpha3.Destination{
 								Host: "reviews",
-								Port: v1alpha3.PortSelector{
+								Port: &networkingv1alpha3.PortSelector{
 									Number: 9080,
 								},
 							},
@@ -426,8 +431,8 @@ func getSampleEdgeVirtualService() runtime.Object {
 
 func getSampleStableEdgeVirtualService() runtime.Object {
 	vs := getSampleEdgeVirtualService()
-	vs.(*v1alpha3.VirtualService).Spec.HTTP[0].Route[0].Destination.Subset = "stable"
-	vs.(*v1alpha3.VirtualService).Spec.HTTP[0].Route[0].Weight = 100
+	vs.(*v1alpha3.VirtualService).Spec.Http[0].Route[0].Destination.Subset = "stable"
+	vs.(*v1alpha3.VirtualService).Spec.Http[0].Route[0].Weight = 100
 
 	return vs
 }

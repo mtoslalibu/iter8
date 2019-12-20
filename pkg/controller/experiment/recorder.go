@@ -103,11 +103,21 @@ func (r *ReconcileExperiment) MarkSyncMetrics(context context.Context, instance 
 	}
 }
 
-func (r *ReconcileExperiment) MarkRoutingRulesStatus(context context.Context, instance *iter8v1alpha1.Experiment,
-	broadcast bool, messageFormat string, messageA ...interface{}) {
-	reason := "RoutingRulesUpdate"
-	//	Logger(context).Info(reason + ", " + fmt.Sprintf(messageFormat, messageA...))
-	r.recordNormalEvent(broadcast, instance, reason, messageFormat, messageA...)
+func (r *ReconcileExperiment) MarkRoutingRulesError(context context.Context, instance *iter8v1alpha1.Experiment,
+	messageFormat string, messageA ...interface{}) {
+	reason := "RoutingRulesError"
+	Logger(context).Info(reason + ", " + fmt.Sprintf(messageFormat, messageA...))
+	instance.Status.MarkRoutingRulesError(reason, messageFormat, messageA...)
+	r.eventRecorder.Eventf(instance, corev1.EventTypeWarning, reason, messageFormat, messageA...)
+}
+
+func (r *ReconcileExperiment) MarkRoutingRulesReady(context context.Context, instance *iter8v1alpha1.Experiment,
+	messageFormat string, messageA ...interface{}) {
+	reason := "RoutingRulesReady"
+	Logger(context).Info(reason + ", " + fmt.Sprintf(messageFormat, messageA...))
+	if instance.Status.MarkRoutingRulesReady() {
+		r.recordNormalEvent(true, instance, reason, messageFormat, messageA...)
+	}
 }
 
 func (r *ReconcileExperiment) recordNormalEvent(broadcast bool, instance *iter8v1alpha1.Experiment, reason string,

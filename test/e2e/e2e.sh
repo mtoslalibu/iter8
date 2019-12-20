@@ -59,6 +59,6 @@ echo "controller started $CONTROLLER_PID"
 
 sleep 4 # wait for controller to start
 
-go test -v -p 1 ./test/e2e/... -args -namespace ${NAMESPACE}
+go test -run TestKubernetesExperiment -v -p 1 ./test/e2e/ -args -namespace ${NAMESPACE}
 
 cleanup

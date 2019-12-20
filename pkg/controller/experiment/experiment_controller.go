@@ -21,15 +21,12 @@ import (
 	"time"
 
 	"github.com/go-logr/logr"
-	"go.uber.org/zap"
 	"k8s.io/apimachinery/pkg/api/errors"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
-	"k8s.io/apimachinery/pkg/runtime"
-	"k8s.io/apimachinery/pkg/types"
+	runtime "k8s.io/apimachinery/pkg/runtime"
 	"k8s.io/client-go/tools/record"
 	"sigs.k8s.io/controller-runtime/pkg/client"
 	"sigs.k8s.io/controller-runtime/pkg/controller"
-	"sigs.k8s.io/controller-runtime/pkg/event"
 	"sigs.k8s.io/controller-runtime/pkg/handler"
 	"sigs.k8s.io/controller-runtime/pkg/manager"
 	"sigs.k8s.io/controller-runtime/pkg/predicate"
@@ -37,11 +34,10 @@ import (
 	logf "sigs.k8s.io/controller-runtime/pkg/runtime/log"
 	"sigs.k8s.io/controller-runtime/pkg/source"
 
-	servingv1alpha1 "github.com/knative/serving/pkg/apis/serving/v1alpha1"
-	//	appsv1 "k8s.io/api/apps/v1"
 	corev1 "k8s.io/api/core/v1"
 
 	iter8v1alpha1 "github.com/iter8-tools/iter8-controller/pkg/apis/iter8/v1alpha1"
+	istioclient "istio.io/client-go/pkg/clientset/versioned"
 )
 
 var log = logf.Log.WithName("experiment-controller")
@@ -59,16 +55,17 @@ const (
 
 // Add creates a new Experiment Controller and adds it to the Manager with default RBAC. The Manager will set fields on the Controller
 // and Start it when the Manager is Started.
-func Add(mgr manager.Manager) error {
-	return add(mgr, newReconciler(mgr))
+func Add(mgr manager.Manager, istioClient *istioclient.Clientset) error {
+	return add(mgr, newReconciler(mgr, istioClient))
 }
 
 // newReconciler returns a new reconcile.Reconciler
-func newReconciler(mgr manager.Manager) reconcile.Reconciler {
+func newReconciler(mgr manager.Manager, istioClient *istioclient.Clientset) reconcile.Reconciler {
 	return &ReconcileExperiment{
 		Client:        mgr.GetClient(),
+		istioClient:   istioClient,
 		scheme:        mgr.GetScheme(),
-		eventRecorder: mgr.GetRecorder(Iter8Controller),
+		eventRecorder: mgr.GetEventRecorderFor(Iter8Controller),
 	}
 }
 
@@ -81,44 +78,47 @@ func add(mgr manager.Manager, r reconcile.Reconciler) error {
 	}
 
 	// Watch for changes to Experiment
-	err = c.Watch(&source.Kind{Type: &iter8v1alpha1.Experiment{}}, &handler.EnqueueRequestForObject{})
+	// Ignore status update event
+	err = c.Watch(&source.Kind{Type: &iter8v1alpha1.Experiment{}}, &handler.EnqueueRequestForObject{},
+		predicate.GenerationChangedPredicate{})
 	if err != nil {
 		return err
 	}
 
-	p := predicate.Funcs{
-		UpdateFunc: func(e event.UpdateEvent) bool {
-			if _, ok := e.MetaOld.GetLabels()[experimentLabel]; !ok {
-				return false
-			}
-			return e.ObjectOld != e.ObjectNew
-		},
-		CreateFunc: func(e event.CreateEvent) bool {
-			_, ok := e.Meta.GetLabels()[experimentLabel]
-			return ok
-		},
-	}
+	// ****** Skip knative logic for now *******
+	// p := predicate.Funcs{
+	// 	UpdateFunc: func(e event.UpdateEvent) bool {
+	// 		if _, ok := e.MetaOld.GetLabels()[experimentLabel]; !ok {
+	// 			return false
+	// 		}
+	// 		return e.ObjectOld != e.ObjectNew
+	// 	},
+	// 	CreateFunc: func(e event.CreateEvent) bool {
+	// 		_, ok := e.Meta.GetLabels()[experimentLabel]
+	// 		return ok
+	// 	},
+	// }
 
 	// Watch for Knative services changes
-	mapFn := handler.ToRequestsFunc(
-		func(a handler.MapObject) []reconcile.Request {
-			experiment := a.Meta.GetLabels()[experimentLabel]
-			return []reconcile.Request{
-				{NamespacedName: types.NamespacedName{
-					Name:      experiment,
-					Namespace: a.Meta.GetNamespace(),
-				}},
-			}
-		})
+	// mapFn := handler.ToRequestsFunc(
+	// 	func(a handler.MapObject) []reconcile.Request {
+	// 		experiment := a.Meta.GetLabels()[experimentLabel]
+	// 		return []reconcile.Request{
+	// 			{NamespacedName: types.NamespacedName{
+	// 				Name:      experiment,
+	// 				Namespace: a.Meta.GetNamespace(),
+	// 			}},
+	// 		}
+	// 	})
 
-	err = c.Watch(&source.Kind{Type: &servingv1alpha1.Service{}},
-		&handler.EnqueueRequestsFromMapFunc{ToRequests: mapFn},
-		p)
+	// err = c.Watch(&source.Kind{Type: &servingv1alpha1.Service{}},
+	// 	&handler.EnqueueRequestsFromMapFunc{ToRequests: mapFn},
+	// 	p)
 
-	if err != nil {
-		log.Info("NoKnativeServingWatch", zap.Error(err))
-	}
-
+	// if err != nil {
+	// 	log.Info("NoKnativeServingWatch", zap.Error(err))
+	// }
+	// ****** Skip knative logic for now *******
 	return nil
 }
 
@@ -129,6 +129,10 @@ type ReconcileExperiment struct {
 	client.Client
 	scheme        *runtime.Scheme
 	eventRecorder record.EventRecorder
+
+	istioClient istioclient.Interface
+	targets     *Targets
+	rules       *IstioRoutingRules
 }
 
 // Reconcile reads that state of the cluster for a Experiment object and makes changes based on the state read

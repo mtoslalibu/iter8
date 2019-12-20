@@ -96,7 +96,7 @@ func (r *ReconcileExperiment) syncKnative(context context.Context, instance *ite
 		if candidateTraffic == nil {
 			instance.Status.TrafficSplit.Candidate = 0
 		} else {
-			instance.Status.TrafficSplit.Candidate = candidateTraffic.Percent
+			instance.Status.TrafficSplit.Candidate = int(*candidateTraffic.Percent)
 		}
 
 		return reconcile.Result{}, r.Status().Update(context, instance)
@@ -104,7 +104,7 @@ func (r *ReconcileExperiment) syncKnative(context context.Context, instance *ite
 
 	if candidateTraffic == nil {
 		r.MarkTargetsError(context, instance, "Missing Candidate Revision: %s", candidate)
-		instance.Status.TrafficSplit.Baseline = baselineTraffic.Percent
+		instance.Status.TrafficSplit.Baseline = int(*baselineTraffic.Percent)
 		instance.Status.TrafficSplit.Candidate = 0
 		err = r.Status().Update(context, instance)
 		return reconcile.Result{}, err
@@ -123,46 +123,42 @@ func (r *ReconcileExperiment) syncKnative(context context.Context, instance *ite
 		update := false
 		if experimentSucceeded(instance) {
 			// experiment is successful
-			msg := ""
 			switch traffic.GetOnSuccess() {
 			case "baseline":
-				if candidateTraffic.Percent != 0 {
-					candidateTraffic.Percent = 0
+				if *candidateTraffic.Percent != 0 {
+					*candidateTraffic.Percent = 0
 					update = true
 				}
-				if baselineTraffic.Percent != 100 {
-					baselineTraffic.Percent = 100
+				if *baselineTraffic.Percent != 100 {
+					*baselineTraffic.Percent = 100
 					update = true
 				}
-				msg = "AllToBaseline"
 				instance.Status.TrafficSplit.Baseline = 100
 				instance.Status.TrafficSplit.Candidate = 0
 			case "candidate":
-				if candidateTraffic.Percent != 100 {
-					candidateTraffic.Percent = 100
+				if *candidateTraffic.Percent != 100 {
+					*candidateTraffic.Percent = 100
 					update = true
 				}
-				if baselineTraffic.Percent != 0 {
-					baselineTraffic.Percent = 0
+				if *baselineTraffic.Percent != 0 {
+					*baselineTraffic.Percent = 0
 					update = true
 				}
-				msg = "AllToCandidate"
 				instance.Status.TrafficSplit.Baseline = 0
 				instance.Status.TrafficSplit.Candidate = 100
 			case "both":
-				msg = "KeepOnBothVersions"
 			}
-			r.MarkExperimentSucceeded(context, instance, "%s", successMsg(instance, msg))
+			r.MarkExperimentSucceeded(context, instance, "%s", successMsg(instance))
 		} else {
-			r.MarkExperimentFailed(context, instance, "%s", failureMsg(instance, "AllToBaseline"))
+			r.MarkExperimentFailed(context, instance, "%s", failureMsg(instance))
 
 			// Switch traffic back to baseline
-			if candidateTraffic.Percent != 0 {
-				candidateTraffic.Percent = 0
+			if *candidateTraffic.Percent != 0 {
+				*candidateTraffic.Percent = 0
 				update = true
 			}
-			if baselineTraffic.Percent != 100 {
-				baselineTraffic.Percent = 100
+			if *baselineTraffic.Percent != 100 {
+				*baselineTraffic.Percent = 100
 				update = true
 			}
 		}
@@ -180,8 +176,8 @@ func (r *ReconcileExperiment) syncKnative(context context.Context, instance *ite
 			}
 		}
 
-		instance.Status.TrafficSplit.Baseline = baselineTraffic.Percent
-		instance.Status.TrafficSplit.Candidate = candidateTraffic.Percent
+		instance.Status.TrafficSplit.Baseline = int(*baselineTraffic.Percent)
+		instance.Status.TrafficSplit.Candidate = int(*candidateTraffic.Percent)
 		return reconcile.Result{}, r.Status().Update(context, instance)
 	}
 
@@ -189,11 +185,11 @@ func (r *ReconcileExperiment) syncKnative(context context.Context, instance *ite
 	if now.After(instance.Status.LastIncrementTime.Add(interval)) {
 		log.Info("process iteration.")
 
-		newRolloutPercent := float64(candidateTraffic.Percent)
+		newRolloutPercent := *candidateTraffic.Percent
 
 		strategy := getStrategy(instance)
 		if iter8v1alpha1.StrategyIncrementWithoutCheck == strategy {
-			newRolloutPercent += traffic.GetStepSize()
+			newRolloutPercent += int64(traffic.GetStepSize())
 		} else {
 			var analyticsService analytics.AnalyticsService
 			switch getStrategy(instance) {
@@ -239,9 +235,9 @@ func (r *ReconcileExperiment) syncKnative(context context.Context, instance *ite
 
 			if response.Assessment.Summary.AbortExperiment {
 				log.Info("ExperimentAborted. Rollback to Baseline.")
-				if candidateTraffic.Percent != 0 || baselineTraffic.Percent != 100 {
-					baselineTraffic.Percent = 100
-					candidateTraffic.Percent = 0
+				if *candidateTraffic.Percent != 0 || *baselineTraffic.Percent != 100 {
+					*baselineTraffic.Percent = 100
+					*candidateTraffic.Percent = 0
 					err := r.Update(context, kservice)
 					if err != nil {
 						return reconcile.Result{}, err // retry
@@ -261,7 +257,7 @@ func (r *ReconcileExperiment) syncKnative(context context.Context, instance *ite
 			baselineTraffic := response.Baseline.TrafficPercentage
 			candidateTraffic := response.Candidate.TrafficPercentage
 			log.Info("NewTraffic", "baseline", baselineTraffic, "candidate", candidateTraffic)
-			newRolloutPercent = candidateTraffic
+			newRolloutPercent = int64(candidateTraffic)
 
 			if response.LastState == nil {
 				instance.Status.AnalysisState.Raw = []byte("{}")
@@ -281,18 +277,18 @@ func (r *ReconcileExperiment) syncKnative(context context.Context, instance *ite
 		for i := range ksvctraffic {
 			target := &ksvctraffic[i]
 			if target.RevisionName == baseline {
-				if target.Percent != 100-int(newRolloutPercent) {
-					target.Percent = 100 - int(newRolloutPercent)
+				if *target.Percent != 100-int64(newRolloutPercent) {
+					*target.Percent = 100 - int64(newRolloutPercent)
 					needUpdate = true
 				}
 			} else if target.RevisionName == candidate {
-				if target.Percent != int(newRolloutPercent) {
-					target.Percent = int(newRolloutPercent)
+				if *target.Percent != int64(newRolloutPercent) {
+					*target.Percent = int64(newRolloutPercent)
 					needUpdate = true
 				}
 			} else {
-				if target.Percent != 0 {
-					target.Percent = 0
+				if *target.Percent != 0 {
+					*target.Percent = 0
 					needUpdate = true
 				}
 			}
@@ -313,8 +309,8 @@ func (r *ReconcileExperiment) syncKnative(context context.Context, instance *ite
 	}
 
 	r.MarkExperimentProgress(context, instance, false, "Iteration %d Completed", instance.Status.CurrentIteration)
-	instance.Status.TrafficSplit.Baseline = baselineTraffic.Percent
-	instance.Status.TrafficSplit.Candidate = candidateTraffic.Percent
+	instance.Status.TrafficSplit.Baseline = int(*baselineTraffic.Percent)
+	instance.Status.TrafficSplit.Candidate = int(*candidateTraffic.Percent)
 	return reconcile.Result{RequeueAfter: interval}, r.Status().Update(context, instance)
 }
 
@@ -375,9 +371,9 @@ func (r *ReconcileExperiment) finalizeKnative(context context.Context, instance 
 			return reconcile.Result{}, removeFinalizer(context, r, instance, Finalizer)
 		}
 
-		if baselineTraffic.Percent != 100 || candidateTraffic.Percent != 0 {
-			baselineTraffic.Percent = 100
-			candidateTraffic.Percent = 0
+		if *baselineTraffic.Percent != 100 || *candidateTraffic.Percent != 0 {
+			*baselineTraffic.Percent = 100
+			*candidateTraffic.Percent = 0
 
 			err = r.Update(context, kservice) // TODO: patch?
 			if err != nil {

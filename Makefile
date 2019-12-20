@@ -12,30 +12,24 @@ run: generate fmt vet load
 	go run ./cmd/manager/main.go
 
 # Generate iter8 crds and rbac manifests
-manifest:
+manifests:
 	go run vendor/sigs.k8s.io/controller-tools/cmd/controller-gen/main.go crd \
-	  --output-dir install/helm/iter8-controller/templates/crds
-	go run vendor/sigs.k8s.io/controller-tools/cmd/controller-gen/main.go rbac \
-	  --output-dir install/helm/iter8-controller/templates/rbac \
-	  --service-account controller-manager \
-	  --service-account-namespace "{{ .Values.namespace }}"
+	  paths=./pkg/apis/... output:crd:dir=./install/helm/iter8-controller/templates/crds
 	./hack/crd_fix.sh
-	sed -i -e "13s/\'//g" install/helm/iter8-controller/templates/rbac/manager_role_binding.yaml
-	rm -f ./install/helm/iter8-controller/templates/rbac/manager_role_binding.yaml-e
 
 # Prepare Kubernetes cluster for iter8 (running in cluster or locally):
 #   install CRDs
 #   install configmap/iter8-metrics is defined in namespace iter8 (creating namespace if needed)
-load: manifest
+load: manifests
 	helm template install/helm/iter8-controller \
 	  --name iter8-controller \
 	  -x templates/default/namespace.yaml \
-	  -x templates/crds/iter8_v1alpha1_experiment.yaml \
+	  -x templates/crds/iter8.tools_experiments.yaml \
 	  -x templates/metrics/iter8_metrics.yaml \
 	| kubectl apply -f -
 
 # Deploy controller to the Kubernetes cluster configured in $KUBECONFIG or ~/.kube/config
-deploy: manifest
+deploy: manifests
 	helm template install/helm/iter8-controller \
 	  --name iter8-controller \
 	  --set image.repository=`echo ${IMG} | cut -f1 -d':'` \

@@ -90,7 +90,7 @@ type ExperimentSpec struct {
 
 	// Assessment is a flag to terminate experiment with action
 	// +optional.
-	//+kubebuilder:validation:Enum=override_success,override_failure
+	//+kubebuilder:validation:Enum={override_success,override_failure}
 	Assessment AssessmentType `json:"assessment,omitempty"`
 
 	// CleanUp is a flag to determine the action to take at the end of experiment
@@ -121,8 +121,7 @@ const (
 	PhaseInitializing Phase = "Initializing"
 	PhasePause        Phase = "Pause"
 	PhaseProgressing  Phase = "Progressing"
-	PhaseSucceeded    Phase = "Succeeded"
-	PhaseFailed       Phase = "Failed"
+	PhaseCompleted    Phase = "Completed"
 )
 
 // ExperimentStatus defines the observed state of Experiment
@@ -173,7 +172,7 @@ type TrafficControl struct {
 	// "check_and_increment": get decision on traffic increament from analytics
 	// "increment_without_check": increase traffic each interval without calling analytics
 	// +optional. Default is "check_and_increment".
-	//+kubebuilder:validation:Enum=check_and_increment,increment_without_check,epsilon_greedy
+	//+kubebuilder:validation:Enum={check_and_increment,increment_without_check,epsilon_greedy}
 	Strategy *string `json:"strategy,omitempty"`
 
 	// MaxTrafficPercentage is the maximum traffic ratio to send to the candidate. Default is 50
@@ -198,7 +197,7 @@ type TrafficControl struct {
 	// "both": traffic is split across baseline and candidate.
 	// Defaults to “candidate”
 	// +optional
-	//+kubebuilder:validation:Enum=baseline,candidate,both
+	//+kubebuilder:validation:Enum={baseline,candidate,both}
 	OnSuccess *string `json:"onSuccess,omitempty"`
 }
 
@@ -240,7 +239,7 @@ type SuccessCriterion struct {
 	// 	Tolerance type. Options:
 	// "delta": compares the candidate against the baseline version with respect to the metric;
 	// "threshold": checks the candidate with respect to the metric
-	//+kubebuilder:validation:Enum=threshold,delta
+	//+kubebuilder:validation:Enum={threshold,delta}
 	ToleranceType ToleranceType `json:"toleranceType"`
 
 	// Value to check
@@ -381,6 +380,9 @@ const (
 
 	// ExperimentConditionExperimentSucceeded has status True when the experiment is succeeded
 	ExperimentConditionExperimentSucceeded duckv1alpha1.ConditionType = "ExperimentSucceeded"
+
+	// ExperimentConditionRoutingRulesReady has status True when routing rules are ready
+	ExperimentConditionRoutingRulesReady duckv1alpha1.ConditionType = "RoutingRulesReady"
 )
 
 var experimentCondSet = duckv1alpha1.NewLivingConditionSet(
@@ -389,6 +391,7 @@ var experimentCondSet = duckv1alpha1.NewLivingConditionSet(
 	ExperimentConditionExperimentCompleted,
 	ExperimentConditionExperimentSucceeded,
 	ExperimentConditionAnalyticsServiceNormal,
+	ExperimentConditionRoutingRulesReady,
 )
 
 // InitializeConditions sets relevant unset conditions to Unknown state.
@@ -429,6 +432,21 @@ func (s *ExperimentStatus) MarkTargetsError(reason, messageFormat string, messag
 	s.Message = composeMessage(reason, messageFormat, messageA...)
 }
 
+// MarkRoutingRulesReadysets the condition that the routing rules are ready
+// Return true if it's converted from false or unknown
+func (s *ExperimentStatus) MarkRoutingRulesReady() bool {
+	prev := s.GetCondition(ExperimentConditionRoutingRulesReady).Status
+	experimentCondSet.Manage(s).MarkTrue(ExperimentConditionRoutingRulesReady)
+	return prev != corev1.ConditionTrue
+}
+
+// MarkRoutingRulesError sets the condition that the routing rules are not ready
+func (s *ExperimentStatus) MarkRoutingRulesError(reason, messageFormat string, messageA ...interface{}) {
+	experimentCondSet.Manage(s).MarkFalse(ExperimentConditionRoutingRulesReady, reason, messageFormat, messageA...)
+	s.Phase = PhasePause
+	s.Message = composeMessage(reason, messageFormat, messageA...)
+}
+
 // MarkAnalyticsServiceRunning sets the condition that the analytics service is operating normally
 // Return true if it's converted from false or unknown
 func (s *ExperimentStatus) MarkAnalyticsServiceRunning() bool {
@@ -447,6 +465,7 @@ func (s *ExperimentStatus) MarkAnalyticsServiceError(reason, messageFormat strin
 // MarkExperimentCompleted sets the condition that the experiemnt is completed
 func (s *ExperimentStatus) MarkExperimentCompleted() {
 	experimentCondSet.Manage(s).MarkTrue(ExperimentConditionExperimentCompleted)
+	s.Phase = PhaseCompleted
 }
 
 // MarkExperimentNotCompleted sets the condition that the experiemnt is ongoing
@@ -459,21 +478,21 @@ func (s *ExperimentStatus) MarkExperimentNotCompleted(reason, messageFormat stri
 // MarkExperimentSucceeded sets the condition that the experiemnt is completed
 func (s *ExperimentStatus) MarkExperimentSucceeded(reason, messageFormat string, messageA ...interface{}) {
 	experimentCondSet.Manage(s).MarkTrue(ExperimentConditionExperimentSucceeded)
-	s.Phase = PhaseSucceeded
+	s.Phase = PhaseCompleted
 	s.Message = composeMessage(reason, messageFormat, messageA...)
 }
 
 // MarkExperimentFailed sets the condition that the experiemnt is ongoing
 func (s *ExperimentStatus) MarkExperimentFailed(reason, messageFormat string, messageA ...interface{}) {
 	experimentCondSet.Manage(s).MarkFalse(ExperimentConditionExperimentSucceeded, reason, messageFormat, messageA...)
-	s.Phase = PhaseFailed
+	s.Phase = PhaseCompleted
 	s.Message = composeMessage(reason, messageFormat, messageA...)
 }
 
 func composeMessage(reason, messageFormat string, messageA ...interface{}) string {
 	out := reason
 	if len(fmt.Sprintf(messageFormat, messageA...)) > 0 {
-		out += ", " + fmt.Sprintf(messageFormat, messageA...)
+		out += ": " + fmt.Sprintf(messageFormat, messageA...)
 	}
 	return out
 }
@@ -492,9 +511,6 @@ type ExperimentMetric struct {
 
 	// SampleSizeTemplate is the query template for sample size
 	SampleSizeTemplate string `json:"sample_size_template"`
-
-	// Type is the type of this metric
-	Type string `json:"type"`
 
 	// IsCounter indicates metric is a monotonically increasing counter
 	IsCounter bool `json:"is_counter"`

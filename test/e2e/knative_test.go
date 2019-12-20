@@ -68,7 +68,7 @@ func TestKnativeExperiment(t *testing.T) {
 			initObjects: []runtime.Object{
 				getBaseStockService("stock-rollforward"),
 			},
-			preHook: newStockServiceRevision("stock-rollforward", 50),
+			preHook: []test.Hook{newStockServiceRevision("stock-rollforward", 50)},
 			object:  getFastExperimentForService("stock-rollforward", "stock-rollforward", service.GetURL()),
 			wantState: test.WantAllStates(
 				test.CheckExperimentFinished,
@@ -85,7 +85,7 @@ func TestKnativeExperiment(t *testing.T) {
 			initObjects: []runtime.Object{
 				getBaseStockService("stock-rollbackward"),
 			},
-			preHook: newStockServiceRevision("stock-rollbackward", 0),
+			preHook: []test.Hook{newStockServiceRevision("stock-rollbackward", 0)},
 			object:  getFastExperimentForService("stock-rollbackward", "stock-rollbackward", service.GetURL()),
 			wantState: test.WantAllStates(
 				test.CheckExperimentFinished,
@@ -103,7 +103,7 @@ func TestKnativeExperiment(t *testing.T) {
 				getBaseStockService("stock-ongoingdelete"),
 			},
 			object:    getSlowExperimentForService("stock-ongoingdelete", "stock-ongoingdelete", service.GetURL()),
-			preHook:   newStockServiceRevision("stock-ongoingdelete", 50),
+			preHook:   []test.Hook{newStockServiceRevision("stock-ongoingdelete", 50)},
 			wantState: test.CheckServiceFound,
 			wantResults: []runtime.Object{
 				getRollBackwardStockService("stock-ongoingdelete"),
@@ -118,7 +118,7 @@ func TestKnativeExperiment(t *testing.T) {
 				getBaseStockService("stock-completedelete"),
 			},
 			object:    getFastExperimentForService("stock-completedelete", "stock-completedelete", service.GetURL()),
-			preHook:   newStockServiceRevision("stock-completedelete", 0),
+			preHook:   []test.Hook{newStockServiceRevision("stock-completedelete", 0)},
 			wantState: test.CheckExperimentFinished,
 			frozenObjects: []runtime.Object{
 				test.NewKnativeService("stock-completedelete", Flags.Namespace).Build(),
@@ -209,7 +209,7 @@ func getRollBackwardStockService(name string) runtime.Object {
 	return ksvc.Build()
 }
 
-func newStockServiceRevision(name string, percent int) test.Hook {
+func newStockServiceRevision(name string, percent int64) test.Hook {
 	return func(ctx context.Context, cl client.Client) error {
 		ksvc := test.NewKnativeService(name, Flags.Namespace).Build()
 
@@ -222,7 +222,8 @@ func newStockServiceRevision(name string, percent int) test.Hook {
 			WithEnv("RESOURCE", "share").
 			WithRevision(name+"-two", percent)
 
-		ksvc.Spec.RouteSpec.Traffic[0].Percent = 100 - percent
+		newPercent := 100 - percent
+		ksvc.Spec.RouteSpec.Traffic[0].Percent = &newPercent
 
 		if err := cl.Update(ctx, ksvc); err != nil {
 			return errors.Wrapf(err, "Cannot update service %s", name)
