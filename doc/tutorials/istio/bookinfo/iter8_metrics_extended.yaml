@@ -12,14 +12,16 @@ data:
     iter8_90_perc_latency: "histogram_quantile(0.90, sum(increase(istio_request_duration_seconds_bucket{source_workload_namespace!='knative-serving',reporter='source'}[$interval]$offset_str)) by ($entity_labels, le))"
   metrics: |-
     - name: iter8_latency
-      metric_type: Performance
+      is_counter: False
+      absent_value: "None"
       sample_size_query_template: iter8_sample_size
     - name: iter8_error_count
-      metric_type: Correctness
+      is_counter: True
       sample_size_query_template: iter8_sample_size
     - name: iter8_error_rate
-      metric_type: Correctness
+      is_counter: False
       sample_size_query_template: iter8_sample_size
     - name: iter8_90_perc_latency
-      metric_type: Performance
+      is_counter: False
+      absent_value: "None"
       sample_size_query_template: iter8_sample_size
