@@ -18,6 +18,7 @@ import (
 	"context"
 	"fmt"
 	"strconv"
+	"strings"
 	"time"
 
 	"gopkg.in/yaml.v2"
@@ -131,24 +132,24 @@ func markExperimentCompleted(instance *iter8v1alpha1.Experiment) {
 	instance.Status.MarkExperimentCompleted()
 }
 
-func successMsg(instance *iter8v1alpha1.Experiment, trafficMsg string) string {
+func successMsg(instance *iter8v1alpha1.Experiment) string {
 	if instance.Spec.Assessment == iter8v1alpha1.AssessmentOverrideSuccess {
-		return fmt.Sprintf("OverrideSuccess, Traffic: %s", trafficMsg)
+		return "OverrideSuccess"
 	} else if instance.Status.AssessmentSummary.AllSuccessCriteriaMet {
-		return fmt.Sprintf("AllSuccessCriteriaMet, Traffic: %s", trafficMsg)
+		return "AllSuccessCriteriaMet"
 	} else {
-		return fmt.Sprintf("IterationsExhausted, Traffic: %s", trafficMsg)
+		return "IterationsExhausted"
 	}
 }
 
-func failureMsg(instance *iter8v1alpha1.Experiment, trafficMsg string) string {
+func failureMsg(instance *iter8v1alpha1.Experiment) string {
 	if instance.Spec.Assessment == iter8v1alpha1.AssessmentOverrideFailure {
-		return fmt.Sprintf("OverrideFailure, Traffic: %s", trafficMsg)
+		return "OverrideFailure"
 	} else if !instance.Status.AssessmentSummary.AllSuccessCriteriaMet {
-		return fmt.Sprintf("NotAllSuccessCriteriaMet, Traffic: %s", trafficMsg)
+		return "NotAllSuccessCriteriaMet"
 	} else {
 		// Should not be reached
-		return fmt.Sprintf("UnexpectedCondition")
+		return "UnexpectedCondition"
 	}
 }
 
@@ -271,4 +272,25 @@ func setLabels(obj runtime.Object, newLabels map[string]string) error {
 		labels[key] = val
 	}
 	return nil
+}
+
+func validUpdateErr(err error) bool {
+	benignMsg := "the object has been modified"
+	return strings.Contains(err.Error(), benignMsg)
+}
+
+func withRecheckRequirement(instance *iter8v1alpha1.Experiment) bool {
+	analyticsCondition := instance.Status.GetCondition(iter8v1alpha1.ExperimentConditionAnalyticsServiceNormal)
+
+	if analyticsCondition != nil && analyticsCondition.Status == corev1.ConditionFalse {
+		return true
+	}
+
+	rulesCondition := instance.Status.GetCondition(iter8v1alpha1.ExperimentConditionRoutingRulesReady)
+
+	if rulesCondition != nil && rulesCondition.Status == corev1.ConditionFalse {
+		return true
+	}
+
+	return false
 }

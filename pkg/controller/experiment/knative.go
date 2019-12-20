@@ -123,7 +123,6 @@ func (r *ReconcileExperiment) syncKnative(context context.Context, instance *ite
 		update := false
 		if experimentSucceeded(instance) {
 			// experiment is successful
-			msg := ""
 			switch traffic.GetOnSuccess() {
 			case "baseline":
 				if *candidateTraffic.Percent != 0 {
@@ -134,7 +133,6 @@ func (r *ReconcileExperiment) syncKnative(context context.Context, instance *ite
 					*baselineTraffic.Percent = 100
 					update = true
 				}
-				msg = "AllToBaseline"
 				instance.Status.TrafficSplit.Baseline = 100
 				instance.Status.TrafficSplit.Candidate = 0
 			case "candidate":
@@ -146,15 +144,13 @@ func (r *ReconcileExperiment) syncKnative(context context.Context, instance *ite
 					*baselineTraffic.Percent = 0
 					update = true
 				}
-				msg = "AllToCandidate"
 				instance.Status.TrafficSplit.Baseline = 0
 				instance.Status.TrafficSplit.Candidate = 100
 			case "both":
-				msg = "KeepOnBothVersions"
 			}
-			r.MarkExperimentSucceeded(context, instance, "%s", successMsg(instance, msg))
+			r.MarkExperimentSucceeded(context, instance, "%s", successMsg(instance))
 		} else {
-			r.MarkExperimentFailed(context, instance, "%s", failureMsg(instance, "AllToBaseline"))
+			r.MarkExperimentFailed(context, instance, "%s", failureMsg(instance))
 
 			// Switch traffic back to baseline
 			if *candidateTraffic.Percent != 0 {

@@ -83,15 +83,11 @@ spec:
               sample_size_template:
                 description: SampleSizeTemplate is the query template for sample size
                 type: string
-              type:
-                description: Type is the type of this metric
-                type: string
             required:
             - absent_value
             - is_counter
             - query_template
             - sample_size_template
-            - type
             type: object
           description: ExperimentMetrics is a map from metric name to metric definition
           type: object

@@ -78,22 +78,21 @@ func (r *ReconcileExperiment) checkOrInitRules(context context.Context, instance
 		Logger(context).Info("NoRulesDetected")
 		// Initialize routing rules
 		if err = r.initializeRoutingRules(instance); err != nil {
-			r.MarkRoutingRulesStatus(context, instance, true, "Error in Initializing routing rules: %s, Experiment Ended.", err.Error())
+			r.MarkRoutingRulesError(context, instance, "Error in Initializing routing rules: %s, Experiment Ended.", err.Error())
 			r.MarkExperimentFailed(context, instance, "Error in Initializing routing rules: %s, Experiment Ended.", err.Error())
 		} else {
-			r.MarkRoutingRulesStatus(context, instance, true,
+			r.MarkRoutingRulesReady(context, instance,
 				"Init Routing Rules Suceeded, DR: %s, VS: %s",
 				r.rules.DestinationRule.GetName(), r.rules.VirtualService.GetName())
 		}
 	} else {
 		if r.rules, err = validateDetectedRules(drl, vsl, instance); err == nil {
-			r.MarkRoutingRulesStatus(context, instance, false,
+			r.MarkRoutingRulesReady(context, instance,
 				"RoutingRules detected, DR: %s, VS: %s",
-				r.rules.DestinationRule.GetName(),
-				r.rules.VirtualService.GetName())
+				r.rules.DestinationRule.GetName(), r.rules.VirtualService.GetName())
 			updateStatus = false
 		} else {
-			r.MarkRoutingRulesStatus(context, instance, true,
+			r.MarkRoutingRulesError(context, instance,
 				"UnexpectedCondition: %s , Experiment Ended", err.Error())
 			r.MarkExperimentFailed(context, instance, "UnexpectedCondition: %s , Experiment Ended", err.Error())
 		}
@@ -204,23 +203,19 @@ func (r *ReconcileExperiment) setExperimentEndStatus(context context.Context, in
 	if experimentSucceeded(instance) {
 		// experiment is successful
 
-		msg := ""
 		switch instance.Spec.TrafficControl.GetOnSuccess() {
 		case "baseline":
-			msg = "AllToBaseline"
 			instance.Status.TrafficSplit.Baseline = 100
 			instance.Status.TrafficSplit.Candidate = 0
 		case "candidate":
-			msg = "AllToCandidate"
 			instance.Status.TrafficSplit.Baseline = 0
 			instance.Status.TrafficSplit.Candidate = 100
 		case "both":
-			msg = "KeepBothVersions"
 		}
 
-		r.MarkExperimentSucceeded(context, instance, "%s", successMsg(instance, msg))
+		r.MarkExperimentSucceeded(context, instance, "%s", successMsg(instance))
 	} else {
-		r.MarkExperimentFailed(context, instance, "%s", failureMsg(instance, "AllToBaseline"))
+		r.MarkExperimentFailed(context, instance, "%s", failureMsg(instance))
 		instance.Status.TrafficSplit.Baseline = 100
 		instance.Status.TrafficSplit.Candidate = 0
 	}
@@ -238,7 +233,7 @@ func (r *ReconcileExperiment) detectTargets(context context.Context, instance *i
 	// Get k8s service
 	err := r.Get(context, types.NamespacedName{Name: serviceName, Namespace: serviceNamespace}, r.targets.Service)
 	if err != nil {
-		r.MarkTargetsError(context, instance, "Missing Service")
+		r.MarkTargetsError(context, instance, "MissingService")
 		return true, fmt.Errorf("Missing service %s", serviceName)
 	}
 
@@ -381,15 +376,13 @@ func (r *ReconcileExperiment) progressExperiment(context context.Context, instan
 		// Get latest analysis
 		payload, err := analyticsService.MakeRequest(instance, r.targets.Baseline, r.targets.Candidate)
 		if err != nil {
-			r.MarkAnalyticsServiceError(context, instance, "Can Not Compose Payload %v", err)
+			r.MarkAnalyticsServiceError(context, instance, "%s", err.Error())
 			return err
 		}
 
 		response, err := analyticsService.Invoke(log, instance.Spec.Analysis.GetServiceEndpoint(), payload, analyticsService.GetPath())
 		if err != nil {
-			r.MarkAnalyticsServiceError(context, instance, "Error From Analytics: %s", err.Error())
-			log.Info("Error From Analytics, retry after 5s")
-			time.Sleep(5 * time.Second)
+			r.MarkAnalyticsServiceError(context, instance, "%s", err.Error())
 			return err
 		}
 
@@ -400,7 +393,7 @@ func (r *ReconcileExperiment) progressExperiment(context context.Context, instan
 		} else {
 			lastState, err := json.Marshal(response.LastState)
 			if err != nil {
-				r.MarkAnalyticsServiceError(context, instance, "Error Analytics Response: %v", err)
+				r.MarkAnalyticsServiceError(context, instance, "%s", err.Error())
 				return err
 			}
 			instance.Status.AnalysisState = runtime.RawExtension{Raw: lastState}
@@ -421,6 +414,7 @@ func (r *ReconcileExperiment) progressExperiment(context context.Context, instan
 		r.rules.GetWeight(Candidate) != rolloutPercent {
 		// Update Traffic splitting rule
 		if err := r.rules.UpdateRolloutPercent(instance.Spec.TargetService.Name, getServiceNamespace(instance), rolloutPercent, r.istioClient); err != nil {
+			r.MarkRoutingRulesError(context, instance, "%s", err.Error())
 			return err
 		}
 		instance.Status.TrafficSplit.Baseline = 100 - int(rolloutPercent)
@@ -431,8 +425,8 @@ func (r *ReconcileExperiment) progressExperiment(context context.Context, instan
 	}
 
 	instance.Status.LastIncrementTime = metav1.NewTime(time.Now())
-	r.MarkExperimentProgress(context, instance, false, "Iteration %d Completed", instance.Status.CurrentIteration)
 	instance.Status.CurrentIteration++
+	r.MarkExperimentProgress(context, instance, false, "Iteration %d Started", instance.Status.CurrentIteration)
 	return nil
 
 }
@@ -449,6 +443,6 @@ func (r *ReconcileExperiment) abortExperiment(context context.Context, instance 
 	instance.Status.TrafficSplit.Baseline = 100
 	instance.Status.TrafficSplit.Candidate = 0
 
-	r.MarkExperimentFailed(context, instance, "%s", "Aborted, Traffic: AllToBaseline.")
+	r.MarkExperimentFailed(context, instance, "%s", "Aborted")
 	return
 }

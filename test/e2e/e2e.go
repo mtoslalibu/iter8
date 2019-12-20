@@ -284,8 +284,6 @@ func runTestCases(t *testing.T, service *test.AnalyticsService, testCases map[st
 			if err := tc.runFinalizers(ctx, client); err != nil {
 				t.Fatalf("Failed running finalizers %v", err)
 			}
-
-			time.Sleep(time.Second * 5)
 		})
 	}
 }
