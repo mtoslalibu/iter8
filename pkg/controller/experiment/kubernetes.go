@@ -52,6 +52,16 @@ func (r *ReconcileExperiment) syncKubernetes(context context.Context, instance *
 		return reconcile.Result{RequeueAfter: 5 * time.Second}, nil
 	}
 
+	if completed, err := r.checkExperimentComplete(context, instance); completed {
+		if err := r.Status().Update(context, instance); err != nil && !validUpdateErr(err) {
+			log.Info("Fail to update status: %v", err)
+			// End experiment
+			return reconcile.Result{}, nil
+		}
+		// Experiment completed
+		return reconcile.Result{}, err
+	}
+
 	now := time.Now()
 	traffic := instance.Spec.TrafficControl
 	// TODO: check err in getting the time value
@@ -71,14 +81,8 @@ func (r *ReconcileExperiment) syncKubernetes(context context.Context, instance *
 			return reconcile.Result{RequeueAfter: 5 * time.Second}, err
 		}
 
-		if completed, err := r.checkExperimentComplete(context, instance); completed {
-			if err := r.Status().Update(context, instance); err != nil && !validUpdateErr(err) {
-				log.Info("Fail to update status: %v", err)
-				// End experiment
-				return reconcile.Result{}, nil
-			}
-			// Experiment completed
-			return reconcile.Result{}, err
+		if experimentCompleted(instance) {
+			return reconcile.Result{Requeue: true}, nil
 		}
 
 		// Next iteration

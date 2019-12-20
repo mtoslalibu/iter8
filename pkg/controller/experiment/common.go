@@ -294,3 +294,7 @@ func withRecheckRequirement(instance *iter8v1alpha1.Experiment) bool {
 
 	return false
 }
+
+func experimentCompleted(instance *iter8v1alpha1.Experiment) bool {
+	return instance.Spec.TrafficControl.GetMaxIterations() < instance.Status.CurrentIteration
+}
