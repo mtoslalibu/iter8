@@ -21,15 +21,15 @@ data:
     iter8_error_rate: "sum(increase(istio_requests_total{source_workload_namespace!='knative-serving',response_code=~'5..',reporter='source'}[$interval]$offset_str)) by ($entity_labels) / sum(increase(istio_requests_total{source_workload_namespace!='knative-serving',reporter='source'}[$interval]$offset_str)) by ($entity_labels)"
   metrics: |-
     - name: iter8_latency
-      metric_type: Performance
+      is_counter: False
+      absent_value: "None"
       sample_size_query_template: iter8_sample_size
     - name: iter8_error_count
-      metric_type: Correctness
+      is_counter: True
       sample_size_query_template: iter8_sample_size
     - name: iter8_error_rate
-      metric_type: Correctness
+      is_counter: False
       sample_size_query_template: iter8_sample_size
-
 
 ---
 # Source: iter8-controller/templates/default/serviceaccount.yaml
@@ -40,13 +40,15 @@ metadata:
   namespace: iter8
 
 ---
-# Source: iter8-controller/templates/crds/iter8_v1alpha1_experiment.yaml
+# Source: iter8-controller/templates/crds/iter8.tools_experiments.yaml
+
+---
 apiVersion: apiextensions.k8s.io/v1beta1
 kind: CustomResourceDefinition
 metadata:
+  annotations:
+    controller-gen.kubebuilder.io/version: (unknown)
   creationTimestamp: null
-  labels:
-    controller-tools.k8s.io: "1.0"
   name: experiments.iter8.tools
 spec:
   additionalPrinterColumns:
@@ -82,32 +84,58 @@ spec:
     type: integer
   group: iter8.tools
   names:
-    categories:
-    - all
-    - iter8
     kind: Experiment
+    listKind: ExperimentList
     plural: experiments
+    singular: experiment
   scope: Namespaced
   subresources:
     status: {}
   validation:
     openAPIV3Schema:
+      description: Experiment is the Schema for the experiments API
       properties:
         apiVersion:
           description: 'APIVersion defines the versioned schema of this representation
             of an object. Servers should convert recognized schemas to the latest
-            internal value, and may reject unrecognized values. More info: https://git.k8s.io/community/contributors/devel/api-conventions.md#resources'
+            internal value, and may reject unrecognized values. More info: https://git.k8s.io/community/contributors/devel/sig-architecture/api-conventions.md#resources'
           type: string
         kind:
           description: 'Kind is a string value representing the REST resource this
             object represents. Servers may infer this from the endpoint the client
-            submits requests to. Cannot be updated. In CamelCase. More info: https://git.k8s.io/community/contributors/devel/api-conventions.md#types-kinds'
+            submits requests to. Cannot be updated. In CamelCase. More info: https://git.k8s.io/community/contributors/devel/sig-architecture/api-conventions.md#types-kinds'
           type: string
         metadata:
           type: object
         metrics:
+          additionalProperties:
+            description: ExperimentMetric stores details of a metric query template
+              to
+            properties:
+              absent_value:
+                description: AbsentValue  is default value when data source does not
+                  provide a value
+                type: string
+              is_counter:
+                description: IsCounter indicates metric is a monotonically increasing
+                  counter
+                type: boolean
+              query_template:
+                description: QueryTemplate is the query template for metric
+                type: string
+              sample_size_template:
+                description: SampleSizeTemplate is the query template for sample size
+                type: string
+            required:
+            - absent_value
+            - is_counter
+            - query_template
+            - sample_size_template
+            type: object
+          description: ExperimentMetrics is a map from metric name to metric definition
           type: object
         spec:
+          description: ExperimentSpec defines the desired state of Experiment
           properties:
             analysis:
               description: Analysis parameters
@@ -121,6 +149,8 @@ spec:
                 successCriteria:
                   description: List of criteria for assessing the candidate version
                   items:
+                    description: SuccessCriterion specifies the criteria for an experiment
+                      to succeed
                     properties:
                       metricName:
                         description: 'Name of the metric to which the criterion applies.
@@ -130,7 +160,6 @@ spec:
                         description: Minimum number of data points required to make
                           a decision based on this criterion; If not specified, the
                           default value is 10
-                        format: int64
                         type: integer
                       stopOnFailure:
                         description: Indicates whether or not the experiment must
@@ -138,7 +167,7 @@ spec:
                         type: boolean
                       tolerance:
                         description: Value to check
-                        format: double
+                        format: float64
                         type: number
                       toleranceType:
                         description: "\tTolerance type. Options: \"delta\": compares
@@ -151,8 +180,8 @@ spec:
                         type: string
                     required:
                     - metricName
-                    - toleranceType
                     - tolerance
+                    - toleranceType
                     type: object
                   type: array
               type: object
@@ -171,16 +200,81 @@ spec:
             routingReference:
               description: RoutingReference provides references to routing rules set
                 by users
+              properties:
+                apiVersion:
+                  description: API version of the referent.
+                  type: string
+                fieldPath:
+                  description: 'If referring to a piece of an object instead of an
+                    entire object, this string should contain a valid JSON/Go field
+                    access statement, such as desiredState.manifest.containers[2].
+                    For example, if the object reference is to a container within
+                    a pod, this would take on a value like: "spec.containers{name}"
+                    (where "name" refers to the name of the container that triggered
+                    the event) or if no container name is specified "spec.containers[2]"
+                    (container with index 2 in this pod). This syntax is chosen only
+                    to have some well-defined way of referencing a part of an object.
+                    TODO: this design is not final and this field is subject to change
+                    in the future.'
+                  type: string
+                kind:
+                  description: 'Kind of the referent. More info: https://git.k8s.io/community/contributors/devel/sig-architecture/api-conventions.md#types-kinds'
+                  type: string
+                name:
+                  description: 'Name of the referent. More info: https://kubernetes.io/docs/concepts/overview/working-with-objects/names/#names'
+                  type: string
+                namespace:
+                  description: 'Namespace of the referent. More info: https://kubernetes.io/docs/concepts/overview/working-with-objects/namespaces/'
+                  type: string
+                resourceVersion:
+                  description: 'Specific resourceVersion to which this reference is
+                    made, if any. More info: https://git.k8s.io/community/contributors/devel/sig-architecture/api-conventions.md#concurrency-control-and-consistency'
+                  type: string
+                uid:
+                  description: 'UID of the referent. More info: https://kubernetes.io/docs/concepts/overview/working-with-objects/names/#uids'
+                  type: string
               type: object
             targetService:
               description: TargetService is a reference to an object to use as target
                 service
               properties:
+                apiVersion:
+                  description: API version of the referent.
+                  type: string
                 baseline:
                   description: Baseline tells the name of baseline
                   type: string
                 candidate:
                   description: Candidate tells the name of candidate
+                  type: string
+                fieldPath:
+                  description: 'If referring to a piece of an object instead of an
+                    entire object, this string should contain a valid JSON/Go field
+                    access statement, such as desiredState.manifest.containers[2].
+                    For example, if the object reference is to a container within
+                    a pod, this would take on a value like: "spec.containers{name}"
+                    (where "name" refers to the name of the container that triggered
+                    the event) or if no container name is specified "spec.containers[2]"
+                    (container with index 2 in this pod). This syntax is chosen only
+                    to have some well-defined way of referencing a part of an object.
+                    TODO: this design is not final and this field is subject to change
+                    in the future.'
+                  type: string
+                kind:
+                  description: 'Kind of the referent. More info: https://git.k8s.io/community/contributors/devel/sig-architecture/api-conventions.md#types-kinds'
+                  type: string
+                name:
+                  description: 'Name of the referent. More info: https://kubernetes.io/docs/concepts/overview/working-with-objects/names/#names'
+                  type: string
+                namespace:
+                  description: 'Namespace of the referent. More info: https://kubernetes.io/docs/concepts/overview/working-with-objects/namespaces/'
+                  type: string
+                resourceVersion:
+                  description: 'Specific resourceVersion to which this reference is
+                    made, if any. More info: https://git.k8s.io/community/contributors/devel/sig-architecture/api-conventions.md#concurrency-control-and-consistency'
+                  type: string
+                uid:
+                  description: 'UID of the referent. More info: https://kubernetes.io/docs/concepts/overview/working-with-objects/names/#uids'
                   type: string
               type: object
             trafficControl:
@@ -193,12 +287,11 @@ spec:
                 maxIterations:
                   description: Maximum number of iterations for this experiment. Default
                     to 100.
-                  format: int64
                   type: integer
                 maxTrafficPercentage:
                   description: MaxTrafficPercentage is the maximum traffic ratio to
                     send to the candidate. Default is 50
-                  format: double
+                  format: float64
                   type: number
                 onSuccess:
                   description: 'Determines how the traffic must be split at the end
@@ -224,13 +317,14 @@ spec:
                 trafficStepSize:
                   description: TrafficStepSize is the traffic increment per interval.
                     Default is 2.0
-                  format: double
+                  format: float64
                   type: number
               type: object
           required:
           - targetService
           type: object
         status:
+          description: ExperimentStatus defines the observed state of Experiment
           properties:
             analysisState:
               description: AnalysisState is the last analysis state
@@ -238,6 +332,14 @@ spec:
             assessment:
               description: AssessmentSummary returned by the last analyis
               properties:
+                abort_experiment:
+                  description: Indicates whether or not the experiment must be aborted
+                    based on the success criteria
+                  type: boolean
+                all_success_criteria_met:
+                  description: Indicates whether or not all success criteria for assessing
+                    the candidate version have been met
+                  type: boolean
                 conclusions:
                   description: Overall summary based on all success criteria
                   items:
@@ -246,14 +348,22 @@ spec:
               type: object
             conditions:
               description: Conditions the latest available observations of a resource's
-                current state. +patchMergeKey=type +patchStrategy=merge
+                current state.
               items:
+                description: 'Conditions defines a readiness condition for a Knative
+                  resource. See: https://github.com/kubernetes/community/blob/master/contributors/devel/sig-architecture/api-conventions.md#typical-status-properties'
                 properties:
                   lastTransitionTime:
                     description: LastTransitionTime is the last time the condition
                       transitioned from one status to another. We use VolatileTime
                       in place of metav1.Time to exclude this from creating equality.Semantic
                       differences (all other things held constant).
+                    properties:
+                      inner:
+                        format: date-time
+                        type: string
+                    required:
+                    - inner
                     type: string
                   message:
                     description: A human readable message indicating details about
@@ -268,19 +378,17 @@ spec:
                     type: string
                   status:
                     description: Status of the condition, one of True, False, Unknown.
-                      +required
                     type: string
                   type:
-                    description: Type of condition. +required
+                    description: Type of condition.
                     type: string
                 required:
-                - type
                 - status
+                - type
                 type: object
               type: array
             currentIteration:
               description: CurrentIteration is the current iteration number
-              format: int64
               type: integer
             endTimestamp:
               description: EndTimestamp is the timestamp when experiment completes
@@ -312,17 +420,20 @@ spec:
                 baseline and candidate
               properties:
                 baseline:
-                  format: int64
                   type: integer
                 candidate:
-                  format: int64
                   type: integer
               required:
               - baseline
               - candidate
               type: object
           type: object
+      type: object
   version: v1alpha1
+  versions:
+  - name: v1alpha1
+    served: true
+    storage: true
 status:
   acceptedNames:
     kind: ""
