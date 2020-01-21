@@ -46,11 +46,8 @@ type Request struct {
 type TrafficControl struct {
 	analytics.TrafficControlCommon
 
-	// PosteriorSampleSize required sample size
-	PosteriorSampleSize int `json:"posterior_sample_size"`
-
-	// NumberOfTrials number of values sampled per iteration from each distribution
-	NumberOfTrials float64 `json:"no_of_trials"`
+	// Confidence that all success criteria are met
+	Confidence float64 `json:"confidence"`
 
 	// List of criteria for assessing the candidate version
 	SuccessCriteria []SuccessCriterion `json:"success_criteria"`
@@ -96,15 +93,13 @@ func (a PbrAnalyticsService) MakeRequest(instance *iter8v1alpha1.Experiment, bas
 				SampleSizeTemplate: iter8metric.SampleSizeTemplate,
 				IsCounter:          iter8metric.IsCounter,
 				AbsentValue:        iter8metric.AbsentValue,
+				StopOnFailure:      criterion.GetStopOnFailure(),
 			},
 			MinMax: MinMax{
 				Min: 0.0,
 				Max: 100.0,
 			},
 		}
-
-		criteria[i].SampleSize = criterion.GetSampleSize()
-		criteria[i].StopOnFailure = criterion.GetStopOnFailure()
 	}
 	now := time.Now().Format(time.RFC3339)
 	destinationKey, namespaceKey, baseVal, experimentVal, baseNsVal, experimentNsVal := "", "", "", "", "", ""
@@ -153,9 +148,8 @@ func (a PbrAnalyticsService) MakeRequest(instance *iter8v1alpha1.Experiment, bas
 				MaxTrafficPercent: instance.Spec.TrafficControl.GetMaxTrafficPercentage(),
 				StepSize:          instance.Spec.TrafficControl.GetStepSize(),
 			},
-			PosteriorSampleSize: 1000,
-			NumberOfTrials:      10.0,
-			SuccessCriteria:     criteria,
+			Confidence:      0.95,
+			SuccessCriteria: criteria,
 		},
 	}, nil
 }

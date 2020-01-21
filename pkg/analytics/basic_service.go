@@ -70,9 +70,6 @@ type Window struct {
 
 // TrafficControlCommon ...
 type TrafficControlCommon struct {
-	// Parameters controlling the behavior of the analytics
-	WarmupRequestCount int `json:"warmup_request_count"`
-
 	// Maximum percentage of traffic that the candidate version will receive during the experiment; defaults to 50%
 	MaxTrafficPercent float64 `json:"max_traffic_percent"`
 
@@ -118,11 +115,6 @@ type SuccessCriterionCommon struct {
 	// Indicates whether or not the experiment must finish if this criterion is not satisfied;
 	// defaults to false
 	StopOnFailure bool `json:"stop_on_failure"`
-
-	// Indicates that this criterion is based on statistical confidence;
-	// for instance, one can specify a 98% confidence that the criterion is satisfied;
-	// if not specified, there is no confidence requirement
-	Confidence float64 `json:"confidence"`
 }
 
 // SuccessCriterion ...
@@ -203,11 +195,11 @@ func (a BasicAnalyticsService) MakeRequest(instance *iter8v1alpha1.Experiment, b
 				SampleSizeTemplate: iter8metric.SampleSizeTemplate,
 				IsCounter:          iter8metric.IsCounter,
 				AbsentValue:        iter8metric.AbsentValue,
+				StopOnFailure:      criterion.GetStopOnFailure(),
 			},
 		}
 
 		criteria[i].SampleSize = criterion.GetSampleSize()
-		criteria[i].StopOnFailure = criterion.GetStopOnFailure()
 	}
 	now := time.Now().Format(time.RFC3339)
 	destinationKey, namespaceKey, baseVal, experimentVal, baseNsVal, experimentNsVal := "", "", "", "", "", ""
