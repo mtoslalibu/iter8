@@ -30,6 +30,7 @@ import (
 	"github.com/iter8-tools/iter8-controller/pkg/analytics"
 	"github.com/iter8-tools/iter8-controller/pkg/analytics/checkandincrement"
 	"github.com/iter8-tools/iter8-controller/pkg/analytics/epsilongreedy"
+	"github.com/iter8-tools/iter8-controller/pkg/analytics/obr"
 	"github.com/iter8-tools/iter8-controller/pkg/analytics/pbr"
 	"istio.io/client-go/pkg/apis/networking/v1alpha3"
 
@@ -374,6 +375,8 @@ func (r *ReconcileExperiment) progressExperiment(context context.Context, instan
 			analyticsService = epsilongreedy.GetService()
 		case pbr.Strategy:
 			analyticsService = pbr.GetService()
+		case obr.Strategy:
+			analyticsService = obr.GetService()
 		}
 
 		// Get latest analysis
