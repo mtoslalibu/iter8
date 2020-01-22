@@ -13,10 +13,6 @@ limitations under the License.
 */
 package checkandincrement
 
-import (
-	"github.com/iter8-tools/iter8-controller/pkg/analytics"
-)
-
 const (
 	// Strategy ...
 	// matches github.com/iter8-tools/iter8-controller/pkg/apis/iter8/v1alpha1#StrategyCheckAndIncrement
@@ -25,7 +21,7 @@ const (
 
 // Service ...
 type Service struct {
-	analytics.BasicAnalyticsService
+	CIAnalyticsService
 }
 
 // GetService ...

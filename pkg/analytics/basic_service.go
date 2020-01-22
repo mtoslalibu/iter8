@@ -72,10 +72,6 @@ type Window struct {
 type TrafficControlCommon struct {
 	// Maximum percentage of traffic that the candidate version will receive during the experiment; defaults to 50%
 	MaxTrafficPercent float64 `json:"max_traffic_percent"`
-
-	// Increment (in percent points) to be applied to the traffic received by the candidate version
-	// each time it passes the success criteria; defaults to 1 percent point
-	StepSize float64 `json:"step_size"`
 }
 
 // TrafficControl ...
@@ -120,10 +116,6 @@ type SuccessCriterionCommon struct {
 // SuccessCriterion ...
 type SuccessCriterion struct {
 	SuccessCriterionCommon
-
-	// Minimum number of data points required to make a decision based on this criterion;
-	// if not specified, there is no requirement on the sample size
-	SampleSize int `json:"sample_size"`
 }
 
 // Response ...
@@ -198,8 +190,6 @@ func (a BasicAnalyticsService) MakeRequest(instance *iter8v1alpha1.Experiment, b
 				StopOnFailure:      criterion.GetStopOnFailure(),
 			},
 		}
-
-		criteria[i].SampleSize = criterion.GetSampleSize()
 	}
 	now := time.Now().Format(time.RFC3339)
 	destinationKey, namespaceKey, baseVal, experimentVal, baseNsVal, experimentNsVal := "", "", "", "", "", ""
@@ -246,7 +236,6 @@ func (a BasicAnalyticsService) MakeRequest(instance *iter8v1alpha1.Experiment, b
 		TrafficControl: TrafficControl{
 			TrafficControlCommon: TrafficControlCommon{
 				MaxTrafficPercent: instance.Spec.TrafficControl.GetMaxTrafficPercentage(),
-				StepSize:          instance.Spec.TrafficControl.GetStepSize(),
 			},
 			SuccessCriteria: criteria,
 		},

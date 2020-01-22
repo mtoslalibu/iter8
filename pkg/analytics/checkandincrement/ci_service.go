@@ -11,7 +11,7 @@ WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
 See the License for the specific language governing permissions and
 limitations under the License.
 */
-package pbr
+package checkandincrement
 
 import (
 	"bytes"
@@ -30,8 +30,8 @@ import (
 	iter8v1alpha1 "github.com/iter8-tools/iter8-controller/pkg/apis/iter8/v1alpha1"
 )
 
-// PbrAnalyticsService provides a default implmenentation of interface AnalyticsService
-type PbrAnalyticsService struct {
+// CIAnalyticsService provides a default implmenentation of interface AnalyticsService
+type CIAnalyticsService struct {
 	analytics.BasicAnalyticsService
 }
 
@@ -46,8 +46,9 @@ type Request struct {
 type TrafficControl struct {
 	analytics.TrafficControlCommon
 
-	// Confidence that all success criteria are met
-	Confidence float64 `json:"confidence"`
+	// Increment (in percent points) to be applied to the traffic received by the candidate version
+	// each time it passes the success criteria; defaults to 1 percent point
+	StepSize float64 `json:"step_size"`
 
 	// List of criteria for assessing the candidate version
 	SuccessCriteria []SuccessCriterion `json:"success_criteria"`
@@ -57,24 +58,13 @@ type TrafficControl struct {
 type SuccessCriterion struct {
 	analytics.SuccessCriterionCommon
 
-	// Minimum and Maximum value of the metric
-	MinMax MinMax `json:"min_max"`
-
-	// TBD: delete this
+	// Minimum number of data points required to make a decision based on this criterion;
+	// if not specified, there is no requirement on the sample size
 	SampleSize int `json:"sample_size"`
 }
 
-// MinMax ...
-type MinMax struct {
-	// Minimum value of the metric
-	Min float64 `json:"min"`
-
-	// Maximum value of the metric
-	Max float64 `json:"max"`
-}
-
 // MakeRequest ...
-func (a PbrAnalyticsService) MakeRequest(instance *iter8v1alpha1.Experiment, baseline, experiment interface{}) (interface{}, error) {
+func (a CIAnalyticsService) MakeRequest(instance *iter8v1alpha1.Experiment, baseline, experiment interface{}) (interface{}, error) {
 	spec := instance.Spec
 
 	criteria := make([]SuccessCriterion, len(spec.Analysis.SuccessCriteria))
@@ -95,11 +85,8 @@ func (a PbrAnalyticsService) MakeRequest(instance *iter8v1alpha1.Experiment, bas
 				AbsentValue:        iter8metric.AbsentValue,
 				StopOnFailure:      criterion.GetStopOnFailure(),
 			},
-			MinMax: MinMax{
-				Min: 0.0,
-				Max: 100.0,
-			},
 		}
+		criteria[i].SampleSize = criterion.GetSampleSize()
 	}
 	now := time.Now().Format(time.RFC3339)
 	destinationKey, namespaceKey, baseVal, experimentVal, baseNsVal, experimentNsVal := "", "", "", "", "", ""
@@ -147,14 +134,14 @@ func (a PbrAnalyticsService) MakeRequest(instance *iter8v1alpha1.Experiment, bas
 			TrafficControlCommon: analytics.TrafficControlCommon{
 				MaxTrafficPercent: instance.Spec.TrafficControl.GetMaxTrafficPercentage(),
 			},
-			Confidence:      0.95,
+			StepSize:        instance.Spec.TrafficControl.GetStepSize(),
 			SuccessCriteria: criteria,
 		},
 	}, nil
 }
 
 // Invoke ...
-func (a PbrAnalyticsService) Invoke(log logr.Logger, endpoint string, payload interface{}, path string) (*analytics.Response, error) {
+func (a CIAnalyticsService) Invoke(log logr.Logger, endpoint string, payload interface{}, path string) (*analytics.Response, error) {
 	data, err := json.Marshal(payload)
 	if err != nil {
 		return nil, err
@@ -186,6 +173,6 @@ func (a PbrAnalyticsService) Invoke(log logr.Logger, endpoint string, payload in
 }
 
 // GetPath ...
-func (a PbrAnalyticsService) GetPath() string {
+func (a CIAnalyticsService) GetPath() string {
 	return ""
 }
