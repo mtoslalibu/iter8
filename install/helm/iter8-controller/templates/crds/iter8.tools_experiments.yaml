@@ -113,6 +113,21 @@ spec:
                         description: 'Name of the metric to which the criterion applies.
                           Options:'
                         type: string
+                      min_max:
+                        description: Minimum and maximum values of the metric
+                        properties:
+                          max:
+                            description: Max maximum value of the metric
+                            format: float64
+                            type: number
+                          min:
+                            description: Min minimum value of the metric
+                            format: float64
+                            type: number
+                        required:
+                        - max
+                        - min
+                        type: object
                       sampleSize:
                         description: Minimum number of data points required to make
                           a decision based on this criterion; If not specified, the
@@ -237,6 +252,9 @@ spec:
             trafficControl:
               description: TrafficControl defines parameters for controlling the traffic
               properties:
+                confidence:
+                  format: float64
+                  type: number
                 interval:
                   description: Interval is the time in second before the next increment.
                     Default is 1mn

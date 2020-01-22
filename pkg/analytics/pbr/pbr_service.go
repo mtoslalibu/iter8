@@ -59,9 +59,6 @@ type SuccessCriterion struct {
 
 	// Minimum and Maximum value of the metric
 	MinMax MinMax `json:"min_max"`
-
-	// TBD: delete this
-	SampleSize int `json:"sample_size"`
 }
 
 // MinMax ...
@@ -95,10 +92,12 @@ func (a PbrAnalyticsService) MakeRequest(instance *iter8v1alpha1.Experiment, bas
 				AbsentValue:        iter8metric.AbsentValue,
 				StopOnFailure:      criterion.GetStopOnFailure(),
 			},
-			MinMax: MinMax{
-				Min: 0.0,
-				Max: 100.0,
-			},
+		}
+		if criterion.MinMax != nil {
+			criteria[i].MinMax = MinMax{
+				Min: criterion.MinMax.Min,
+				Max: criterion.MinMax.Max,
+			}
 		}
 	}
 	now := time.Now().Format(time.RFC3339)
@@ -147,7 +146,7 @@ func (a PbrAnalyticsService) MakeRequest(instance *iter8v1alpha1.Experiment, bas
 			TrafficControlCommon: analytics.TrafficControlCommon{
 				MaxTrafficPercent: instance.Spec.TrafficControl.GetMaxTrafficPercentage(),
 			},
-			Confidence:      0.95,
+			Confidence:      instance.Spec.TrafficControl.GetConfidence(),
 			SuccessCriteria: criteria,
 		},
 	}, nil
