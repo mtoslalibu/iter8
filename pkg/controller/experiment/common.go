@@ -125,7 +125,7 @@ func successMsg(instance *iter8v1alpha1.Experiment) string {
 	} else if instance.Status.AssessmentSummary.AllSuccessCriteriaMet {
 		return "All Success Criteria Were Met"
 	} else {
-		return "Last iteration was completed"
+		return "Last Iteration Was Completed"
 	}
 }
 
