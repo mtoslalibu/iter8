@@ -17,15 +17,17 @@ package experiment
 
 import (
 	"context"
+	"reflect"
 	"strconv"
 	"time"
 
-	"github.com/go-logr/logr"
 	"k8s.io/apimachinery/pkg/api/errors"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	runtime "k8s.io/apimachinery/pkg/runtime"
+	toolscache "k8s.io/client-go/tools/cache"
 	"k8s.io/client-go/tools/record"
 	"sigs.k8s.io/controller-runtime/pkg/client"
+	"sigs.k8s.io/controller-runtime/pkg/client/config"
 	"sigs.k8s.io/controller-runtime/pkg/controller"
 	"sigs.k8s.io/controller-runtime/pkg/handler"
 	"sigs.k8s.io/controller-runtime/pkg/manager"
@@ -37,6 +39,7 @@ import (
 	corev1 "k8s.io/api/core/v1"
 
 	iter8v1alpha1 "github.com/iter8-tools/iter8-controller/pkg/apis/iter8/v1alpha1"
+	iter8notifier "github.com/iter8-tools/iter8-controller/pkg/notifier"
 	istioclient "istio.io/client-go/pkg/clientset/versioned"
 )
 
@@ -55,18 +58,67 @@ const (
 
 // Add creates a new Experiment Controller and adds it to the Manager with default RBAC. The Manager will set fields on the Controller
 // and Start it when the Manager is Started.
-func Add(mgr manager.Manager, istioClient *istioclient.Clientset) error {
-	return add(mgr, newReconciler(mgr, istioClient))
+func Add(mgr manager.Manager) error {
+	r, err := newReconciler(mgr)
+	if err != nil {
+		return err
+	}
+	return add(mgr, r)
 }
 
 // newReconciler returns a new reconcile.Reconciler
-func newReconciler(mgr manager.Manager, istioClient *istioclient.Clientset) reconcile.Reconciler {
-	return &ReconcileExperiment{
-		Client:        mgr.GetClient(),
-		istioClient:   istioClient,
-		scheme:        mgr.GetScheme(),
-		eventRecorder: mgr.GetEventRecorderFor(Iter8Controller),
+func newReconciler(mgr manager.Manager) (reconcile.Reconciler, error) {
+	cfg, err := config.GetConfig()
+	if err != nil {
+		log.Error(err, "unable to get client config")
+		return nil, err
 	}
+
+	ic, err := istioclient.NewForConfig(cfg)
+	if err != nil {
+		log.Error(err, "Failed to create istio client")
+		return nil, err
+	}
+
+	nc := iter8notifier.NewNotificationCenter(log)
+
+	cm := &corev1.ConfigMap{}
+	configmapInformer, err := mgr.GetCache().GetInformer(cm)
+	if err != nil {
+		return nil, err
+	}
+
+	configmapInformer.AddEventHandler(toolscache.FilteringResourceEventHandler{
+		FilterFunc: func(obj interface{}) bool {
+			cm := obj.(*corev1.ConfigMap)
+			if cm.GetName() == iter8notifier.ConfigMapName && cm.GetNamespace() == Iter8Namespace {
+				return true
+			}
+
+			return false
+		},
+		Handler: toolscache.ResourceEventHandlerFuncs{
+			AddFunc: iter8notifier.UpdateConfigFromConfigmap(nc),
+			UpdateFunc: func(oldObj, newObj interface{}) {
+				oldCm, newCm := oldObj.(*corev1.ConfigMap), newObj.(*corev1.ConfigMap)
+				if !reflect.DeepEqual(oldCm.Data, newCm.Data) {
+					iter8notifier.UpdateConfigFromConfigmap(nc)(newObj)
+				}
+			},
+			DeleteFunc: func(obj interface{}) {
+				// Not allowed
+				log.Info("Deleting notifier configmap is not allowed.")
+			},
+		},
+	})
+
+	return &ReconcileExperiment{
+		Client:             mgr.GetClient(),
+		istioClient:        ic,
+		scheme:             mgr.GetScheme(),
+		eventRecorder:      mgr.GetEventRecorderFor(Iter8Controller),
+		notificationCenter: nc,
+	}, nil
 }
 
 // add adds a new Controller to mgr with r as the reconcile.Reconciler
@@ -84,6 +136,8 @@ func add(mgr manager.Manager, r reconcile.Reconciler) error {
 	if err != nil {
 		return err
 	}
+
+	// Watch for changes to ConfigMap
 
 	// ****** Skip knative logic for now *******
 	// p := predicate.Funcs{
@@ -127,12 +181,13 @@ var _ reconcile.Reconciler = &ReconcileExperiment{}
 // ReconcileExperiment reconciles a Experiment object
 type ReconcileExperiment struct {
 	client.Client
-	scheme        *runtime.Scheme
-	eventRecorder record.EventRecorder
+	scheme             *runtime.Scheme
+	eventRecorder      record.EventRecorder
+	notificationCenter *iter8notifier.NotificationCenter
+	istioClient        istioclient.Interface
 
-	istioClient istioclient.Interface
-	targets     *Targets
-	rules       *IstioRoutingRules
+	targets *Targets
+	rules   *IstioRoutingRules
 }
 
 // Reconcile reads that state of the cluster for a Experiment object and makes changes based on the state read
@@ -247,9 +302,4 @@ func (r *ReconcileExperiment) finalize(context context.Context, instance *iter8v
 	}
 
 	return reconcile.Result{}, removeFinalizer(context, r, instance, Finalizer)
-}
-
-// Logger gets the logger from the context.
-func Logger(ctx context.Context) logr.Logger {
-	return ctx.Value(loggerKey).(logr.Logger)
 }

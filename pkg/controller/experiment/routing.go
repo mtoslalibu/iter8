@@ -97,7 +97,7 @@ func (r *IstioRoutingRules) Cleanup(instance *iter8v1alpha1.Experiment, targets 
 		err = r.DeleteAll(ic)
 	} else {
 		serviceName := instance.Spec.TargetService.Name
-		if experimentSucceeded(instance) {
+		if instance.Succeeded() {
 			// experiment is successful
 			switch instance.Spec.TrafficControl.GetOnSuccess() {
 			case "baseline":

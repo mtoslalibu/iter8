@@ -121,7 +121,7 @@ func (r *ReconcileExperiment) syncKnative(context context.Context, instance *ite
 		instance.Spec.Assessment != iter8v1alpha1.AssessmentNull {
 
 		update := false
-		if experimentSucceeded(instance) {
+		if instance.Succeeded() {
 			// experiment is successful
 			switch traffic.GetOnSuccess() {
 			case "baseline":
@@ -187,12 +187,12 @@ func (r *ReconcileExperiment) syncKnative(context context.Context, instance *ite
 
 		newRolloutPercent := *candidateTraffic.Percent
 
-		strategy := getStrategy(instance)
+		strategy := instance.GetStrategy()
 		if iter8v1alpha1.StrategyIncrementWithoutCheck == strategy {
 			newRolloutPercent += int64(traffic.GetStepSize())
 		} else {
 			var analyticsService analytics.AnalyticsService
-			switch getStrategy(instance) {
+			switch instance.GetStrategy() {
 			case checkandincrement.Strategy:
 				analyticsService = checkandincrement.GetService()
 			case epsilongreedy.Strategy:
@@ -295,7 +295,8 @@ func (r *ReconcileExperiment) syncKnative(context context.Context, instance *ite
 		}
 		if needUpdate {
 			log.Info("update traffic", "rolloutPercent", newRolloutPercent)
-			r.MarkExperimentProgress(context, instance, true, "New Traffic, baseline: %d, candidate: %d",
+			r.MarkExperimentProgress(context, instance, true, iter8v1alpha1.ReasonProgressSucceeded,
+				"New Traffic, baseline: %d, candidate: %d",
 				instance.Status.TrafficSplit.Baseline, instance.Status.TrafficSplit.Candidate)
 			err = r.Update(context, kservice) // TODO: patch?
 			if err != nil {
@@ -308,7 +309,8 @@ func (r *ReconcileExperiment) syncKnative(context context.Context, instance *ite
 		instance.Status.LastIncrementTime = metav1.NewTime(now)
 	}
 
-	r.MarkExperimentProgress(context, instance, false, "Iteration %d Completed", instance.Status.CurrentIteration)
+	r.MarkExperimentProgress(context, instance, false, iter8v1alpha1.ReasonIterationUpdate,
+		"Iteration %d Completed", instance.Status.CurrentIteration)
 	instance.Status.TrafficSplit.Baseline = int(*baselineTraffic.Percent)
 	instance.Status.TrafficSplit.Candidate = int(*candidateTraffic.Percent)
 	return reconcile.Result{RequeueAfter: interval}, r.Status().Update(context, instance)

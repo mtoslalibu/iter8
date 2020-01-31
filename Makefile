@@ -26,6 +26,7 @@ load: manifests
 	  -x templates/default/namespace.yaml \
 	  -x templates/crds/iter8.tools_experiments.yaml \
 	  -x templates/metrics/iter8_metrics.yaml \
+	  -x templates/notifier/iter8_notifiers.yaml\
 	| kubectl apply -f -
 
 # Deploy controller to the Kubernetes cluster configured in $KUBECONFIG or ~/.kube/config

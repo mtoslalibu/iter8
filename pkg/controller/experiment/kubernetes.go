@@ -27,32 +27,32 @@ import (
 
 func (r *ReconcileExperiment) syncKubernetes(context context.Context, instance *iter8v1alpha1.Experiment) (reconcile.Result, error) {
 	updateStatus, err := r.checkOrInitRules(context, instance)
-	if updateStatus {
-		if err := r.Status().Update(context, instance); err != nil && !validUpdateErr(err) {
-			log.Info("Fail to update status: %v", err)
-			// End experiment
-			return reconcile.Result{}, nil
-		}
-	}
 	if err != nil {
+		if updateStatus {
+			if err := r.Status().Update(context, instance); err != nil && !validUpdateErr(err) {
+				log.Info("Fail to update status: %v", err)
+				// End experiment
+				return reconcile.Result{}, nil
+			}
+		}
 		return reconcile.Result{}, err
 	}
 
 	updateStatus, err = r.detectTargets(context, instance)
-	if updateStatus {
-		if err := r.Status().Update(context, instance); err != nil && !validUpdateErr(err) {
-			log.Info("Fail to update status: %v", err)
-			// End experiment
-			return reconcile.Result{}, nil
-		}
-	}
 	if err != nil {
+		if updateStatus {
+			if err := r.Status().Update(context, instance); err != nil && !validUpdateErr(err) {
+				log.Info("Fail to update status: %v", err)
+				// End experiment
+				return reconcile.Result{}, nil
+			}
+		}
 		// retry in 5 secs
 		log.Info("retry in 5 secs")
 		return reconcile.Result{RequeueAfter: 5 * time.Second}, nil
 	}
 
-	if completed, err := r.checkExperimentComplete(context, instance); completed {
+	if completed, err := r.checkExperimentCompleted(context, instance); completed {
 		if err := r.Status().Update(context, instance); err != nil && !validUpdateErr(err) {
 			log.Info("Fail to update status: %v", err)
 			// End experiment
@@ -81,7 +81,7 @@ func (r *ReconcileExperiment) syncKubernetes(context context.Context, instance *
 			return reconcile.Result{RequeueAfter: 5 * time.Second}, err
 		}
 
-		if experimentCompleted(instance) {
+		if instance.Spec.TrafficControl.GetMaxIterations() < instance.Status.CurrentIteration {
 			return reconcile.Result{Requeue: true}, nil
 		}
 

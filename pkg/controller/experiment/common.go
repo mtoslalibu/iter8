@@ -21,8 +21,8 @@ import (
 	"strings"
 	"time"
 
+	"github.com/go-logr/logr"
 	"gopkg.in/yaml.v2"
-
 	corev1 "k8s.io/api/core/v1"
 	"k8s.io/apimachinery/pkg/api/meta"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
@@ -34,7 +34,7 @@ import (
 )
 
 const (
-	MetricsConfigMap = "iter8-metrics"
+	MetricsConfigMap = "iter8config-metrics"
 	Iter8Namespace   = "iter8"
 
 	Baseline    = "baseline"
@@ -47,6 +47,11 @@ const (
 	experimentLabel = "iter8-tools/experiment"
 	experimentHost  = "iter8-tools/host"
 )
+
+// Logger gets the logger from the context.
+func Logger(ctx context.Context) logr.Logger {
+	return ctx.Value(loggerKey).(logr.Logger)
+}
 
 func addFinalizerIfAbsent(context context.Context, c client.Client, instance *iter8v1alpha1.Experiment, fName string) (err error) {
 	for _, finalizer := range instance.ObjectMeta.GetFinalizers() {
@@ -102,24 +107,6 @@ func updateGrafanaURL(instance *iter8v1alpha1.Experiment, namespace string) {
 		"&to=" + endTs
 }
 
-func getStrategy(instance *iter8v1alpha1.Experiment) string {
-	strategy := instance.Spec.TrafficControl.GetStrategy()
-	if strategy != iter8v1alpha1.StrategyIncrementWithoutCheck &&
-		(instance.Spec.Analysis.SuccessCriteria == nil || len(instance.Spec.Analysis.SuccessCriteria) == 0) {
-		strategy = iter8v1alpha1.StrategyIncrementWithoutCheck
-	}
-	return strategy
-}
-
-func experimentSucceeded(instance *iter8v1alpha1.Experiment) bool {
-	if getStrategy(instance) == iter8v1alpha1.StrategyIncrementWithoutCheck {
-		return instance.Spec.Assessment == iter8v1alpha1.AssessmentOverrideSuccess ||
-			instance.Spec.Assessment == iter8v1alpha1.AssessmentNull
-	}
-	return instance.Spec.Assessment == iter8v1alpha1.AssessmentOverrideSuccess ||
-		instance.Status.AssessmentSummary.AllSuccessCriteriaMet && instance.Spec.Assessment == iter8v1alpha1.AssessmentNull
-}
-
 func markExperimentCompleted(instance *iter8v1alpha1.Experiment) {
 	// Clear analysis state
 	instance.Status.AnalysisState.Raw = []byte("{}")
@@ -134,22 +121,22 @@ func markExperimentCompleted(instance *iter8v1alpha1.Experiment) {
 
 func successMsg(instance *iter8v1alpha1.Experiment) string {
 	if instance.Spec.Assessment == iter8v1alpha1.AssessmentOverrideSuccess {
-		return "OverrideSuccess"
+		return "Override Success"
 	} else if instance.Status.AssessmentSummary.AllSuccessCriteriaMet {
-		return "AllSuccessCriteriaMet"
+		return "All Success Criteria Were Met"
 	} else {
-		return "IterationsExhausted"
+		return "Last iteration was completed"
 	}
 }
 
 func failureMsg(instance *iter8v1alpha1.Experiment) string {
 	if instance.Spec.Assessment == iter8v1alpha1.AssessmentOverrideFailure {
-		return "OverrideFailure"
+		return "Override Failure"
 	} else if !instance.Status.AssessmentSummary.AllSuccessCriteriaMet {
-		return "NotAllSuccessCriteriaMet"
+		return "Not All Success Criteria Met"
 	} else {
 		// Should not be reached
-		return "UnexpectedCondition"
+		return "Unexpected Condition"
 	}
 }
 
@@ -283,18 +270,16 @@ func withRecheckRequirement(instance *iter8v1alpha1.Experiment) bool {
 	analyticsCondition := instance.Status.GetCondition(iter8v1alpha1.ExperimentConditionAnalyticsServiceNormal)
 
 	if analyticsCondition != nil && analyticsCondition.Status == corev1.ConditionFalse {
+		log.Info("recheck analytics")
 		return true
 	}
 
 	rulesCondition := instance.Status.GetCondition(iter8v1alpha1.ExperimentConditionRoutingRulesReady)
 
 	if rulesCondition != nil && rulesCondition.Status == corev1.ConditionFalse {
+		log.Info("recheck rules")
 		return true
 	}
 
 	return false
-}
-
-func experimentCompleted(instance *iter8v1alpha1.Experiment) bool {
-	return instance.Spec.TrafficControl.GetMaxIterations() < instance.Status.CurrentIteration
 }
