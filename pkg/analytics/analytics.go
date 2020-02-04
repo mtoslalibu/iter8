@@ -21,7 +21,7 @@ import (
 
 // AnalyticsService ...
 type AnalyticsService interface {
-	MakeRequest(instance *iter8v1alpha1.Experiment, baseline, experiment interface{}) (*Request, error)
-	Invoke(log logr.Logger, endpoint string, payload *Request, path string) (*Response, error)
+	MakeRequest(instance *iter8v1alpha1.Experiment, baseline, experiment interface{}) (interface{}, error)
+	Invoke(log logr.Logger, endpoint string, payload interface{}, path string) (*Response, error)
 	GetPath() string
 }

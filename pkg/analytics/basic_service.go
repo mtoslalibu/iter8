@@ -33,8 +33,8 @@ import (
 type BasicAnalyticsService struct {
 }
 
-// Request ...
-type Request struct {
+// RequestCommon ...
+type RequestCommon struct {
 	// Specifies the name of the experiment
 	Name string `json:"name"`
 
@@ -44,11 +44,16 @@ type Request struct {
 	// Specifies a time interval and key-value pairs for retrieving and processing data pertaining to the candidate version
 	Candidate Window `json:"candidate"`
 
-	// Parameters controlling the behavior of the analytics
-	TrafficControl TrafficControl `json:"traffic_control"`
-
 	// State returned by the server on the previous call
 	LastState interface{} `json:"_last_state"`
+}
+
+// Request ...
+type Request struct {
+	RequestCommon
+
+	// Parameters controlling the behavior of the analytics
+	TrafficControl TrafficControl `json:"traffic_control"`
 }
 
 // Window ...
@@ -63,24 +68,22 @@ type Window struct {
 	Tags map[string]string `json:"tags"`
 }
 
-// TrafficControl ...
-type TrafficControl struct {
-	// Parameters controlling the behavior of the analytics
-	WarmupRequestCount int `json:"warmup_request_count"`
-
+// TrafficControlCommon ...
+type TrafficControlCommon struct {
 	// Maximum percentage of traffic that the candidate version will receive during the experiment; defaults to 50%
 	MaxTrafficPercent float64 `json:"max_traffic_percent"`
+}
 
-	// Increment (in percent points) to be applied to the traffic received by the candidate version
-	// each time it passes the success criteria; defaults to 1 percent point
-	StepSize float64 `json:"step_size"`
+// TrafficControl ...
+type TrafficControl struct {
+	TrafficControlCommon
 
 	// List of criteria for assessing the candidate version
 	SuccessCriteria []SuccessCriterion `json:"success_criteria"`
 }
 
-// SuccessCriterion ...
-type SuccessCriterion struct {
+// SuccessCriterionCommon ...
+type SuccessCriterionCommon struct {
 	// Name of the metric to which the criterion applies
 	// example: iter8_latency
 	MetricName string `json:"metric_name"`
@@ -105,18 +108,14 @@ type SuccessCriterion struct {
 	// Value to check
 	Value float64 `json:"value"`
 
-	// Minimum number of data points required to make a decision based on this criterion;
-	// if not specified, there is no requirement on the sample size
-	SampleSize int `json:"sample_size"`
-
 	// Indicates whether or not the experiment must finish if this criterion is not satisfied;
 	// defaults to false
 	StopOnFailure bool `json:"stop_on_failure"`
+}
 
-	// Indicates that this criterion is based on statistical confidence;
-	// for instance, one can specify a 98% confidence that the criterion is satisfied;
-	// if not specified, there is no confidence requirement
-	Confidence float64 `json:"confidence"`
+// SuccessCriterion ...
+type SuccessCriterion struct {
+	SuccessCriterionCommon
 }
 
 // Response ...
@@ -169,7 +168,7 @@ type MetricsTraffic struct {
 }
 
 // MakeRequest ...
-func (a BasicAnalyticsService) MakeRequest(instance *iter8v1alpha1.Experiment, baseline, experiment interface{}) (*Request, error) {
+func (a BasicAnalyticsService) MakeRequest(instance *iter8v1alpha1.Experiment, baseline, experiment interface{}) (interface{}, error) {
 	spec := instance.Spec
 
 	criteria := make([]SuccessCriterion, len(spec.Analysis.SuccessCriteria))
@@ -180,17 +179,17 @@ func (a BasicAnalyticsService) MakeRequest(instance *iter8v1alpha1.Experiment, b
 			return nil, fmt.Errorf("Metric %s Not Available", criterion.MetricName)
 		}
 		criteria[i] = SuccessCriterion{
-			MetricName:         criterion.MetricName,
-			Type:               criterion.ToleranceType,
-			Value:              criterion.Tolerance,
-			Template:           iter8metric.QueryTemplate,
-			SampleSizeTemplate: iter8metric.SampleSizeTemplate,
-			IsCounter:          iter8metric.IsCounter,
-			AbsentValue:        iter8metric.AbsentValue,
+			SuccessCriterionCommon: SuccessCriterionCommon{
+				MetricName:         criterion.MetricName,
+				Type:               criterion.ToleranceType,
+				Value:              criterion.Tolerance,
+				Template:           iter8metric.QueryTemplate,
+				SampleSizeTemplate: iter8metric.SampleSizeTemplate,
+				IsCounter:          iter8metric.IsCounter,
+				AbsentValue:        iter8metric.AbsentValue,
+				StopOnFailure:      criterion.GetStopOnFailure(),
+			},
 		}
-
-		criteria[i].SampleSize = criterion.GetSampleSize()
-		criteria[i].StopOnFailure = criterion.GetStopOnFailure()
 	}
 	now := time.Now().Format(time.RFC3339)
 	destinationKey, namespaceKey, baseVal, experimentVal, baseNsVal, experimentNsVal := "", "", "", "", "", ""
@@ -214,34 +213,37 @@ func (a BasicAnalyticsService) MakeRequest(instance *iter8v1alpha1.Experiment, b
 	}
 
 	return &Request{
-		Name: instance.Name,
-		Baseline: Window{
-			StartTime: instance.ObjectMeta.GetCreationTimestamp().Format(time.RFC3339),
-			EndTime:   now,
-			Tags: map[string]string{
-				destinationKey: baseVal,
-				namespaceKey:   baseNsVal,
+		RequestCommon: RequestCommon{
+			Name: instance.Name,
+			Baseline: Window{
+				StartTime: instance.ObjectMeta.GetCreationTimestamp().Format(time.RFC3339),
+				EndTime:   now,
+				Tags: map[string]string{
+					destinationKey: baseVal,
+					namespaceKey:   baseNsVal,
+				},
 			},
-		},
-		Candidate: Window{
-			StartTime: instance.ObjectMeta.GetCreationTimestamp().Format(time.RFC3339),
-			EndTime:   now,
-			Tags: map[string]string{
-				destinationKey: experimentVal,
-				namespaceKey:   experimentNsVal,
+			Candidate: Window{
+				StartTime: instance.ObjectMeta.GetCreationTimestamp().Format(time.RFC3339),
+				EndTime:   now,
+				Tags: map[string]string{
+					destinationKey: experimentVal,
+					namespaceKey:   experimentNsVal,
+				},
 			},
+			LastState: instance.Status.AnalysisState,
 		},
 		TrafficControl: TrafficControl{
-			MaxTrafficPercent: instance.Spec.TrafficControl.GetMaxTrafficPercentage(),
-			StepSize:          instance.Spec.TrafficControl.GetStepSize(),
-			SuccessCriteria:   criteria,
+			TrafficControlCommon: TrafficControlCommon{
+				MaxTrafficPercent: instance.Spec.TrafficControl.GetMaxTrafficPercentage(),
+			},
+			SuccessCriteria: criteria,
 		},
-		LastState: instance.Status.AnalysisState,
 	}, nil
 }
 
 // Invoke ...
-func (a BasicAnalyticsService) Invoke(log logr.Logger, endpoint string, payload *Request, path string) (*Response, error) {
+func (a BasicAnalyticsService) Invoke(log logr.Logger, endpoint string, payload interface{}, path string) (*Response, error) {
 	data, err := json.Marshal(payload)
 	if err != nil {
 		return nil, err
