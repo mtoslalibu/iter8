@@ -255,7 +255,7 @@ func (s *Summary) Assessment2String() string {
 		out += " " + s + ";"
 	}
 
-	return strings.TrimSpace(out)
+	return strings.TrimRight(out, ";")
 }
 
 type ToleranceType string
@@ -483,11 +483,11 @@ func (s *ExperimentStatus) MarkTargetsFound() bool {
 // Return true if it's converted from true or unknown
 func (s *ExperimentStatus) MarkTargetsError(reason, messageFormat string, messageA ...interface{}) bool {
 	prevStat := s.GetCondition(ExperimentConditionTargetsProvided).Status
-	//	prevMsg := s.GetCondition(ExperimentConditionTargetsProvided).Message
+	prevMsg := s.GetCondition(ExperimentConditionTargetsProvided).Message
 	experimentCondSet.Manage(s).MarkFalse(ExperimentConditionTargetsProvided, reason, messageFormat, messageA...)
 	s.Phase = PhasePause
 	s.Message = composeMessage(reason, messageFormat, messageA...)
-	return prevStat != corev1.ConditionFalse
+	return prevStat != corev1.ConditionFalse || prevMsg != s.GetCondition(ExperimentConditionTargetsProvided).Message
 }
 
 // MarkRoutingRulesReady sets the condition that the routing rules are ready

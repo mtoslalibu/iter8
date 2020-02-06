@@ -265,21 +265,3 @@ func validUpdateErr(err error) bool {
 	benignMsg := "the object has been modified"
 	return strings.Contains(err.Error(), benignMsg)
 }
-
-func withRecheckRequirement(instance *iter8v1alpha1.Experiment) bool {
-	analyticsCondition := instance.Status.GetCondition(iter8v1alpha1.ExperimentConditionAnalyticsServiceNormal)
-
-	if analyticsCondition != nil && analyticsCondition.Status == corev1.ConditionFalse {
-		log.Info("recheck analytics")
-		return true
-	}
-
-	rulesCondition := instance.Status.GetCondition(iter8v1alpha1.ExperimentConditionRoutingRulesReady)
-
-	if rulesCondition != nil && rulesCondition.Status == corev1.ConditionFalse {
-		log.Info("recheck rules")
-		return true
-	}
-
-	return false
-}

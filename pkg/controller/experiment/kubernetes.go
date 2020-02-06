@@ -66,7 +66,8 @@ func (r *ReconcileExperiment) syncKubernetes(context context.Context, instance *
 	traffic := instance.Spec.TrafficControl
 	// TODO: check err in getting the time value
 	interval, _ := traffic.GetIntervalDuration()
-	if now.After(instance.Status.LastIncrementTime.Add(interval)) || withRecheckRequirement(instance) {
+
+	if now.After(instance.Status.LastIncrementTime.Add(interval)) {
 		err := r.progressExperiment(context, instance)
 		if err := r.Status().Update(context, instance); err != nil && !validUpdateErr(err) {
 			log.Info("Fail to update status: %v", err)
@@ -78,7 +79,7 @@ func (r *ReconcileExperiment) syncKubernetes(context context.Context, instance *
 			// TODO: may need a better handling method
 			// retry in 5 sec
 			log.Info("retry in 5 secs", "err", err)
-			return reconcile.Result{RequeueAfter: 5 * time.Second}, err
+			return reconcile.Result{RequeueAfter: 5 * time.Second}, nil
 		}
 
 		if instance.Spec.TrafficControl.GetMaxIterations() < instance.Status.CurrentIteration {
