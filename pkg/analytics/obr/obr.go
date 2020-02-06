@@ -11,17 +11,20 @@ WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
 See the License for the specific language governing permissions and
 limitations under the License.
 */
-package checkandincrement
+package obr
+
+import (
+	"github.com/iter8-tools/iter8-controller/pkg/analytics/pbr"
+)
 
 const (
-	// Strategy ...
-	// matches github.com/iter8-tools/iter8-controller/pkg/apis/iter8/v1alpha1#StrategyCheckAndIncrement
-	Strategy string = "check_and_increment"
+	// Strategy is label for strategy
+	Strategy string = "optimistic_bayesian_routing"
 )
 
 // Service ...
 type Service struct {
-	CIAnalyticsService
+	pbr.PbrAnalyticsService
 }
 
 // GetService ...
@@ -29,7 +32,8 @@ func GetService() Service {
 	return Service{}
 }
 
-// GetPath ...
+// GetPath returns path to be used to access analytics service
+// See: https://github.com/iter8-tools/iter8-analytics/blob/master/iter8_analytics/api/analytics/endpoints/analytics.py#L98
 func (s Service) GetPath() string {
-	return "/api/v1/analytics/canary/check_and_increment"
+	return "/api/v1/analytics/canary/optimistic_bayesian_routing"
 }

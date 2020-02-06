@@ -48,32 +48,42 @@ type Experiment struct {
 	Metrics ExperimentMetrics `json:"metrics,omitempty"`
 }
 
-// +k8s:deepcopy-gen:interfaces=k8s.io/apimachinery/pkg/runtime.Object
 // ExperimentList contains a list of Experiment
+// +k8s:deepcopy-gen:interfaces=k8s.io/apimachinery/pkg/runtime.Object
 type ExperimentList struct {
 	metav1.TypeMeta `json:",inline"`
 	metav1.ListMeta `json:"metadata,omitempty"`
 	Items           []Experiment `json:"items"`
 }
 
+// AssessmentType ...
 type AssessmentType string
 
 const (
+	// AssessmentOverrideSuccess indicates that the experiment should be forced to a successful termination
 	AssessmentOverrideSuccess AssessmentType = "override_success"
+	// AssessmentOverrideFailure indicates that the experiment should be forced to a failed termination
 	AssessmentOverrideFailure AssessmentType = "override_failure"
-	AssessmentNull            AssessmentType = ""
+	// AssessmentNull indicates that the experiment should be progress normally
+	AssessmentNull AssessmentType = ""
 )
 
+// CleanUpType ...
 type CleanUpType string
 
 const (
+	// CleanUpDelete indicates unused deployment should be removed on experiment completion
 	CleanUpDelete CleanUpType = "delete"
-	CleanUpNull   CleanUpType = ""
+	// CleanUpNull indicates no action should ne taken on experiment completion
+	CleanUpNull CleanUpType = ""
 )
 
+// TBD Can we remove these?
 const (
+	// StrategyIncrementWithoutCheck ...
 	StrategyIncrementWithoutCheck string = "increment_without_check"
-	StrategyCheckAndIncrement     string = "check_and_increment"
+	// StrategyCheckAndIncrement ...
+	StrategyCheckAndIncrement string = "check_and_increment"
 )
 
 // ExperimentSpec defines the desired state of Experiment
@@ -136,13 +146,18 @@ type TargetService struct {
 	Candidate string `json:"candidate,omitempty"`
 }
 
+// Phase the experiment is in
 type Phase string
 
 const (
+	// PhaseInitializing indicates experiment is intializing
 	PhaseInitializing Phase = "Initializing"
-	PhasePause        Phase = "Pause"
-	PhaseProgressing  Phase = "Progressing"
-	PhaseCompleted    Phase = "Completed"
+	// PhasePause indicates experiment is paused
+	PhasePause Phase = "Pause"
+	// PhaseProgressing indicates experiment is progressing
+	PhaseProgressing Phase = "Progressing"
+	// PhaseCompleted indicates experiment has competed (successfully or not)
+	PhaseCompleted Phase = "Completed"
 )
 
 // ExperimentStatus defines the observed state of Experiment
@@ -183,17 +198,19 @@ type ExperimentStatus struct {
 	Message string `json:"message,omitempty"`
 }
 
+// TrafficSplit specifies percentage of traffic to baseline vs candidate
 type TrafficSplit struct {
 	Baseline  int `json:"baseline"`
 	Candidate int `json:"candidate"`
 }
 
+// TrafficControl specifies how/when traffic between versioins should be altered
 type TrafficControl struct {
 	// Strategy is the strategy used for experiment. Options:
 	// "check_and_increment": get decision on traffic increament from analytics
 	// "increment_without_check": increase traffic each interval without calling analytics
 	// +optional. Default is "check_and_increment".
-	//+kubebuilder:validation:Enum={check_and_increment,increment_without_check,epsilon_greedy}
+	//+kubebuilder:validation:Enum={check_and_increment,increment_without_check,epsilon_greedy,posterior_bayesian_routing,optimistic_bayesian_routing}
 	Strategy *string `json:"strategy,omitempty"`
 
 	// MaxTrafficPercentage is the maximum traffic ratio to send to the candidate. Default is 50
@@ -220,8 +237,12 @@ type TrafficControl struct {
 	// +optional
 	//+kubebuilder:validation:Enum={baseline,candidate,both}
 	OnSuccess *string `json:"onSuccess,omitempty"`
+
+	//
+	Confidence *float64 `json:"confidence,omitempty"`
 }
 
+// Analysis ...
 type Analysis struct {
 	// AnalyticsService endpoint
 	AnalyticsService string `json:"analyticsService,omitempty"`
@@ -233,6 +254,7 @@ type Analysis struct {
 	SuccessCriteria []SuccessCriterion `json:"successCriteria,omitempty"`
 }
 
+// Summary ...
 type Summary struct {
 	// Overall summary based on all success criteria
 	Conclusions []string `json:"conclusions,omitempty"`
@@ -261,9 +283,20 @@ func (s *Summary) Assessment2String() string {
 type ToleranceType string
 
 const (
-	ToleranceTypeDelta     ToleranceType = "delta"
+	// ToleranceTypeDelta constant string for tolerances of type "delta"
+	ToleranceTypeDelta ToleranceType = "delta"
+	// ToleranceTypeThreshold constant string for tolerances of type "threshhold"
 	ToleranceTypeThreshold ToleranceType = "threshold"
 )
+
+// MinMax captures minimum and maximum values of the metric
+type MinMax struct {
+	// Min minimum value of the metric
+	Min float64 `json:"min"`
+
+	//Max maximum value of the metric
+	Max float64 `json:"max"`
+}
 
 // SuccessCriterion specifies the criteria for an experiment to succeed
 type SuccessCriterion struct {
@@ -283,6 +316,9 @@ type SuccessCriterion struct {
 	// If not specified, the default value is 10
 	// +optional
 	SampleSize *int `json:"sampleSize,omitempty"`
+
+	// Minimum and maximum values of the metric
+	MinMax *MinMax `json:"min_max,omitempty"`
 
 	// Indicates whether or not the experiment must finish if this criterion is not satisfied;
 	// defaults to false
@@ -354,6 +390,15 @@ func (t *TrafficControl) GetOnSuccess() string {
 		return "candidate"
 	}
 	return *onsuccess
+}
+
+// GetConfidence retrieves the desired probability that all the success criteria are met
+func (t *TrafficControl) GetConfidence() float64 {
+	confidence := t.Confidence
+	if confidence == nil {
+		return 0.95
+	}
+	return *confidence
 }
 
 // GetServiceEndpoint returns the analytcis endpoint; Default is "http://iter8-analytics.iter8".
