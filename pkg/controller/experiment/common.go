@@ -207,8 +207,7 @@ func readMetrics(context context.Context, c client.Client, instance *iter8v1alph
 		instance.Metrics[metric.Name] = m
 	}
 
-	err = c.Update(context, instance)
-	return err
+	return c.Update(context, instance)
 }
 
 func (r *ReconcileExperiment) executeStatusUpdate(ctx context.Context, instance *iter8v1alpha1.Experiment) (err error) {

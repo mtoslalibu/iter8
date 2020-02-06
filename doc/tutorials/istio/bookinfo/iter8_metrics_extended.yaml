@@ -1,7 +1,7 @@
 apiVersion: v1
 kind: ConfigMap
 metadata:
-  name: iter8-metrics
+  name: iter8config-metrics
   namespace: iter8
 data:
   query_templates: |-
