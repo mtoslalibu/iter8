@@ -105,10 +105,7 @@ func newReconciler(mgr manager.Manager) (reconcile.Reconciler, error) {
 					iter8notifier.UpdateConfigFromConfigmap(nc)(newObj)
 				}
 			},
-			DeleteFunc: func(obj interface{}) {
-				// Not allowed
-				log.Info("Deleting notifier configmap is not allowed.")
-			},
+			DeleteFunc: iter8notifier.RemoveNotifiers(nc),
 		},
 	})
 

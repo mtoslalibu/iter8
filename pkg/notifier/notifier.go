@@ -72,8 +72,6 @@ func (nc *NotificationCenter) UpdateNotifier(name string, cfg *Config) {
 	switch cfg.Notifier {
 	case NotifierNameSlack:
 		impl = NewSlackWebhook()
-	default:
-		nc.logger.Error(fmt.Errorf("Unsupported notifier: %s", cfg.Notifier), "Fail to update channel", name)
 	}
 	nc.m.Lock()
 	defer nc.m.Unlock()
@@ -82,10 +80,10 @@ func (nc *NotificationCenter) UpdateNotifier(name string, cfg *Config) {
 		config: cfg,
 		impl:   impl,
 	}
-	nc.logger.Info("notifier channel updated", "name", name)
+	nc.logger.Info("notifier channel updated", "name", name, "level", cfg.Level)
 }
 
-// UpdateNotifier will remove the notifier stored inside the center
+// RemoveNotifier will remove the notifier stored inside the center
 func (nc *NotificationCenter) RemoveNotifier(name string) {
 	nc.m.Lock()
 	defer nc.m.Unlock()
@@ -115,6 +113,27 @@ type Config struct {
 	Labels map[string]string `yaml:"labels,omitempty"`
 }
 
+func (c *Config) validateAndSetDefault() error {
+	switch c.Notifier {
+	case NotifierNameSlack:
+		//valid
+	default:
+		return fmt.Errorf("Unsupported notifier: %s", c.Notifier)
+	}
+
+	switch c.Level {
+	case NotifierLevelError, NotifierLevelWarning, NotifierLevelNormal, NotifierLevelVerbose:
+		//valid
+	case "":
+		// default option
+		c.Level = NotifierLevelNormal
+	default:
+		return fmt.Errorf("Fail to recognize level: %s", c.Level)
+	}
+
+	return nil
+}
+
 // UpdateConfigFromConfigmap update notification
 func UpdateConfigFromConfigmap(nc *NotificationCenter) func(obj interface{}) {
 	return func(obj interface{}) {
@@ -124,7 +143,12 @@ func UpdateConfigFromConfigmap(nc *NotificationCenter) func(obj interface{}) {
 		for name, raw := range data {
 			newConfig := Config{}
 			if err := yaml.Unmarshal([]byte(raw), &newConfig); err != nil {
-				nc.logger.Error(err, "Fail to unmarshal cm")
+				nc.logger.Error(err, "Fail to unmarshal cm", "name", name)
+				continue
+			}
+
+			if err := newConfig.validateAndSetDefault(); err != nil {
+				nc.logger.Error(err, "Invalid config for channel", "name", name)
 				continue
 			}
 
@@ -142,6 +166,15 @@ func UpdateConfigFromConfigmap(nc *NotificationCenter) func(obj interface{}) {
 		}
 
 		return
+	}
+}
+
+// RemoveNotifiers will remove all the notifiers away
+func RemoveNotifiers(nc *NotificationCenter) func(obj interface{}) {
+	return func(obj interface{}) {
+		for ntf := range nc.Notifiers {
+			nc.RemoveNotifier(ntf)
+		}
 	}
 }
 
@@ -209,14 +242,12 @@ func level2Int(level string) int {
 		return 4
 	case NotifierLevelWarning:
 		return 3
-	default:
-		// Default to normal
-		fallthrough
 	case NotifierLevelNormal:
 		return 2
 	case NotifierLevelVerbose:
 		return 1
 	}
+	return -1
 }
 
 // returns hardcoded severity value
