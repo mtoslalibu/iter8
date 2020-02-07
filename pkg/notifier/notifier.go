@@ -209,12 +209,14 @@ func level2Int(level string) int {
 		return 4
 	case NotifierLevelWarning:
 		return 3
+	default:
+		// Default to normal
+		fallthrough
 	case NotifierLevelNormal:
 		return 2
 	case NotifierLevelVerbose:
 		return 1
 	}
-	return 0
 }
 
 // returns hardcoded severity value
