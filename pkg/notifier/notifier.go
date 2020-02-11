@@ -271,9 +271,9 @@ func reasonSeverity(r string) int {
 		iter8v1alpha1.ReasonRoutingRulesError,
 		iter8v1alpha1.ReasonAnalyticsServiceError:
 		return 4
-	case iter8v1alpha1.ReasonProgressFailure:
+	case iter8v1alpha1.ReasonIterationFailed:
 		return 3
-	case iter8v1alpha1.ReasonProgressSucceeded:
+	case iter8v1alpha1.ReasonIterationSucceeded:
 		return 2
 	case iter8v1alpha1.ReasonTargetsFound,
 		iter8v1alpha1.ReasonAnalyticsServiceRunning,

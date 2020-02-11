@@ -224,9 +224,9 @@ func (r *ReconcileExperiment) setExperimentEndStatus(context context.Context, in
 
 		r.MarkExperimentSucceeded(context, instance, "%s", successMsg(instance))
 	} else {
-		r.MarkExperimentFailed(context, instance, "%s", failureMsg(instance))
 		instance.Status.TrafficSplit.Baseline = 100
 		instance.Status.TrafficSplit.Candidate = 0
+		r.MarkExperimentFailed(context, instance, "%s", failureMsg(instance))
 	}
 
 	return
@@ -426,7 +426,7 @@ func (r *ReconcileExperiment) progressExperiment(context context.Context, instan
 	// fail in this iteration
 	// skip check for the first iteration
 	if instance.Status.CurrentIteration > 0 && !instance.Succeeded() {
-		r.MarkExperimentProgress(context, instance, true, iter8v1alpha1.ReasonProgressFailure,
+		r.MarkExperimentProgress(context, instance, true, iter8v1alpha1.ReasonIterationFailed,
 			instance.Status.AssessmentSummary.Assessment2String())
 	} else if rolloutPercent <= int32(traffic.GetMaxTrafficPercentage()) &&
 		r.rules.GetWeight(Candidate) != rolloutPercent {
@@ -439,13 +439,14 @@ func (r *ReconcileExperiment) progressExperiment(context context.Context, instan
 		instance.Status.TrafficSplit.Baseline = 100 - int(rolloutPercent)
 		instance.Status.TrafficSplit.Candidate = int(rolloutPercent)
 
-		r.MarkExperimentProgress(context, instance, true, iter8v1alpha1.ReasonProgressSucceeded,
+		r.MarkExperimentProgress(context, instance, true, iter8v1alpha1.ReasonIterationSucceeded,
 			"New Traffic, baseline: %d, candidate: %d",
 			instance.Status.TrafficSplit.Baseline, instance.Status.TrafficSplit.Candidate)
 	}
 
 	instance.Status.LastIncrementTime = metav1.NewTime(time.Now())
 	instance.Status.CurrentIteration++
+
 	r.MarkExperimentProgress(context, instance, false, iter8v1alpha1.ReasonIterationUpdate,
 		"Iteration %d Started", instance.Status.CurrentIteration)
 	return nil

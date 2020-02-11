@@ -83,10 +83,12 @@ func (r *ReconcileExperiment) syncKubernetes(context context.Context, instance *
 		}
 
 		if instance.Spec.TrafficControl.GetMaxIterations() < instance.Status.CurrentIteration {
+			log.Info("Experiment Succeeded, requeue")
 			return reconcile.Result{Requeue: true}, nil
 		}
 
 		// Next iteration
+		log.Info("Requeue for next iteration")
 		return reconcile.Result{RequeueAfter: interval}, nil
 	}
 

@@ -295,7 +295,7 @@ func (r *ReconcileExperiment) syncKnative(context context.Context, instance *ite
 		}
 		if needUpdate {
 			log.Info("update traffic", "rolloutPercent", newRolloutPercent)
-			r.MarkExperimentProgress(context, instance, true, iter8v1alpha1.ReasonProgressSucceeded,
+			r.MarkExperimentProgress(context, instance, true, iter8v1alpha1.ReasonIterationSucceeded,
 				"New Traffic, baseline: %d, candidate: %d",
 				instance.Status.TrafficSplit.Baseline, instance.Status.TrafficSplit.Candidate)
 			err = r.Update(context, kservice) // TODO: patch?

@@ -265,9 +265,17 @@ func (r *ReconcileExperiment) Reconcile(request reconcile.Request) (reconcile.Re
 	// Sync metric definitions from the config map
 	metricsSycned := instance.Status.GetCondition(iter8v1alpha1.ExperimentConditionMetricsSynced)
 	if metricsSycned == nil || metricsSycned.Status != corev1.ConditionTrue {
-		if err := readMetrics(ctx, r, instance); err != nil {
+		if err := readMetrics(ctx, r, instance); err != nil && !validUpdateErr(err) {
 			r.MarkSyncMetricsError(ctx, instance, "Fail to read metrics: %v", err)
-			return reconcile.Result{}, r.Status().Update(ctx, instance)
+
+			if err := r.Status().Update(ctx, instance); err != nil && !validUpdateErr(err) {
+				log.Info("Fail to update status: %v", err)
+				// End experiment
+				return reconcile.Result{}, nil
+			}
+
+			log.Info("Retry in 5s")
+			return reconcile.Result{RequeueAfter: 5 * time.Second}, nil
 		}
 		r.MarkSyncMetrics(ctx, instance)
 	}

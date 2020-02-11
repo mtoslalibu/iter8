@@ -103,7 +103,7 @@ func (s *SlackWebhook) MakeRequest(instance *iter8v1alpha1.Experiment, reason st
 
 	if reasonSeverity(reason) >= 3 {
 		switch reason {
-		case iter8v1alpha1.ReasonProgressFailure:
+		case iter8v1alpha1.ReasonIterationFailed:
 			color = "warning"
 		case iter8v1alpha1.ReasonExperimentSucceeded:
 			//do nothing
