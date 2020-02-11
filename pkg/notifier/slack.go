@@ -90,14 +90,15 @@ func (s *SlackWebhook) MakeRequest(instance *iter8v1alpha1.Experiment, reason st
 	})
 
 	details := fmt.Sprintf(messageFormat, messageA...)
-
-	sr.Blocks = append(sr.Blocks, SectionBlock{
-		Type: SectionBlockType,
-		Text: MarkdownText{
-			Type: MarkdownTextType,
-			Text: "_" + details + "_",
-		},
-	})
+	if len(details) > 0 {
+		sr.Blocks = append(sr.Blocks, SectionBlock{
+			Type: SectionBlockType,
+			Text: MarkdownText{
+				Type: MarkdownTextType,
+				Text: "_" + details + "_",
+			},
+		})
+	}
 
 	color := "good"
 
