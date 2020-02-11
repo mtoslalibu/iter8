@@ -1,0 +1,15 @@
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: iter8config-notifiers
+  namespace: {{ .Values.namespace }}
+data:
+#####################################################################
+## Add notifier channel info here 
+## Example:
+## channel1: |-
+##    notifier: slack
+##    url: https://hooks.slack.com/services/TXXXXX/BXXXXXX/xxxxxxxx
+##    level: normal
+######################################################################
+  
