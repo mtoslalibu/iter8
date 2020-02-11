@@ -28,10 +28,6 @@ import (
 	"k8s.io/apimachinery/pkg/types"
 
 	"github.com/iter8-tools/iter8-controller/pkg/analytics"
-	"github.com/iter8-tools/iter8-controller/pkg/analytics/checkandincrement"
-	"github.com/iter8-tools/iter8-controller/pkg/analytics/epsilongreedy"
-	"github.com/iter8-tools/iter8-controller/pkg/analytics/obr"
-	"github.com/iter8-tools/iter8-controller/pkg/analytics/pbr"
 	"istio.io/client-go/pkg/apis/networking/v1alpha3"
 
 	iter8v1alpha1 "github.com/iter8-tools/iter8-controller/pkg/apis/iter8/v1alpha1"
@@ -367,26 +363,20 @@ func (r *ReconcileExperiment) progressExperiment(context context.Context, instan
 	if iter8v1alpha1.StrategyIncrementWithoutCheck == strategy {
 		rolloutPercent += int32(traffic.GetStepSize())
 	} else {
-		var analyticsService analytics.AnalyticsService
-		switch getStrategy(instance) {
-		case checkandincrement.Strategy:
-			analyticsService = checkandincrement.GetService()
-		case epsilongreedy.Strategy:
-			analyticsService = epsilongreedy.GetService()
-		case pbr.Strategy:
-			analyticsService = pbr.GetService()
-		case obr.Strategy:
-			analyticsService = obr.GetService()
+		algorithm := analytics.GetAlgorithm(strategy)
+		if algorithm == nil {
+			err := fmt.Errorf("Unsupported Strategy %s", strategy)
+			r.MarkAnalyticsServiceError(context, instance, "%s", err.Error())
+			return err
 		}
-
 		// Get latest analysis
-		payload, err := analyticsService.MakeRequest(instance, r.targets.Baseline, r.targets.Candidate)
+		payload, err := analytics.MakeRequest(instance, r.targets.Baseline, r.targets.Candidate, algorithm)
 		if err != nil {
 			r.MarkAnalyticsServiceError(context, instance, "%s", err.Error())
 			return err
 		}
 
-		response, err := analyticsService.Invoke(log, instance.Spec.Analysis.GetServiceEndpoint(), payload, analyticsService.GetPath())
+		response, err := analytics.Invoke(log, instance.Spec.Analysis.GetServiceEndpoint(), payload, algorithm)
 		if err != nil {
 			r.MarkAnalyticsServiceError(context, instance, "%s", err.Error())
 			return err
