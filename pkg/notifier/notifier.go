@@ -178,6 +178,21 @@ func RemoveNotifiers(nc *NotificationCenter) func(obj interface{}) {
 	}
 }
 
+func matchLabels(nLabels, eLabels map[string]string) bool {
+	if len(nLabels) > 0 {
+		if len(eLabels) == 0 {
+			return false
+		}
+
+		for key, val := range nLabels {
+			if eVal, ok := eLabels[key]; !ok || eVal != val {
+				return false
+			}
+		}
+	}
+	return true
+}
+
 // Notify will generate notifications to all the matched notifier specified in the configs
 // Errors occured will only be logged
 func (nc *NotificationCenter) Notify(instance *iter8v1alpha1.Experiment, reason string, messageFormat string, messageA ...interface{}) {
@@ -196,13 +211,8 @@ func (nc *NotificationCenter) Notify(instance *iter8v1alpha1.Experiment, reason 
 		}
 
 		// match labels
-		if len(ntf.config.Labels) > 0 {
-			eLabels := instance.GetLabels()
-			for key, val := range ntf.config.Labels {
-				if eVal, ok := eLabels[key]; !ok && eVal != val {
-					continue
-				}
-			}
+		if !matchLabels(ntf.config.Labels, instance.GetLabels()) {
+			continue
 		}
 
 		payload := ntf.impl.MakeRequest(instance, reason, messageFormat, messageA...)
