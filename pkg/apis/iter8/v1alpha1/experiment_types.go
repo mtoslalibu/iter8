@@ -17,6 +17,7 @@ package v1alpha1
 
 import (
 	"fmt"
+	"strings"
 	"time"
 
 	duckv1alpha1 "github.com/knative/pkg/apis/duck/v1alpha1"
@@ -111,6 +112,26 @@ type ExperimentSpec struct {
 	// RoutingReference provides references to routing rules set by users
 	// +optional
 	RoutingReference *corev1.ObjectReference `json:"routingReference,omitempty"`
+}
+
+// GetStrategy returns the actual strategy of the experiment
+func (e *Experiment) GetStrategy() string {
+	strategy := e.Spec.TrafficControl.GetStrategy()
+	if strategy != StrategyIncrementWithoutCheck &&
+		(e.Spec.Analysis.SuccessCriteria == nil || len(e.Spec.Analysis.SuccessCriteria) == 0) {
+		strategy = StrategyIncrementWithoutCheck
+	}
+	return strategy
+}
+
+// Succeeded determines whether experiment is a success or not
+func (e *Experiment) Succeeded() bool {
+	if e.GetStrategy() == StrategyIncrementWithoutCheck {
+		return e.Spec.Assessment == AssessmentOverrideSuccess ||
+			e.Spec.Assessment == AssessmentNull
+	}
+	return e.Spec.Assessment == AssessmentOverrideSuccess ||
+		e.Status.AssessmentSummary.AllSuccessCriteriaMet && e.Spec.Assessment == AssessmentNull
 }
 
 // TargetService defines what to watch in the controller
@@ -246,7 +267,19 @@ type Summary struct {
 	AbortExperiment bool `json:"abort_experiment,omitempty"`
 }
 
-// ToleranceType is set of valid values for TrafficControl.Tolerancde
+func (s *Summary) Assessment2String() string {
+	if len(s.Conclusions) == 0 {
+		return "Not Available"
+	}
+
+	out := ""
+	for _, s := range s.Conclusions {
+		out += " " + s + ";"
+	}
+
+	return strings.TrimRight(out, ";")
+}
+
 type ToleranceType string
 
 const (
@@ -440,6 +473,23 @@ var experimentCondSet = duckv1alpha1.NewLivingConditionSet(
 	ExperimentConditionRoutingRulesReady,
 )
 
+// A set of reason setting the experiment condition status
+const (
+	ReasonTargetsNotFound         = "TargetsNotFound"
+	ReasonTargetsFound            = "TargetsFound"
+	ReasonAnalyticsServiceError   = "AnalyticsServiceError"
+	ReasonAnalyticsServiceRunning = "AnalyticsServiceRunning"
+	ReasonIterationUpdate         = "IterationUpdate"
+	ReasonIterationSucceeded      = "IterationSucceeded"
+	ReasonIterationFailed         = "IterationFailed "
+	ReasonExperimentSucceeded     = "ExperimentSucceeded"
+	ReasonExperimentFailed        = "ExperimentFailed"
+	ReasonSyncMetricsError        = "SyncMetricsError"
+	ReasonSyncMetricsSucceeded    = "SyncMetricsSucceeded"
+	ReasonRoutingRulesError       = "RoutingRulesError"
+	ReasonRoutingRulesReady       = "RoutingRulesReady"
+)
+
 // InitializeConditions sets relevant unset conditions to Unknown state.
 func (s *ExperimentStatus) InitializeConditions() {
 	experimentCondSet.Manage(s).InitializeConditions()
@@ -451,61 +501,74 @@ func (s *ExperimentStatus) InitializeConditions() {
 // MarkMetricsSynced sets the condition that the metrics are synced with config map
 // Return true if it's converted from false or unknown
 func (s *ExperimentStatus) MarkMetricsSynced() bool {
-	prev := s.GetCondition(ExperimentConditionMetricsSynced).Status
+	prevStat := s.GetCondition(ExperimentConditionMetricsSynced).Status
 	experimentCondSet.Manage(s).MarkTrue(ExperimentConditionMetricsSynced)
-	return prev != corev1.ConditionTrue
+	return prevStat != corev1.ConditionTrue
 }
 
 // MarkMetricsSyncedError sets the condition that the error occurs when syncing with the config map
-func (s *ExperimentStatus) MarkMetricsSyncedError(reason, messageFormat string, messageA ...interface{}) {
+// Return true if it's converted from true or unknown
+func (s *ExperimentStatus) MarkMetricsSyncedError(reason, messageFormat string, messageA ...interface{}) bool {
+	prevStat := s.GetCondition(ExperimentConditionMetricsSynced).Status
 	experimentCondSet.Manage(s).MarkFalse(ExperimentConditionMetricsSynced, reason, messageFormat, messageA...)
 	s.Phase = PhasePause
 	s.Message = composeMessage(reason, messageFormat, messageA...)
+	return prevStat != corev1.ConditionFalse
 }
 
 // MarkTargetsFound sets the condition that the all target have been found
 // Return true if it's converted from false or unknown
 func (s *ExperimentStatus) MarkTargetsFound() bool {
-	prev := s.GetCondition(ExperimentConditionTargetsProvided).Status
+	prevStat := s.GetCondition(ExperimentConditionTargetsProvided).Status
 	experimentCondSet.Manage(s).MarkTrue(ExperimentConditionTargetsProvided)
-	return prev != corev1.ConditionTrue
+	return prevStat != corev1.ConditionTrue
 }
 
 // MarkTargetsError sets the condition that the target service hasn't been found.
-func (s *ExperimentStatus) MarkTargetsError(reason, messageFormat string, messageA ...interface{}) {
+// Return true if it's converted from true or unknown
+func (s *ExperimentStatus) MarkTargetsError(reason, messageFormat string, messageA ...interface{}) bool {
+	prevStat := s.GetCondition(ExperimentConditionTargetsProvided).Status
+	prevMsg := s.GetCondition(ExperimentConditionTargetsProvided).Message
 	experimentCondSet.Manage(s).MarkFalse(ExperimentConditionTargetsProvided, reason, messageFormat, messageA...)
 	s.Phase = PhasePause
 	s.Message = composeMessage(reason, messageFormat, messageA...)
+	return prevStat != corev1.ConditionFalse || prevMsg != s.GetCondition(ExperimentConditionTargetsProvided).Message
 }
 
-// MarkRoutingRulesReady sets the condition that the routing rules are ready;
+// MarkRoutingRulesReady sets the condition that the routing rules are ready
 // Return true if it's converted from false or unknown
 func (s *ExperimentStatus) MarkRoutingRulesReady() bool {
-	prev := s.GetCondition(ExperimentConditionRoutingRulesReady).Status
+	prevStat := s.GetCondition(ExperimentConditionRoutingRulesReady).Status
 	experimentCondSet.Manage(s).MarkTrue(ExperimentConditionRoutingRulesReady)
-	return prev != corev1.ConditionTrue
+	return prevStat != corev1.ConditionTrue
 }
 
 // MarkRoutingRulesError sets the condition that the routing rules are not ready
-func (s *ExperimentStatus) MarkRoutingRulesError(reason, messageFormat string, messageA ...interface{}) {
+// Return true if it's converted from true or unknown
+func (s *ExperimentStatus) MarkRoutingRulesError(reason, messageFormat string, messageA ...interface{}) bool {
+	prevStat := s.GetCondition(ExperimentConditionRoutingRulesReady).Status
 	experimentCondSet.Manage(s).MarkFalse(ExperimentConditionRoutingRulesReady, reason, messageFormat, messageA...)
 	s.Phase = PhasePause
 	s.Message = composeMessage(reason, messageFormat, messageA...)
+	return prevStat != corev1.ConditionFalse
 }
 
 // MarkAnalyticsServiceRunning sets the condition that the analytics service is operating normally
 // Return true if it's converted from false or unknown
 func (s *ExperimentStatus) MarkAnalyticsServiceRunning() bool {
-	prev := s.GetCondition(ExperimentConditionAnalyticsServiceNormal).Status
+	prevStat := s.GetCondition(ExperimentConditionAnalyticsServiceNormal).Status
 	experimentCondSet.Manage(s).MarkTrue(ExperimentConditionAnalyticsServiceNormal)
-	return prev != corev1.ConditionTrue
+	return prevStat != corev1.ConditionTrue
 }
 
-// MarkAnalyticsServiceError sets the condition that the analytics service has breakdown
-func (s *ExperimentStatus) MarkAnalyticsServiceError(reason, messageFormat string, messageA ...interface{}) {
+// MarkAnalyticsServiceError sets the condition that the analytics service breaks down
+// Return true if it's converted from true or unknown
+func (s *ExperimentStatus) MarkAnalyticsServiceError(reason, messageFormat string, messageA ...interface{}) bool {
+	prevStat := s.GetCondition(ExperimentConditionAnalyticsServiceNormal).Status
 	experimentCondSet.Manage(s).MarkFalse(ExperimentConditionAnalyticsServiceNormal, reason, messageFormat, messageA...)
 	s.Message = composeMessage(reason, messageFormat, messageA...)
 	s.Phase = PhasePause
+	return prevStat != corev1.ConditionFalse
 }
 
 // MarkExperimentCompleted sets the condition that the experiemnt is completed

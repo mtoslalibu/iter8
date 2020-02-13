@@ -33,22 +33,29 @@ import (
 	iter8v1alpha1 "github.com/iter8-tools/iter8-controller/pkg/apis/iter8/v1alpha1"
 )
 
-func (r *ReconcileExperiment) checkExperimentComplete(context context.Context, instance *iter8v1alpha1.Experiment) (bool, error) {
+func (r *ReconcileExperiment) checkExperimentCompleted(context context.Context, instance *iter8v1alpha1.Experiment) (bool, error) {
 	// check experiment is finished
 	if instance.Spec.TrafficControl.GetMaxIterations() < instance.Status.CurrentIteration ||
 		instance.Spec.Assessment != iter8v1alpha1.AssessmentNull {
-		if err := r.targets.Cleanup(context, instance, r.Client); err != nil {
+		if err := r.cleanUp(context, instance); err != nil {
 			return true, err
 		}
-		if err := r.rules.Cleanup(instance, r.targets, r.istioClient); err != nil {
-			return true, err
-		}
-		log.Info("Cleanup of experiment is done.")
-		r.setExperimentEndStatus(context, instance)
 		return true, nil
 	}
 
 	return false, nil
+}
+
+func (r *ReconcileExperiment) cleanUp(context context.Context, instance *iter8v1alpha1.Experiment) error {
+	if err := r.targets.Cleanup(context, instance, r.Client); err != nil {
+		return err
+	}
+	if err := r.rules.Cleanup(instance, r.targets, r.istioClient); err != nil {
+		return err
+	}
+	log.Info("Cleanup of experiment is done.")
+	r.setExperimentEndStatus(context, instance)
+	return nil
 }
 
 func (r *ReconcileExperiment) getRoutingLists(namespace string, m map[string]string) (*v1alpha3.DestinationRuleList, *v1alpha3.VirtualServiceList, error) {
@@ -198,7 +205,7 @@ func (r *ReconcileExperiment) detectRoutingReferences(instance *iter8v1alpha1.Ex
 }
 
 func (r *ReconcileExperiment) setExperimentEndStatus(context context.Context, instance *iter8v1alpha1.Experiment) (err error) {
-	if experimentSucceeded(instance) {
+	if instance.Succeeded() {
 		// experiment is successful
 
 		switch instance.Spec.TrafficControl.GetOnSuccess() {
@@ -213,9 +220,9 @@ func (r *ReconcileExperiment) setExperimentEndStatus(context context.Context, in
 
 		r.MarkExperimentSucceeded(context, instance, "%s", successMsg(instance))
 	} else {
-		r.MarkExperimentFailed(context, instance, "%s", failureMsg(instance))
 		instance.Status.TrafficSplit.Baseline = 100
 		instance.Status.TrafficSplit.Candidate = 0
+		r.MarkExperimentFailed(context, instance, "%s", failureMsg(instance))
 	}
 
 	return
@@ -231,7 +238,7 @@ func (r *ReconcileExperiment) detectTargets(context context.Context, instance *i
 	// Get k8s service
 	err := r.Get(context, types.NamespacedName{Name: serviceName, Namespace: serviceNamespace}, r.targets.Service)
 	if err != nil {
-		r.MarkTargetsError(context, instance, "MissingService")
+		r.MarkTargetsError(context, instance, "Missing Service")
 		return true, fmt.Errorf("Missing service %s", serviceName)
 	}
 
@@ -245,7 +252,6 @@ func (r *ReconcileExperiment) detectTargets(context context.Context, instance *i
 				r.MarkTargetsError(context, instance, "%s", err.Error())
 				return true, err
 			}
-
 			instance.Status.TrafficSplit.Baseline = 100
 		}
 	} else {
@@ -276,6 +282,7 @@ func (r *ReconcileExperiment) detectTargets(context context.Context, instance *i
 		updateGrafanaURL(instance, getServiceNamespace(instance))
 		return true, nil
 	}
+
 	return false, nil
 }
 
@@ -359,7 +366,8 @@ func (r *ReconcileExperiment) progressExperiment(context context.Context, instan
 	// Progressing on Experiment
 	traffic := instance.Spec.TrafficControl
 	rolloutPercent := r.rules.GetWeight(Candidate)
-	strategy := getStrategy(instance)
+	strategy := instance.GetStrategy()
+
 	if iter8v1alpha1.StrategyIncrementWithoutCheck == strategy {
 		rolloutPercent += int32(traffic.GetStepSize())
 	} else {
@@ -405,9 +413,14 @@ func (r *ReconcileExperiment) progressExperiment(context context.Context, instan
 		r.MarkAnalyticsServiceRunning(context, instance)
 	}
 
-	// Increase the traffic upto max traffic amount
-	if rolloutPercent <= int32(traffic.GetMaxTrafficPercentage()) &&
+	// fail in this iteration
+	// skip check for the first iteration
+	if instance.Status.CurrentIteration > 0 && !instance.Succeeded() {
+		r.MarkExperimentProgress(context, instance, true, iter8v1alpha1.ReasonIterationFailed,
+			instance.Status.AssessmentSummary.Assessment2String())
+	} else if rolloutPercent <= int32(traffic.GetMaxTrafficPercentage()) &&
 		r.rules.GetWeight(Candidate) != rolloutPercent {
+		// Increase the traffic upto max traffic amount
 		// Update Traffic splitting rule
 		if err := r.rules.UpdateRolloutPercent(instance.Spec.TargetService.Name, getServiceNamespace(instance), rolloutPercent, r.istioClient); err != nil {
 			r.MarkRoutingRulesError(context, instance, "%s", err.Error())
@@ -416,15 +429,17 @@ func (r *ReconcileExperiment) progressExperiment(context context.Context, instan
 		instance.Status.TrafficSplit.Baseline = 100 - int(rolloutPercent)
 		instance.Status.TrafficSplit.Candidate = int(rolloutPercent)
 
-		r.MarkExperimentProgress(context, instance, true, "New Traffic, baseline: %d, candidate: %d",
+		r.MarkExperimentProgress(context, instance, true, iter8v1alpha1.ReasonIterationSucceeded,
+			"New Traffic, baseline: %d, candidate: %d",
 			instance.Status.TrafficSplit.Baseline, instance.Status.TrafficSplit.Candidate)
 	}
 
 	instance.Status.LastIncrementTime = metav1.NewTime(time.Now())
 	instance.Status.CurrentIteration++
-	r.MarkExperimentProgress(context, instance, false, "Iteration %d Started", instance.Status.CurrentIteration)
-	return nil
 
+	r.MarkExperimentProgress(context, instance, false, iter8v1alpha1.ReasonIterationUpdate,
+		"Iteration %d Started", instance.Status.CurrentIteration)
+	return nil
 }
 
 func (r *ReconcileExperiment) abortExperiment(context context.Context, instance *iter8v1alpha1.Experiment) (err error) {
@@ -441,4 +456,11 @@ func (r *ReconcileExperiment) abortExperiment(context context.Context, instance 
 
 	r.MarkExperimentFailed(context, instance, "%s", "Aborted")
 	return
+}
+
+func (r *ReconcileExperiment) startNextIteration(context context.Context, instance *iter8v1alpha1.Experiment) {
+	instance.Status.LastIncrementTime = metav1.NewTime(time.Now())
+	instance.Status.CurrentIteration++
+	r.MarkExperimentProgress(context, instance, false, iter8v1alpha1.ReasonIterationUpdate,
+		"Iteration %d Started", instance.Status.CurrentIteration)
 }

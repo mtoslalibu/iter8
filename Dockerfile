@@ -12,6 +12,10 @@ RUN CGO_ENABLED=0 GOOS=linux GOARCH=amd64 go build -a -o manager github.com/iter
 
 # Copy the controller-manager into a thin image
 FROM ubuntu:latest
+
+RUN apt-get update
+RUN apt-get install -y ca-certificates
+
 WORKDIR /
 COPY --from=builder /go/src/github.com/iter8-tools/iter8-controller/manager .
 ENTRYPOINT ["/manager"]
