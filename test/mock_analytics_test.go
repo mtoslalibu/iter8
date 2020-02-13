@@ -18,8 +18,8 @@ import (
 	"testing"
 
 	"github.com/google/go-cmp/cmp"
-	cai "github.com/iter8-tools/iter8-controller/pkg/analytics"
-	"github.com/iter8-tools/iter8-controller/pkg/analytics/checkandincrement"
+	"github.com/iter8-tools/iter8-controller/pkg/analytics"
+	analyticsapi "github.com/iter8-tools/iter8-controller/pkg/analytics/api"
 	iter8v1alpha1 "github.com/iter8-tools/iter8-controller/pkg/apis/iter8/v1alpha1"
 )
 
@@ -30,8 +30,8 @@ func TestMockAnalytics(t *testing.T) {
 	want := dummyResponse()
 	service.AddMock("test-0", want)
 
-	analyticsService := checkandincrement.GetService()
-	got, err := analyticsService.Invoke(logger, service.GetURL(), dummyRequest(), analyticsService.GetPath())
+	algorithm := analytics.GetAlgorithm("check_and_increment")
+	got, err := analytics.Invoke(logger, service.GetURL(), dummyRequest(), algorithm)
 	if err != nil {
 		t.Fatalf("%v", err)
 	}
@@ -41,22 +41,20 @@ func TestMockAnalytics(t *testing.T) {
 	}
 }
 
-func dummyRequest() *cai.Request {
-	return &cai.Request{
-		RequestCommon: cai.RequestCommon{
-			Name: "test-0",
-		},
+func dummyRequest() *analyticsapi.Request {
+	return &analyticsapi.Request{
+		Name: "test-0",
 	}
 }
-func dummyResponse() cai.Response {
-	return cai.Response{
-		Baseline: cai.MetricsTraffic{
+func dummyResponse() analyticsapi.Response {
+	return analyticsapi.Response{
+		Baseline: analyticsapi.MetricsTraffic{
 			TrafficPercentage: 95,
 		},
-		Candidate: cai.MetricsTraffic{
+		Candidate: analyticsapi.MetricsTraffic{
 			TrafficPercentage: 5,
 		},
-		Assessment: cai.Assessment{
+		Assessment: analyticsapi.Assessment{
 			Summary: iter8v1alpha1.Summary{
 				AbortExperiment: false,
 			},

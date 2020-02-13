@@ -22,7 +22,7 @@ import (
 	"net/http"
 	"net/http/httptest"
 
-	"github.com/iter8-tools/iter8-controller/pkg/analytics"
+	"github.com/iter8-tools/iter8-controller/pkg/analytics/api"
 	iter8v1alpha1 "github.com/iter8-tools/iter8-controller/pkg/apis/iter8/v1alpha1"
 )
 
@@ -37,13 +37,13 @@ type AnalyticsService struct {
 	server *httptest.Server
 
 	// Mock maps request to response. The key maps to request.name
-	Mock map[string]analytics.Response
+	Mock map[string]api.Response
 }
 
 // StartAnalytics starts fake analytics service
 func StartAnalytics() *AnalyticsService {
 	service := &AnalyticsService{
-		Mock: make(map[string]analytics.Response),
+		Mock: make(map[string]api.Response),
 	}
 	service.server = httptest.NewServer(service)
 	return service
@@ -67,7 +67,7 @@ func (s *AnalyticsService) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	var request analytics.Request
+	var request api.Request
 	err = json.Unmarshal(b, &request)
 	if err != nil {
 		w.Write([]byte(err.Error()))
@@ -100,19 +100,19 @@ func (s *AnalyticsService) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 }
 
 // Mock adds response for testid
-func (s *AnalyticsService) AddMock(name string, response analytics.Response) {
+func (s *AnalyticsService) AddMock(name string, response api.Response) {
 	s.Mock[name] = response
 }
 
-func GetDefaultMockResponse() analytics.Response {
-	return analytics.Response{
-		Baseline: analytics.MetricsTraffic{
+func GetDefaultMockResponse() api.Response {
+	return api.Response{
+		Baseline: api.MetricsTraffic{
 			TrafficPercentage: 50,
 		},
-		Candidate: analytics.MetricsTraffic{
+		Candidate: api.MetricsTraffic{
 			TrafficPercentage: 50,
 		},
-		Assessment: analytics.Assessment{
+		Assessment: api.Assessment{
 			Summary: iter8v1alpha1.Summary{
 				AbortExperiment: false,
 			},
@@ -120,15 +120,15 @@ func GetDefaultMockResponse() analytics.Response {
 	}
 }
 
-func GetSuccessMockResponse() analytics.Response {
-	return analytics.Response{
-		Baseline: analytics.MetricsTraffic{
+func GetSuccessMockResponse() api.Response {
+	return api.Response{
+		Baseline: api.MetricsTraffic{
 			TrafficPercentage: 50,
 		},
-		Candidate: analytics.MetricsTraffic{
+		Candidate: api.MetricsTraffic{
 			TrafficPercentage: 50,
 		},
-		Assessment: analytics.Assessment{
+		Assessment: api.Assessment{
 			Summary: iter8v1alpha1.Summary{
 				AllSuccessCriteriaMet: true,
 				AbortExperiment:       false,
@@ -137,9 +137,9 @@ func GetSuccessMockResponse() analytics.Response {
 	}
 }
 
-func GetAbortExperimentResponse() analytics.Response {
-	return analytics.Response{
-		Assessment: analytics.Assessment{
+func GetAbortExperimentResponse() api.Response {
+	return api.Response{
+		Assessment: api.Assessment{
 			Summary: iter8v1alpha1.Summary{
 				AbortExperiment: true,
 			},
@@ -147,15 +147,15 @@ func GetAbortExperimentResponse() analytics.Response {
 	}
 }
 
-func GetFailureMockResponse() analytics.Response {
-	return analytics.Response{
-		Baseline: analytics.MetricsTraffic{
+func GetFailureMockResponse() api.Response {
+	return api.Response{
+		Baseline: api.MetricsTraffic{
 			TrafficPercentage: 50,
 		},
-		Candidate: analytics.MetricsTraffic{
+		Candidate: api.MetricsTraffic{
 			TrafficPercentage: 50,
 		},
-		Assessment: analytics.Assessment{
+		Assessment: api.Assessment{
 			Summary: iter8v1alpha1.Summary{
 				AllSuccessCriteriaMet: false,
 			},

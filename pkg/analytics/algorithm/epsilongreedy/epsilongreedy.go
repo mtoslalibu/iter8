@@ -20,7 +20,7 @@ import (
 )
 
 const (
-	Strategy string = "epsilon_t_greedy"
+	Strategy string = "epsilon_greedy"
 )
 
 var _ algorithm.Interface = Impl{}
@@ -36,5 +36,5 @@ func (i Impl) SupplementTrafficControl(instance *iter8v1alpha1.Experiment, tc ap
 }
 
 func (i Impl) GetPath() string {
-	return api.AnalyticsAPIPath + Strategy
+	return api.AnalyticsAPIPath + "epsilon_t_greedy"
 }
