@@ -11,25 +11,24 @@ WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
 See the License for the specific language governing permissions and
 limitations under the License.
 */
-package checkandincrement
+package obr
 
-const (
-	// Strategy ...
-	// matches github.com/iter8-tools/iter8-controller/pkg/apis/iter8/v1alpha1#StrategyCheckAndIncrement
-	Strategy string = "check_and_increment"
+import (
+	"github.com/iter8-tools/iter8-controller/pkg/analytics/algorithm"
+	"github.com/iter8-tools/iter8-controller/pkg/analytics/algorithm/pbr"
+	"github.com/iter8-tools/iter8-controller/pkg/analytics/api"
 )
 
-// Service ...
-type Service struct {
-	CIAnalyticsService
+const (
+	Strategy string = "optimistic_bayesian_routing"
+)
+
+var _ algorithm.Interface = Impl{}
+
+type Impl struct {
+	pbr.Impl
 }
 
-// GetService ...
-func GetService() Service {
-	return Service{}
-}
-
-// GetPath ...
-func (s Service) GetPath() string {
-	return "/api/v1/analytics/canary/check_and_increment"
+func (i Impl) GetPath() string {
+	return api.AnalyticsAPIPath + Strategy
 }

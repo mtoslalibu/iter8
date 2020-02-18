@@ -11,28 +11,17 @@ WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
 See the License for the specific language governing permissions and
 limitations under the License.
 */
-package epsilongreedy
+
+package algorithm
 
 import (
-	"github.com/iter8-tools/iter8-controller/pkg/analytics"
+	"github.com/iter8-tools/iter8-controller/pkg/analytics/api"
+	iter8v1alpha1 "github.com/iter8-tools/iter8-controller/pkg/apis/iter8/v1alpha1"
 )
 
-const (
-	// Strategy ...
-	Strategy string = "epsilon_greedy"
-)
-
-// Service ...
-type Service struct {
-	analytics.BasicAnalyticsService
-}
-
-// GetService ...
-func GetService() Service {
-	return Service{}
-}
-
-// GetPath ...
-func (s Service) GetPath() string {
-	return "/api/v1/analytics/canary/epsilon_t_greedy"
+// Interface defines the interface for analytics algorithm
+type Interface interface {
+	GetPath() string
+	SupplementSuccessCriteria(specSC iter8v1alpha1.SuccessCriterion, sc api.SuccessCriterion) (api.SuccessCriterion, error)
+	SupplementTrafficControl(instance *iter8v1alpha1.Experiment, tc api.TrafficControl) api.TrafficControl
 }

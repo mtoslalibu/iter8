@@ -21,7 +21,7 @@ import (
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/apimachinery/pkg/runtime"
 
-	"github.com/iter8-tools/iter8-controller/pkg/analytics"
+	analtyicsapi "github.com/iter8-tools/iter8-controller/pkg/analytics/api"
 	iter8v1alpha1 "github.com/iter8-tools/iter8-controller/pkg/apis/iter8/v1alpha1"
 	"github.com/iter8-tools/iter8-controller/pkg/controller/experiment"
 	"github.com/iter8-tools/iter8-controller/test"
@@ -47,7 +47,7 @@ func TestKubernetesExperiment(t *testing.T) {
 	defer service.Close()
 	testCases := map[string]testCase{
 		"rollforward": testCase{
-			mocks: map[string]analytics.Response{
+			mocks: map[string]analtyicsapi.Response{
 				"rollforward": test.GetSuccessMockResponse(),
 			},
 			initObjects: []runtime.Object{
@@ -68,7 +68,7 @@ func TestKubernetesExperiment(t *testing.T) {
 			},
 		},
 		"rollbackward": testCase{
-			mocks: map[string]analytics.Response{
+			mocks: map[string]analtyicsapi.Response{
 				"rollbackward": test.GetFailureMockResponse(),
 			},
 			initObjects: []runtime.Object{
@@ -89,7 +89,7 @@ func TestKubernetesExperiment(t *testing.T) {
 			},
 		},
 		"ongoingdelete": testCase{
-			mocks: map[string]analytics.Response{
+			mocks: map[string]analtyicsapi.Response{
 				"ongoingdelete": test.GetSuccessMockResponse(),
 			},
 			initObjects: []runtime.Object{
@@ -109,7 +109,7 @@ func TestKubernetesExperiment(t *testing.T) {
 			postHook: test.DeleteExperiment("ongoingdelete", Flags.Namespace),
 		},
 		"completedelete": testCase{
-			mocks: map[string]analytics.Response{
+			mocks: map[string]analtyicsapi.Response{
 				"completedelete": test.GetSuccessMockResponse(),
 			},
 			initObjects: []runtime.Object{
@@ -129,7 +129,7 @@ func TestKubernetesExperiment(t *testing.T) {
 			postHook: test.DeleteExperiment("completedelete", Flags.Namespace),
 		},
 		"abortexperiment": testCase{
-			mocks: map[string]analytics.Response{
+			mocks: map[string]analtyicsapi.Response{
 				"abortexperiment": test.GetAbortExperimentResponse(),
 			},
 			initObjects: []runtime.Object{
@@ -210,7 +210,7 @@ func TestKubernetesExperiment(t *testing.T) {
 			postHook: test.CheckObjectDeleted(getReviewsDeployment("v1")),
 		},
 		"greedy-rollforward": testCase{
-			mocks: map[string]analytics.Response{
+			mocks: map[string]analtyicsapi.Response{
 				"greedy-rollforward": test.GetSuccessMockResponse(),
 			},
 			initObjects: []runtime.Object{
@@ -231,7 +231,7 @@ func TestKubernetesExperiment(t *testing.T) {
 			},
 		},
 		"greedy-rollbackward": testCase{
-			mocks: map[string]analytics.Response{
+			mocks: map[string]analtyicsapi.Response{
 				"greedy-rollbackward": test.GetFailureMockResponse(),
 			},
 			initObjects: []runtime.Object{

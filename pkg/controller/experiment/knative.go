@@ -18,6 +18,7 @@ package experiment
 import (
 	"context"
 	"encoding/json"
+	"fmt"
 	"time"
 
 	servingv1alpha1 "github.com/knative/serving/pkg/apis/serving/v1alpha1"
@@ -28,8 +29,6 @@ import (
 	"sigs.k8s.io/controller-runtime/pkg/reconcile"
 
 	"github.com/iter8-tools/iter8-controller/pkg/analytics"
-	"github.com/iter8-tools/iter8-controller/pkg/analytics/checkandincrement"
-	"github.com/iter8-tools/iter8-controller/pkg/analytics/epsilongreedy"
 	iter8v1alpha1 "github.com/iter8-tools/iter8-controller/pkg/apis/iter8/v1alpha1"
 )
 
@@ -191,14 +190,6 @@ func (r *ReconcileExperiment) syncKnative(context context.Context, instance *ite
 		if iter8v1alpha1.StrategyIncrementWithoutCheck == strategy {
 			newRolloutPercent += int64(traffic.GetStepSize())
 		} else {
-			var analyticsService analytics.AnalyticsService
-			switch instance.GetStrategy() {
-			case checkandincrement.Strategy:
-				analyticsService = checkandincrement.GetService()
-			case epsilongreedy.Strategy:
-				analyticsService = epsilongreedy.GetService()
-			}
-
 			// Get underlying k8s services
 			// TODO: should just get the service name. See issue #83
 			baselineService, err := r.getServiceForRevision(context, kservice, baselineTraffic.RevisionName)
@@ -215,8 +206,17 @@ func (r *ReconcileExperiment) syncKnative(context context.Context, instance *ite
 				return reconcile.Result{}, r.Status().Update(context, instance)
 			}
 
+			algorithm := analytics.GetAlgorithm(strategy)
+			if algorithm == nil {
+				err := fmt.Errorf("Unsupported Strategy %s", strategy)
+				r.MarkAnalyticsServiceError(context, instance, "Can Not Compose Payload: %v", err)
+				if err := r.Status().Update(context, instance); err != nil {
+					return reconcile.Result{}, err
+				}
+				return reconcile.Result{RequeueAfter: 5 * time.Second}, r.Status().Update(context, instance)
+			}
 			// Get latest analysis
-			payload, err := analyticsService.MakeRequest(instance, baselineService, candidateService)
+			payload, err := analytics.MakeRequest(instance, baselineService, candidateService, algorithm)
 			if err != nil {
 				r.MarkAnalyticsServiceError(context, instance, "Can Not Compose Payload: %v", err)
 				if err := r.Status().Update(context, instance); err != nil {
@@ -224,7 +224,8 @@ func (r *ReconcileExperiment) syncKnative(context context.Context, instance *ite
 				}
 				return reconcile.Result{RequeueAfter: 5 * time.Second}, r.Status().Update(context, instance)
 			}
-			response, err := analyticsService.Invoke(log, instance.Spec.Analysis.GetServiceEndpoint(), payload, analyticsService.GetPath())
+
+			response, err := analytics.Invoke(log, instance.Spec.Analysis.GetServiceEndpoint(), payload, algorithm)
 			if err != nil {
 				r.MarkAnalyticsServiceError(context, instance, "%s", err.Error())
 				if err := r.Status().Update(context, instance); err != nil {
