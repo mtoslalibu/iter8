@@ -31,6 +31,7 @@ spec:
         app: reviews
         version: v3
     spec:
+      serviceAccountName: bookinfo-reviews
       containers:
       - name: reviews
         image: iter8/reviews:istio-v3
