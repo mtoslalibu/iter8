@@ -237,7 +237,8 @@ type TrafficControl struct {
 	//+kubebuilder:validation:Enum={baseline,candidate,both}
 	OnSuccess *string `json:"onSuccess,omitempty"`
 
-	//
+	// The required confidence in the recommeded traffic split. Defaults to 0.95
+	// +optional
 	Confidence *float64 `json:"confidence,omitempty"`
 }
 
@@ -318,10 +319,10 @@ const (
 
 // MinMax captures minimum and maximum values of the metric
 type MinMax struct {
-	// Min minimum value of the metric
+	// Min minimum possible value of the metric
 	Min float64 `json:"min"`
 
-	//Max maximum value of the metric
+	//Max maximum possible value of the metric
 	Max float64 `json:"max"`
 }
 
