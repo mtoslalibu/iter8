@@ -155,6 +155,13 @@ spec:
         spec:
           description: ExperimentSpec defines the desired state of Experiment
           properties:
+            action:
+              description: Action specifies the action that the user would like to
+                perform
+              enum:
+              - resume
+              - pause
+              type: string
             analysis:
               description: Analysis parameters
               properties:
@@ -178,11 +185,11 @@ spec:
                         description: Minimum and maximum values of the metric
                         properties:
                           max:
-                            description: Max maximum value of the metric
+                            description: Max maximum possible value of the metric
                             format: float64
                             type: number
                           min:
-                            description: Min minimum value of the metric
+                            description: Min minimum possible value of the metric
                             format: float64
                             type: number
                         required:
@@ -314,6 +321,8 @@ spec:
               description: TrafficControl defines parameters for controlling the traffic
               properties:
                 confidence:
+                  description: The required confidence in the recommeded traffic split.
+                    Defaults to 0.95
                   format: float64
                   type: number
                 interval:
