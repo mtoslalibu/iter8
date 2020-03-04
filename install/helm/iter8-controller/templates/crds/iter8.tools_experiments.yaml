@@ -124,11 +124,11 @@ spec:
                         description: Minimum and maximum values of the metric
                         properties:
                           max:
-                            description: Max maximum value of the metric
+                            description: Max maximum possible value of the metric
                             format: float64
                             type: number
                           min:
-                            description: Min minimum value of the metric
+                            description: Min minimum possible value of the metric
                             format: float64
                             type: number
                         required:
@@ -260,6 +260,8 @@ spec:
               description: TrafficControl defines parameters for controlling the traffic
               properties:
                 confidence:
+                  description: The required confidence in the recommeded traffic split.
+                    Defaults to 0.95
                   format: float64
                   type: number
                 interval:

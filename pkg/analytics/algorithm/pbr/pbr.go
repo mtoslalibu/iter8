@@ -14,7 +14,6 @@ limitations under the License.
 package pbr
 
 import (
-	"fmt"
 	"github.com/iter8-tools/iter8-controller/pkg/analytics/algorithm"
 	"github.com/iter8-tools/iter8-controller/pkg/analytics/api"
 	iter8v1alpha1 "github.com/iter8-tools/iter8-controller/pkg/apis/iter8/v1alpha1"
@@ -41,12 +40,11 @@ type MinMax struct {
 }
 
 func (i Impl) SupplementSuccessCriteria(specSC iter8v1alpha1.SuccessCriterion, sc api.SuccessCriterion) (api.SuccessCriterion, error) {
-	if specSC.MinMax == nil {
-		return nil, fmt.Errorf("Missing MinMax value for PBR")
-	}
-	sc[SCKeyMinMax] = MinMax{
-		Min: specSC.MinMax.Min,
-		Max: specSC.MinMax.Max,
+	if specSC.MinMax != nil {
+		sc[SCKeyMinMax] = MinMax{
+			Min: specSC.MinMax.Min,
+			Max: specSC.MinMax.Max,
+		}
 	}
 	return sc, nil
 }
