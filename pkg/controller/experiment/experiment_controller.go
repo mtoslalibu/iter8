@@ -129,7 +129,8 @@ func add(mgr manager.Manager, r reconcile.Reconciler) error {
 
 	// Watch for changes to Experiment
 	// Ignore status update event
-	// Ignore revert changes in action field
+	// Ignore event of revert changes in action field
+	// Ignore event of metrics load
 	err = c.Watch(&source.Kind{Type: &iter8v1alpha1.Experiment{}}, &handler.EnqueueRequestForObject{},
 		predicate.GenerationChangedPredicate{},
 		predicate.Funcs{
@@ -137,6 +138,10 @@ func add(mgr manager.Manager, r reconcile.Reconciler) error {
 				oldInstance, _ := e.ObjectOld.(*iter8v1alpha1.Experiment)
 				newInstance, _ := e.ObjectNew.(*iter8v1alpha1.Experiment)
 				if len(oldInstance.Spec.Action) > 0 && len(newInstance.Spec.Action) == 0 {
+					return false
+				}
+
+				if len(oldInstance.Metrics) == 0 && len(newInstance.Metrics) > 0 {
 					return false
 				}
 				return true
