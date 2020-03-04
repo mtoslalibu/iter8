@@ -29,6 +29,7 @@ import (
 	"sigs.k8s.io/controller-runtime/pkg/client"
 	"sigs.k8s.io/controller-runtime/pkg/client/config"
 	"sigs.k8s.io/controller-runtime/pkg/controller"
+	"sigs.k8s.io/controller-runtime/pkg/event"
 	"sigs.k8s.io/controller-runtime/pkg/handler"
 	"sigs.k8s.io/controller-runtime/pkg/manager"
 	"sigs.k8s.io/controller-runtime/pkg/predicate"
@@ -128,8 +129,19 @@ func add(mgr manager.Manager, r reconcile.Reconciler) error {
 
 	// Watch for changes to Experiment
 	// Ignore status update event
+	// Ignore revert changes in action field
 	err = c.Watch(&source.Kind{Type: &iter8v1alpha1.Experiment{}}, &handler.EnqueueRequestForObject{},
-		predicate.GenerationChangedPredicate{})
+		predicate.GenerationChangedPredicate{},
+		predicate.Funcs{
+			UpdateFunc: func(e event.UpdateEvent) bool {
+				oldInstance, _ := e.ObjectOld.(*iter8v1alpha1.Experiment)
+				newInstance, _ := e.ObjectNew.(*iter8v1alpha1.Experiment)
+				if len(oldInstance.Spec.Action) > 0 && len(newInstance.Spec.Action) == 0 {
+					return false
+				}
+				return true
+			},
+		})
 	if err != nil {
 		return err
 	}
@@ -228,14 +240,19 @@ func (r *ReconcileExperiment) Reconcile(request reconcile.Request) (reconcile.Re
 		return r.finalize(ctx, instance)
 	}
 
-	// // Stop right here if the experiment is completed.
+	log.Info("reconciling")
+
+	// Stop right here if the experiment is completed.
 	completed := instance.Status.GetCondition(iter8v1alpha1.ExperimentConditionExperimentCompleted)
 	if completed != nil && completed.Status == corev1.ConditionTrue {
 		log.Info("RolloutCompleted", "Use a different name for experiment object to trigger a new experiment", "")
 		return reconcile.Result{}, nil
 	}
 
-	log.Info("reconciling")
+	if pause := r.handleUserAction(ctx, instance); pause {
+		log.Info("ExperimentPaused")
+		return reconcile.Result{}, nil
+	}
 
 	// TODO: not sure why this is needed
 	if instance.Status.LastIncrementTime.IsZero() {
@@ -274,8 +291,7 @@ func (r *ReconcileExperiment) Reconcile(request reconcile.Request) (reconcile.Re
 				return reconcile.Result{}, nil
 			}
 
-			log.Info("Retry in 5s")
-			return reconcile.Result{RequeueAfter: 5 * time.Second}, nil
+			return reconcile.Result{}, nil
 		}
 		r.MarkSyncMetrics(ctx, instance)
 	}
@@ -307,4 +323,32 @@ func (r *ReconcileExperiment) finalize(context context.Context, instance *iter8v
 	}
 
 	return reconcile.Result{}, removeFinalizer(context, r, instance, Finalizer)
+}
+
+func (r *ReconcileExperiment) handleUserAction(context context.Context, instance *iter8v1alpha1.Experiment) bool {
+	prevPhase := instance.Status.Phase
+	switch instance.Spec.Action {
+	case iter8v1alpha1.ActionPause:
+		instance.Status.Phase = iter8v1alpha1.PhasePause
+		log.Info("UserAction", "pause experiment", "")
+	case iter8v1alpha1.ActionResume:
+		instance.Status.Phase = iter8v1alpha1.PhaseProgressing
+		log.Info("UserAction", "resume experiment", "")
+	default:
+		return false
+	}
+
+	if prevPhase != instance.Status.Phase {
+		if err := r.Status().Update(context, instance); err != nil && !validUpdateErr(err) {
+			log.Info("Fail to update status: %v", err)
+		}
+	}
+
+	// clear instance action
+	instance.Spec.Action = ""
+	if err := r.Update(context, instance); err != nil && !validUpdateErr(err) {
+		log.Error(err, "Fail to revert action", "")
+	}
+
+	return instance.Status.Phase == iter8v1alpha1.PhasePause
 }

@@ -35,7 +35,7 @@ func (r *ReconcileExperiment) syncKubernetes(context context.Context, instance *
 				return reconcile.Result{}, nil
 			}
 		}
-		return reconcile.Result{}, err
+		return reconcile.Result{}, nil
 	}
 
 	updateStatus, err = r.detectTargets(context, instance)
@@ -47,9 +47,8 @@ func (r *ReconcileExperiment) syncKubernetes(context context.Context, instance *
 				return reconcile.Result{}, nil
 			}
 		}
-		// retry in 5 secs
-		log.Info("retry in 5 secs")
-		return reconcile.Result{RequeueAfter: 5 * time.Second}, nil
+
+		return reconcile.Result{}, nil
 	}
 
 	if completed, err := r.checkExperimentCompleted(context, instance); completed {
@@ -76,10 +75,7 @@ func (r *ReconcileExperiment) syncKubernetes(context context.Context, instance *
 		}
 
 		if err != nil {
-			// TODO: may need a better handling method
-			// retry in 5 sec
-			log.Info("retry in 5 secs", "err", err)
-			return reconcile.Result{RequeueAfter: 5 * time.Second}, nil
+			return reconcile.Result{}, nil
 		}
 
 		if instance.Spec.TrafficControl.GetMaxIterations() < instance.Status.CurrentIteration {

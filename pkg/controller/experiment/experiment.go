@@ -367,16 +367,16 @@ func (r *ReconcileExperiment) progressExperiment(context context.Context, instan
 	traffic := instance.Spec.TrafficControl
 	rolloutPercent := r.rules.GetWeight(Candidate)
 	strategy := instance.GetStrategy()
+	algorithm := analytics.GetAlgorithm(strategy)
+	if algorithm == nil {
+		err := fmt.Errorf("Unsupported Strategy %s", strategy)
+		r.MarkAnalyticsServiceError(context, instance, "%s", err.Error())
+		return err
+	}
 
-	if iter8v1alpha1.StrategyIncrementWithoutCheck == strategy {
+	if algorithm.GetPath() == "" {
 		rolloutPercent += int32(traffic.GetStepSize())
 	} else {
-		algorithm := analytics.GetAlgorithm(strategy)
-		if algorithm == nil {
-			err := fmt.Errorf("Unsupported Strategy %s", strategy)
-			r.MarkAnalyticsServiceError(context, instance, "%s", err.Error())
-			return err
-		}
 		// Get latest analysis
 		payload, err := analytics.MakeRequest(instance, r.targets.Baseline, r.targets.Candidate, algorithm)
 		if err != nil {

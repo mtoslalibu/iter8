@@ -94,6 +94,13 @@ spec:
         spec:
           description: ExperimentSpec defines the desired state of Experiment
           properties:
+            action:
+              description: Action specifies the action that the user would like to
+                perform
+              enum:
+              - resume
+              - pause
+              type: string
             analysis:
               description: Analysis parameters
               properties:

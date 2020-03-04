@@ -187,7 +187,17 @@ func (r *ReconcileExperiment) syncKnative(context context.Context, instance *ite
 		newRolloutPercent := *candidateTraffic.Percent
 
 		strategy := instance.GetStrategy()
-		if iter8v1alpha1.StrategyIncrementWithoutCheck == strategy {
+		algorithm := analytics.GetAlgorithm(strategy)
+		if algorithm == nil {
+			err := fmt.Errorf("Unsupported Strategy %s", strategy)
+			r.MarkAnalyticsServiceError(context, instance, "Can Not Compose Payload: %v", err)
+			if err := r.Status().Update(context, instance); err != nil {
+				return reconcile.Result{}, err
+			}
+			return reconcile.Result{RequeueAfter: 5 * time.Second}, r.Status().Update(context, instance)
+		}
+
+		if algorithm.GetPath() == "" {
 			newRolloutPercent += int64(traffic.GetStepSize())
 		} else {
 			// Get underlying k8s services
@@ -206,15 +216,6 @@ func (r *ReconcileExperiment) syncKnative(context context.Context, instance *ite
 				return reconcile.Result{}, r.Status().Update(context, instance)
 			}
 
-			algorithm := analytics.GetAlgorithm(strategy)
-			if algorithm == nil {
-				err := fmt.Errorf("Unsupported Strategy %s", strategy)
-				r.MarkAnalyticsServiceError(context, instance, "Can Not Compose Payload: %v", err)
-				if err := r.Status().Update(context, instance); err != nil {
-					return reconcile.Result{}, err
-				}
-				return reconcile.Result{RequeueAfter: 5 * time.Second}, r.Status().Update(context, instance)
-			}
 			// Get latest analysis
 			payload, err := analytics.MakeRequest(instance, baselineService, candidateService, algorithm)
 			if err != nil {

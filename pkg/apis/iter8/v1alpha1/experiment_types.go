@@ -55,36 +55,6 @@ type ExperimentList struct {
 	Items           []Experiment `json:"items"`
 }
 
-// AssessmentType ...
-type AssessmentType string
-
-const (
-	// AssessmentOverrideSuccess indicates that the experiment should be forced to a successful termination
-	AssessmentOverrideSuccess AssessmentType = "override_success"
-	// AssessmentOverrideFailure indicates that the experiment should be forced to a failed termination
-	AssessmentOverrideFailure AssessmentType = "override_failure"
-	// AssessmentNull indicates that the experiment should be progress normally
-	AssessmentNull AssessmentType = ""
-)
-
-// CleanUpType ...
-type CleanUpType string
-
-const (
-	// CleanUpDelete indicates unused deployment should be removed on experiment completion
-	CleanUpDelete CleanUpType = "delete"
-	// CleanUpNull indicates no action should ne taken on experiment completion
-	CleanUpNull CleanUpType = ""
-)
-
-// TBD Can we remove these?
-const (
-	// StrategyIncrementWithoutCheck ...
-	StrategyIncrementWithoutCheck string = "increment_without_check"
-	// StrategyCheckAndIncrement ...
-	StrategyCheckAndIncrement string = "check_and_increment"
-)
-
 // ExperimentSpec defines the desired state of Experiment
 type ExperimentSpec struct {
 	// TargetService is a reference to an object to use as target service
@@ -97,6 +67,11 @@ type ExperimentSpec struct {
 	// Analysis parameters
 	// +optional
 	Analysis Analysis `json:"analysis,omitempty"`
+
+	// Action specifies the action that the user would like to perform
+	// +optional.
+	//+kubebuilder:validation:Enum={resume,pause}
+	Action ActionType `json:"action,omitempty"`
 
 	// Assessment is a flag to terminate experiment with action
 	// +optional.
@@ -113,19 +88,51 @@ type ExperimentSpec struct {
 	RoutingReference *corev1.ObjectReference `json:"routingReference,omitempty"`
 }
 
+// AssessmentType defines the possible input for assessing the experiment
+type AssessmentType string
+
+const (
+	// AssessmentOverrideSuccess indicates that the experiment should be forced to a successful termination
+	AssessmentOverrideSuccess AssessmentType = "override_success"
+	// AssessmentOverrideFailure indicates that the experiment should be forced to a failed termination
+	AssessmentOverrideFailure AssessmentType = "override_failure"
+	// AssessmentNull indicates that the experiment should be progress normally
+	AssessmentNull AssessmentType = ""
+)
+
+// CleanUpType defines the possible input for cleanup
+type CleanUpType string
+
+const (
+	// CleanUpDelete indicates unused deployment should be removed on experiment completion
+	CleanUpDelete CleanUpType = "delete"
+	// CleanUpNull indicates no action should ne taken on experiment completion
+	CleanUpNull CleanUpType = ""
+)
+
+// ActionType defines the options for user to control the experiment
+type ActionType string
+
+const (
+	// ActionPause indicates a request for pausing experiment
+	ActionPause ActionType = "pause"
+	// ActionResume indicates a request for resuming experiment
+	ActionResume ActionType = "resume"
+)
+
 // GetStrategy returns the actual strategy of the experiment
 func (e *Experiment) GetStrategy() string {
 	strategy := e.Spec.TrafficControl.GetStrategy()
-	if strategy != StrategyIncrementWithoutCheck &&
+	if strategy != "increment_without_check" &&
 		(e.Spec.Analysis.SuccessCriteria == nil || len(e.Spec.Analysis.SuccessCriteria) == 0) {
-		strategy = StrategyIncrementWithoutCheck
+		strategy = "increment_without_check"
 	}
 	return strategy
 }
 
 // Succeeded determines whether experiment is a success or not
 func (e *Experiment) Succeeded() bool {
-	if e.GetStrategy() == StrategyIncrementWithoutCheck {
+	if e.GetStrategy() == "increment_without_check" {
 		return e.Spec.Assessment == AssessmentOverrideSuccess ||
 			e.Spec.Assessment == AssessmentNull
 	}
@@ -357,7 +364,7 @@ type SuccessCriterion struct {
 func (t *TrafficControl) GetStrategy() string {
 	strategy := t.Strategy
 	if strategy == nil {
-		defaultValue := StrategyCheckAndIncrement
+		defaultValue := "check_and_increment"
 		strategy = &defaultValue
 	}
 	return *strategy
@@ -521,7 +528,7 @@ const (
 func (s *ExperimentStatus) InitializeConditions() {
 	experimentCondSet.Manage(s).InitializeConditions()
 	if s.Phase == "" {
-		s.Phase = PhaseInitializing
+		s.Phase = PhaseProgressing
 	}
 }
 
