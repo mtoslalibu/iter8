@@ -33,6 +33,11 @@ func (in *Analysis) DeepCopyInto(out *Analysis) {
 			(*in)[i].DeepCopyInto(&(*out)[i])
 		}
 	}
+	if in.Reward != nil {
+		in, out := &in.Reward, &out.Reward
+		*out = new(SuccessCriterion)
+		(*in).DeepCopyInto(*out)
+	}
 	return
 }
 

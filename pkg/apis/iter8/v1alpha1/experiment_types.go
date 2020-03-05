@@ -166,11 +166,14 @@ type ExperimentStatus struct {
 	// * Conditions - the latest available observations of a resource's current state.
 	duckv1alpha1.Status `json:",inline"`
 
+	// CreateTimestamp is the timestamp when the experiment is created
+	CreateTimestamp int64 `json:"createTimestamp,omitempty"`
+
 	// StartTimestamp is the timestamp when the experiment starts
-	StartTimestamp string `json:"startTimestamp,omitempty"`
+	StartTimestamp int64 `json:"startTimestamp,omitempty"`
 
 	// EndTimestamp is the timestamp when experiment completes
-	EndTimestamp string `json:"endTimestamp,omitempty"`
+	EndTimestamp int64 `json:"endTimestamp,omitempty"`
 
 	// LastIncrementTime is the last time the traffic has been incremented
 	LastIncrementTime metav1.Time `json:"lastIncrementTime,omitempty"`
@@ -242,7 +245,7 @@ type TrafficControl struct {
 	Confidence *float64 `json:"confidence,omitempty"`
 }
 
-// Analysis ...
+// Analysis specifies the parameters for posting/reading the assessment from analytics server
 type Analysis struct {
 	// AnalyticsService endpoint
 	AnalyticsService string `json:"analyticsService,omitempty"`
@@ -252,6 +255,9 @@ type Analysis struct {
 
 	// List of criteria for assessing the candidate version
 	SuccessCriteria []SuccessCriterion `json:"successCriteria,omitempty"`
+
+	// The reward used by analytics to assess candidate
+	Reward *SuccessCriterion `json:"reward,omitempty"`
 }
 
 // SuccessCriterionStatus contains assessment for a specific success criteria
@@ -509,7 +515,7 @@ const (
 	ReasonAnalyticsServiceRunning = "AnalyticsServiceRunning"
 	ReasonIterationUpdate         = "IterationUpdate"
 	ReasonIterationSucceeded      = "IterationSucceeded"
-	ReasonIterationFailed         = "IterationFailed "
+	ReasonIterationFailed         = "IterationFailed"
 	ReasonExperimentSucceeded     = "ExperimentSucceeded"
 	ReasonExperimentFailed        = "ExperimentFailed"
 	ReasonSyncMetricsError        = "SyncMetricsError"
@@ -518,12 +524,23 @@ const (
 	ReasonRoutingRulesReady       = "RoutingRulesReady"
 )
 
-// InitializeConditions sets relevant unset conditions to Unknown state.
-func (s *ExperimentStatus) InitializeConditions() {
+// Init initialize status values
+func (s *ExperimentStatus) Init() {
+	// sets relevant unset conditions to Unknown state.
 	experimentCondSet.Manage(s).InitializeConditions()
-	if s.Phase == "" {
-		s.Phase = PhaseInitializing
+
+	s.CreateTimestamp = metav1.Now().UTC().UnixNano()
+
+	// TODO: not sure why this is needed
+	if s.LastIncrementTime.IsZero() {
+		s.LastIncrementTime = metav1.NewTime(time.Unix(0, 0))
 	}
+
+	if s.AnalysisState.Raw == nil {
+		s.AnalysisState.Raw = []byte("{}")
+	}
+
+	s.Phase = PhaseInitializing
 }
 
 // MarkMetricsSynced sets the condition that the metrics are synced with config map
