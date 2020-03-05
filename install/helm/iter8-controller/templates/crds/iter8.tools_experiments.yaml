@@ -125,32 +125,8 @@ spec:
                       - max
                       - min
                       type: object
-                    sampleSize:
-                      description: Minimum number of data points required to make
-                        a decision based on this criterion; If not specified, the
-                        default value is 10
-                      type: integer
-                    stopOnFailure:
-                      description: Indicates whether or not the experiment must finish
-                        if this criterion is not satisfied; defaults to false
-                      type: boolean
-                    tolerance:
-                      description: Value to check
-                      format: float64
-                      type: number
-                    toleranceType:
-                      description: "\tTolerance type. Options: \"delta\": compares
-                        the candidate against the baseline version with respect to
-                        the metric; \"threshold\": checks the candidate with respect
-                        to the metric"
-                      enum:
-                      - threshold
-                      - delta
-                      type: string
                   required:
                   - metricName
-                  - tolerance
-                  - toleranceType
                   type: object
                 successCriteria:
                   description: List of criteria for assessing the candidate version

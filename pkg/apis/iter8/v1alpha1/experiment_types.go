@@ -257,7 +257,62 @@ type Analysis struct {
 	SuccessCriteria []SuccessCriterion `json:"successCriteria,omitempty"`
 
 	// The reward used by analytics to assess candidate
-	Reward *SuccessCriterion `json:"reward,omitempty"`
+	Reward *Reward `json:"reward,omitempty"`
+}
+
+type ToleranceType string
+
+const (
+	// ToleranceTypeDelta constant string for tolerances of type "delta"
+	ToleranceTypeDelta ToleranceType = "delta"
+	// ToleranceTypeThreshold constant string for tolerances of type "threshhold"
+	ToleranceTypeThreshold ToleranceType = "threshold"
+)
+
+// MinMax captures minimum and maximum values of the metric
+type MinMax struct {
+	// Min minimum possible value of the metric
+	Min float64 `json:"min"`
+
+	//Max maximum possible value of the metric
+	Max float64 `json:"max"`
+}
+
+// SuccessCriterion specifies the criteria for an experiment to succeed
+type SuccessCriterion struct {
+	// Name of the metric to which the criterion applies. Options:
+	MetricName string `json:"metricName"`
+
+	// 	Tolerance type. Options:
+	// "delta": compares the candidate against the baseline version with respect to the metric;
+	// "threshold": checks the candidate with respect to the metric
+	//+kubebuilder:validation:Enum={threshold,delta}
+	ToleranceType ToleranceType `json:"toleranceType"`
+
+	// Value to check
+	Tolerance float64 `json:"tolerance"`
+
+	// Minimum number of data points required to make a decision based on this criterion;
+	// If not specified, the default value is 10
+	// +optional
+	SampleSize *int `json:"sampleSize,omitempty"`
+
+	// Minimum and maximum values of the metric
+	MinMax *MinMax `json:"min_max,omitempty"`
+
+	// Indicates whether or not the experiment must finish if this criterion is not satisfied;
+	// defaults to false
+	// +optional
+	StopOnFailure *bool `json:"stopOnFailure,omitempty"`
+}
+
+// Reward specifies the criteria for an experiment to succeed
+type Reward struct {
+	// Name of the metric to which the criterion applies. Options:
+	MetricName string `json:"metricName"`
+
+	// Minimum and maximum values of the metric
+	MinMax *MinMax `json:"min_max,omitempty"`
 }
 
 // SuccessCriterionStatus contains assessment for a specific success criteria
@@ -312,52 +367,6 @@ func (s *Summary) Assessment2String() string {
 	}
 
 	return out
-}
-
-type ToleranceType string
-
-const (
-	// ToleranceTypeDelta constant string for tolerances of type "delta"
-	ToleranceTypeDelta ToleranceType = "delta"
-	// ToleranceTypeThreshold constant string for tolerances of type "threshhold"
-	ToleranceTypeThreshold ToleranceType = "threshold"
-)
-
-// MinMax captures minimum and maximum values of the metric
-type MinMax struct {
-	// Min minimum possible value of the metric
-	Min float64 `json:"min"`
-
-	//Max maximum possible value of the metric
-	Max float64 `json:"max"`
-}
-
-// SuccessCriterion specifies the criteria for an experiment to succeed
-type SuccessCriterion struct {
-	// Name of the metric to which the criterion applies. Options:
-	MetricName string `json:"metricName"`
-
-	// 	Tolerance type. Options:
-	// "delta": compares the candidate against the baseline version with respect to the metric;
-	// "threshold": checks the candidate with respect to the metric
-	//+kubebuilder:validation:Enum={threshold,delta}
-	ToleranceType ToleranceType `json:"toleranceType"`
-
-	// Value to check
-	Tolerance float64 `json:"tolerance"`
-
-	// Minimum number of data points required to make a decision based on this criterion;
-	// If not specified, the default value is 10
-	// +optional
-	SampleSize *int `json:"sampleSize,omitempty"`
-
-	// Minimum and maximum values of the metric
-	MinMax *MinMax `json:"min_max,omitempty"`
-
-	// Indicates whether or not the experiment must finish if this criterion is not satisfied;
-	// defaults to false
-	// +optional
-	StopOnFailure *bool `json:"stopOnFailure,omitempty"`
 }
 
 // GetStrategy gets the strategy used for traffic control. Default is "check_and_increment".

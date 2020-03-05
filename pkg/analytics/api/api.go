@@ -18,7 +18,7 @@ import (
 )
 
 const (
-	AnalyticsAPIPath string = "/api/v1/analytics/canary/"
+	AnalyticsAPIPath string = "/api/v1/experiment/"
 )
 
 // Request defines payload to analytics service

@@ -385,7 +385,7 @@ func getGreedyFastKubernetesExperiment(name, serviceName, baseline, candidate, a
 func getRewardFastKubernetesExperiment(name, serviceName, baseline, candidate, analyticsHost string) *iter8v1alpha1.Experiment {
 	experiment := getFastKubernetesExperiment(name, serviceName, baseline, candidate, analyticsHost)
 
-	experiment.Spec.Analysis.Reward = &iter8v1alpha1.SuccessCriterion{
+	experiment.Spec.Analysis.Reward = &iter8v1alpha1.Reward{
 		MetricName: "iter8_latency",
 		MinMax: &iter8v1alpha1.MinMax{
 			Min: 0,
