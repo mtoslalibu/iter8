@@ -253,7 +253,7 @@ func TestKubernetesExperiment(t *testing.T) {
 		},
 		"reward-rollforward": testCase{
 			mocks: map[string]analtyicsapi.Response{
-				"reward-rollforward": test.GetGetSuccessMockResponse(),
+				"reward-rollforward": test.GetSuccessMockResponse(),
 			},
 			initObjects: []runtime.Object{
 				getReviewsService(),
@@ -387,7 +387,7 @@ func getRewardFastKubernetesExperiment(name, serviceName, baseline, candidate, a
 
 	experiment.Spec.Analysis.Reward = &iter8v1alpha1.SuccessCriterion{
 		MetricName: "iter8_latency",
-		MinMax: iter8v1alpha1.MinMax{
+		MinMax: &iter8v1alpha1.MinMax{
 			Min: 0,
 			Max: 10,
 		},
