@@ -35,7 +35,9 @@ func (r *ReconcileExperiment) syncKubernetes(context context.Context, instance *
 				return reconcile.Result{}, nil
 			}
 		}
-		return reconcile.Result{}, err
+		// retry in 5 secs
+		log.Info("retry in 5 secs")
+		return reconcile.Result{RequeueAfter: 5 * time.Second}, nil
 	}
 
 	updateStatus, err = r.detectTargets(context, instance)
@@ -98,17 +100,9 @@ func (r *ReconcileExperiment) syncKubernetes(context context.Context, instance *
 func (r *ReconcileExperiment) finalizeIstio(context context.Context, instance *iter8v1alpha1.Experiment) (reconcile.Result, error) {
 	completed := instance.Status.GetCondition(iter8v1alpha1.ExperimentConditionExperimentCompleted)
 	if completed != nil && completed.Status != corev1.ConditionTrue {
-		targetsFound := instance.Status.GetCondition(iter8v1alpha1.ExperimentConditionTargetsProvided)
-		// clean up can be done only when all targets are presented
-		if targetsFound != nil && targetsFound.Status == corev1.ConditionTrue {
-			// Execute in failure condition
-			instance.Spec.Assessment = iter8v1alpha1.AssessmentOverrideFailure
-			if err := r.targets.Cleanup(context, instance, r.Client); err != nil {
-				return reconcile.Result{}, err
-			}
-			if err := r.rules.Cleanup(instance, r.targets, r.istioClient); err != nil {
-				return reconcile.Result{}, err
-			}
+		instance.Spec.Assessment = iter8v1alpha1.AssessmentOverrideFailure
+		if _, err := r.syncKubernetes(context, instance); err != nil {
+			log.Error(err, "Fail to execute finalize sync process")
 		}
 	}
 
