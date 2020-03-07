@@ -13,7 +13,7 @@ See the License for the specific language governing permissions and
 limitations under the License.
 */
 
-package experiment
+package targets
 
 import (
 	"context"
@@ -23,6 +23,7 @@ import (
 	"sigs.k8s.io/controller-runtime/pkg/client"
 
 	iter8v1alpha1 "github.com/iter8-tools/iter8-controller/pkg/apis/iter8/v1alpha1"
+	"github.com/iter8-tools/iter8-controller/pkg/controller/experiment/util"
 )
 
 type Targets struct {
@@ -46,19 +47,19 @@ func (t *Targets) Cleanup(context context.Context, instance *iter8v1alpha1.Exper
 			switch instance.Spec.TrafficControl.GetOnSuccess() {
 			case "candidate":
 				// delete baseline deployment
-				if err := deleteObjects(context, client, t.Baseline); err != nil {
+				if err := util.DeleteObjects(context, client, t.Baseline); err != nil {
 					return err
 				}
 			case "both":
 				//no-op
 			case "baseline":
 				// delete candidate deployment
-				if err := deleteObjects(context, client, t.Candidate); err != nil {
+				if err := util.DeleteObjects(context, client, t.Candidate); err != nil {
 					return err
 				}
 			}
 		} else {
-			if err := deleteObjects(context, client, t.Candidate); err != nil {
+			if err := util.DeleteObjects(context, client, t.Candidate); err != nil {
 				return err
 			}
 		}

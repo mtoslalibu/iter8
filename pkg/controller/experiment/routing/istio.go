@@ -12,18 +12,31 @@ WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
 See the License for the specific language governing permissions and
 limitations under the License.
 */
-package experiment
+package routing
 
 import (
 	appsv1 "k8s.io/api/apps/v1"
+	"k8s.io/apimachinery/pkg/api/meta"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
+	runtime "k8s.io/apimachinery/pkg/runtime"
 
+	"github.com/iter8-tools/iter8-controller/pkg/controller/experiment/util"
 	networkingv1alpha3 "istio.io/api/networking/v1alpha3"
 	"istio.io/client-go/pkg/apis/networking/v1alpha3"
 )
 
 const (
 	IstioRuleSuffix = ".iter8-experiment"
+
+	Baseline    = "baseline"
+	Candidate   = "candidate"
+	Stable      = "stable"
+	Progressing = "progressing"
+
+	ExperimentInit  = "iter8-tools/init"
+	ExperimentRole  = "iter8-tools/role"
+	ExperimentLabel = "iter8-tools/experiment"
+	ExperimentHost  = "iter8-tools/host"
 )
 
 type DestinationRuleBuilder v1alpha3.DestinationRule
@@ -47,8 +60,8 @@ func NewDestinationRule(serviceName, name, namespace string) *DestinationRuleBui
 			Name:      serviceName + "." + namespace + IstioRuleSuffix,
 			Namespace: namespace,
 			Labels: map[string]string{
-				experimentLabel: name,
-				experimentHost:  serviceName,
+				ExperimentLabel: name,
+				ExperimentHost:  serviceName,
 			},
 		},
 		Spec: networkingv1alpha3.DestinationRule{
@@ -61,7 +74,7 @@ func NewDestinationRule(serviceName, name, namespace string) *DestinationRuleBui
 }
 
 func (b *DestinationRuleBuilder) WithStableDeployment(d *appsv1.Deployment) *DestinationRuleBuilder {
-	b.ObjectMeta.Labels[experimentRole] = Stable
+	b.ObjectMeta.Labels[ExperimentRole] = Stable
 	b.Spec.Subsets = append(b.Spec.Subsets, &networkingv1alpha3.Subset{
 		Name:   Stable,
 		Labels: d.Spec.Template.Labels,
@@ -71,33 +84,33 @@ func (b *DestinationRuleBuilder) WithStableDeployment(d *appsv1.Deployment) *Des
 }
 
 func (b *DestinationRuleBuilder) WithStableLabel() *DestinationRuleBuilder {
-	b.ObjectMeta.Labels[experimentRole] = Stable
+	b.ObjectMeta.Labels[ExperimentRole] = Stable
 	return b
 }
 
 func (b *DestinationRuleBuilder) WithInitLabel() *DestinationRuleBuilder {
-	b.ObjectMeta.Labels[experimentInit] = "True"
+	b.ObjectMeta.Labels[ExperimentInit] = "True"
 	return b
 }
 
 func (b *DestinationRuleBuilder) RemoveExperimentLabel() *DestinationRuleBuilder {
-	if _, ok := b.ObjectMeta.Labels[experimentLabel]; ok {
-		delete(b.ObjectMeta.Labels, experimentLabel)
+	if _, ok := b.ObjectMeta.Labels[ExperimentLabel]; ok {
+		delete(b.ObjectMeta.Labels, ExperimentLabel)
 	}
 
-	if _, ok := b.ObjectMeta.Labels[experimentInit]; ok {
-		delete(b.ObjectMeta.Labels, experimentInit)
+	if _, ok := b.ObjectMeta.Labels[ExperimentInit]; ok {
+		delete(b.ObjectMeta.Labels, ExperimentInit)
 	}
 	return b
 }
 
 func (b *DestinationRuleBuilder) WithExperimentRegisterd(exp string) *DestinationRuleBuilder {
-	b.ObjectMeta.Labels[experimentLabel] = exp
+	b.ObjectMeta.Labels[ExperimentLabel] = exp
 	return b
 }
 
 func (b *DestinationRuleBuilder) WithStableToProgressing(baseline *appsv1.Deployment) *DestinationRuleBuilder {
-	b.ObjectMeta.Labels[experimentRole] = Progressing
+	b.ObjectMeta.Labels[ExperimentRole] = Progressing
 	// Remove the Stable Entry
 	stableIndex := -1
 	for idx := range b.Spec.Subsets {
@@ -142,7 +155,7 @@ func (b *DestinationRuleBuilder) WithSubset(name string, d *appsv1.Deployment) *
 }
 
 func (b *DestinationRuleBuilder) WithProgressingLabel() *DestinationRuleBuilder {
-	b.ObjectMeta.Labels[experimentRole] = Progressing
+	b.ObjectMeta.Labels[ExperimentRole] = Progressing
 	return b
 }
 
@@ -165,8 +178,8 @@ func NewVirtualService(serviceName, name, namespace string) *VirtualServiceBuild
 			Name:      serviceName + "." + namespace + IstioRuleSuffix,
 			Namespace: namespace,
 			Labels: map[string]string{
-				experimentLabel: name,
-				experimentHost:  serviceName,
+				ExperimentLabel: name,
+				ExperimentHost:  serviceName,
 			},
 		},
 		Spec: networkingv1alpha3.VirtualService{
@@ -178,22 +191,22 @@ func NewVirtualService(serviceName, name, namespace string) *VirtualServiceBuild
 }
 
 func (b *VirtualServiceBuilder) WithProgressingLabel() *VirtualServiceBuilder {
-	b.ObjectMeta.Labels[experimentRole] = Progressing
+	b.ObjectMeta.Labels[ExperimentRole] = Progressing
 	return b
 }
 
 func (b *VirtualServiceBuilder) WithStableLabel() *VirtualServiceBuilder {
-	b.ObjectMeta.Labels[experimentRole] = Stable
+	b.ObjectMeta.Labels[ExperimentRole] = Stable
 	return b
 }
 
 func (b *VirtualServiceBuilder) RemoveExperimentLabel() *VirtualServiceBuilder {
-	if _, ok := b.ObjectMeta.Labels[experimentLabel]; ok {
-		delete(b.ObjectMeta.Labels, experimentLabel)
+	if _, ok := b.ObjectMeta.Labels[ExperimentLabel]; ok {
+		delete(b.ObjectMeta.Labels, ExperimentLabel)
 	}
 
-	if _, ok := b.ObjectMeta.Labels[experimentInit]; ok {
-		delete(b.ObjectMeta.Labels, experimentInit)
+	if _, ok := b.ObjectMeta.Labels[ExperimentInit]; ok {
+		delete(b.ObjectMeta.Labels, ExperimentInit)
 	}
 	return b
 }
@@ -202,7 +215,7 @@ func (b *VirtualServiceBuilder) WithRolloutPercent(service, ns string, rolloutPe
 	if b.Spec.Http != nil || len(b.Spec.Http) > 0 {
 		for i, http := range b.Spec.Http {
 			for j, route := range http.Route {
-				if equalHost(route.Destination.Host, ns, service, ns) {
+				if util.EqualHost(route.Destination.Host, ns, service, ns) {
 					if route.Destination.Subset == Baseline {
 						b.Spec.Http[i].Route[j].Weight = 100 - rolloutPercent
 					} else if route.Destination.Subset == Candidate {
@@ -239,7 +252,7 @@ func (b *VirtualServiceBuilder) WithRolloutPercent(service, ns string, rolloutPe
 func (b *VirtualServiceBuilder) AppendStableSubset(service, ns string) *VirtualServiceBuilder {
 	for i, http := range b.Spec.Http {
 		for j, route := range http.Route {
-			if equalHost(route.Destination.Host, ns, service, ns) {
+			if util.EqualHost(route.Destination.Host, ns, service, ns) {
 				b.Spec.Http[i].Route[j].Destination.Subset = Stable
 				break
 			}
@@ -249,7 +262,7 @@ func (b *VirtualServiceBuilder) AppendStableSubset(service, ns string) *VirtualS
 }
 
 func (b *VirtualServiceBuilder) WithNewStableSet(service string) *VirtualServiceBuilder {
-	b.ObjectMeta.Labels[experimentRole] = Stable
+	b.ObjectMeta.Labels[ExperimentRole] = Stable
 	b.Spec = networkingv1alpha3.VirtualService{
 		Hosts: []string{service},
 		Http: []*networkingv1alpha3.HTTPRoute{
@@ -271,12 +284,12 @@ func (b *VirtualServiceBuilder) WithNewStableSet(service string) *VirtualService
 }
 
 func (b *VirtualServiceBuilder) WithInitLabel() *VirtualServiceBuilder {
-	b.ObjectMeta.Labels[experimentInit] = "True"
+	b.ObjectMeta.Labels[ExperimentInit] = "True"
 	return b
 }
 
 func (b *VirtualServiceBuilder) WithExperimentRegisterd(exp string) *VirtualServiceBuilder {
-	b.ObjectMeta.Labels[experimentLabel] = exp
+	b.ObjectMeta.Labels[ExperimentLabel] = exp
 	return b
 }
 
@@ -286,7 +299,7 @@ func (b *VirtualServiceBuilder) WithStableToProgressing(service, ns string) *Vir
 	for i, http := range b.Spec.Http {
 		stableIndex := -1
 		for j, route := range http.Route {
-			if equalHost(route.Destination.Host, ns, service, ns) {
+			if util.EqualHost(route.Destination.Host, ns, service, ns) {
 				stableIndex = j
 				break
 			}
@@ -326,7 +339,7 @@ func (b *VirtualServiceBuilder) WithProgressingToStable(service, ns string, subs
 	for i, http := range b.Spec.Http {
 		stableIndex := -1
 		for j, route := range http.Route {
-			if equalHost(route.Destination.Host, ns, service, ns) && route.Destination.Subset == subset {
+			if util.EqualHost(route.Destination.Host, ns, service, ns) && route.Destination.Subset == subset {
 				stableIndex = j
 				break
 			}
@@ -359,40 +372,6 @@ func (b *VirtualServiceBuilder) Build() *v1alpha3.VirtualService {
 	return (*v1alpha3.VirtualService)(b)
 }
 
-func equalHost(host1, ns1, host2, ns2 string) bool {
-	if host1 == host2 ||
-		host1 == host2+"."+ns2+".svc.cluster.local" ||
-		host1+"."+ns1+".svc.cluster.local" == host2 {
-		return true
-	}
-	return false
-}
-
-func updateSubset(dr *v1alpha3.DestinationRule, d *appsv1.Deployment, name string) bool {
-	update, found := true, false
-	for idx, subset := range dr.Spec.Subsets {
-		if subset.Name == Stable && name == Baseline {
-			dr.Spec.Subsets[idx].Name = name
-			dr.Spec.Subsets[idx].Labels = d.Spec.Template.Labels
-			found = true
-			break
-		}
-		if subset.Name == name {
-			found = true
-			update = false
-			break
-		}
-	}
-
-	if !found {
-		dr.Spec.Subsets = append(dr.Spec.Subsets, &networkingv1alpha3.Subset{
-			Name:   name,
-			Labels: d.Spec.Template.Labels,
-		})
-	}
-	return update
-}
-
 func getWeight(subset string, vs *v1alpha3.VirtualService) int32 {
 	for _, route := range vs.Spec.Http[0].Route {
 		if route.Destination.Subset == subset {
@@ -400,4 +379,21 @@ func getWeight(subset string, vs *v1alpha3.VirtualService) int32 {
 		}
 	}
 	return 0
+}
+
+func removeExperimentLabel(objs ...runtime.Object) (err error) {
+	for _, obj := range objs {
+		accessor, err := meta.Accessor(obj)
+		if err != nil {
+			return err
+		}
+		labels := accessor.GetLabels()
+		delete(labels, ExperimentLabel)
+		if _, ok := labels[ExperimentInit]; ok {
+			delete(labels, ExperimentInit)
+		}
+		accessor.SetLabels(labels)
+	}
+
+	return nil
 }

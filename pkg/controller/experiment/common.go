@@ -17,7 +17,6 @@ package experiment
 import (
 	"context"
 	"fmt"
-	"strconv"
 	"strings"
 	"time"
 
@@ -25,7 +24,6 @@ import (
 	"gopkg.in/yaml.v2"
 	corev1 "k8s.io/api/core/v1"
 	"k8s.io/apimachinery/pkg/api/meta"
-	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	runtime "k8s.io/apimachinery/pkg/runtime"
 	"k8s.io/apimachinery/pkg/types"
 	"sigs.k8s.io/controller-runtime/pkg/client"
@@ -36,16 +34,6 @@ import (
 const (
 	MetricsConfigMap = "iter8config-metrics"
 	Iter8Namespace   = "iter8"
-
-	Baseline    = "baseline"
-	Candidate   = "candidate"
-	Stable      = "stable"
-	Progressing = "progressing"
-
-	experimentInit  = "iter8-tools/init"
-	experimentRole  = "iter8-tools/role"
-	experimentLabel = "iter8-tools/experiment"
-	experimentHost  = "iter8-tools/host"
 )
 
 // Logger gets the logger from the context.
@@ -84,14 +72,6 @@ func removeFinalizer(context context.Context, c client.Client, instance *iter8v1
 	return
 }
 
-func getServiceNamespace(instance *iter8v1alpha1.Experiment) string {
-	serviceNamespace := instance.Spec.TargetService.Namespace
-	if serviceNamespace == "" {
-		serviceNamespace = instance.Namespace
-	}
-	return serviceNamespace
-}
-
 func updateGrafanaURL(instance *iter8v1alpha1.Experiment, namespace string) {
 	endTs := instance.Status.EndTimestamp
 	if endTs == "" {
@@ -107,20 +87,8 @@ func updateGrafanaURL(instance *iter8v1alpha1.Experiment, namespace string) {
 		"&to=" + endTs
 }
 
-func markExperimentCompleted(instance *iter8v1alpha1.Experiment) {
-	// Clear analysis state
-	instance.Status.AnalysisState.Raw = []byte("{}")
-
-	// Update grafana url
-	ts := metav1.Now().UTC().UnixNano() / int64(time.Millisecond)
-	instance.Status.EndTimestamp = strconv.FormatInt(ts, 10)
-	updateGrafanaURL(instance, getServiceNamespace(instance))
-
-	instance.Status.MarkExperimentCompleted()
-}
-
 func successMsg(instance *iter8v1alpha1.Experiment) string {
-	if instance.Spec.Assessment == iter8v1alpha1.AssessmentOverrideSuccess {
+	if instance.Action == iter8v1alpha1.ActionOverrideSuccess {
 		return "Override Success"
 	} else if instance.Status.AssessmentSummary.AllSuccessCriteriaMet {
 		return "All Success Criteria Were Met"
@@ -130,7 +98,7 @@ func successMsg(instance *iter8v1alpha1.Experiment) string {
 }
 
 func failureMsg(instance *iter8v1alpha1.Experiment) string {
-	if instance.Spec.Assessment == iter8v1alpha1.AssessmentOverrideFailure {
+	if instance.Action == iter8v1alpha1.ActionOverrideFailure {
 		return "Override Failure"
 	} else if !instance.Status.AssessmentSummary.AllSuccessCriteriaMet {
 		return "Not All Success Criteria Met"
@@ -220,32 +188,6 @@ func (r *ReconcileExperiment) executeStatusUpdate(ctx context.Context, instance 
 		trial--
 	}
 	return
-}
-
-func removeExperimentLabel(objs ...runtime.Object) (err error) {
-	for _, obj := range objs {
-		accessor, err := meta.Accessor(obj)
-		if err != nil {
-			return err
-		}
-		labels := accessor.GetLabels()
-		delete(labels, experimentLabel)
-		if _, ok := labels[experimentInit]; ok {
-			delete(labels, experimentInit)
-		}
-		accessor.SetLabels(labels)
-	}
-
-	return nil
-}
-
-func deleteObjects(context context.Context, client client.Client, objs ...runtime.Object) error {
-	for _, obj := range objs {
-		if err := client.Delete(context, obj); err != nil {
-			return err
-		}
-	}
-	return nil
 }
 
 func setLabels(obj runtime.Object, newLabels map[string]string) error {

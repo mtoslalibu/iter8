@@ -48,15 +48,16 @@ func TestReconcile(t *testing.T) {
 
 	g.Expect(err).NotTo(gomega.HaveOccurred())
 
-	r, err := newReconciler(mgr)
+	stop := make(chan struct{})
+	r, err := newReconciler(mgr, stop)
 	g.Expect(err).NotTo(gomega.HaveOccurred())
-	recFn, requests := SetupTestReconcile(r)
-	g.Expect(add(mgr, recFn)).NotTo(gomega.HaveOccurred())
+	_, requests := SetupTestReconcile(r)
+	g.Expect(add(mgr, r)).NotTo(gomega.HaveOccurred())
 
-	stopMgr, mgrStopped := StartTestManager(mgr, g)
+	mgrStopped := StartTestManager(mgr, g, stop)
 
 	defer func() {
-		close(stopMgr)
+		close(stop)
 		mgrStopped.Wait()
 	}()
 

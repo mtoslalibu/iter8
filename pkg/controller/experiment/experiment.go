@@ -22,21 +22,25 @@ import (
 	"strconv"
 	"time"
 
+	networkingv1alpha3 "istio.io/api/networking/v1alpha3"
+	appsv1 "k8s.io/api/apps/v1"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/apimachinery/pkg/labels"
 	runtime "k8s.io/apimachinery/pkg/runtime"
 	"k8s.io/apimachinery/pkg/types"
 
 	"github.com/iter8-tools/iter8-controller/pkg/analytics"
-	"istio.io/client-go/pkg/apis/networking/v1alpha3"
-
 	iter8v1alpha1 "github.com/iter8-tools/iter8-controller/pkg/apis/iter8/v1alpha1"
+	"github.com/iter8-tools/iter8-controller/pkg/controller/experiment/routing"
+	"github.com/iter8-tools/iter8-controller/pkg/controller/experiment/targets"
+	"github.com/iter8-tools/iter8-controller/pkg/controller/experiment/util"
+	"istio.io/client-go/pkg/apis/networking/v1alpha3"
 )
 
 func (r *ReconcileExperiment) checkExperimentCompleted(context context.Context, instance *iter8v1alpha1.Experiment) (bool, error) {
 	// check experiment is finished
 	if instance.Spec.TrafficControl.GetMaxIterations() < instance.Status.CurrentIteration ||
-		instance.Spec.Assessment != iter8v1alpha1.AssessmentNull {
+		instance.Action.TerminateExperiment() {
 		if err := r.cleanUp(context, instance); err != nil {
 			return true, err
 		}
@@ -74,9 +78,10 @@ func (r *ReconcileExperiment) getRoutingLists(namespace string, m map[string]str
 }
 
 func (r *ReconcileExperiment) checkOrInitRules(context context.Context, instance *iter8v1alpha1.Experiment) (bool, error) {
-	serviceNs := getServiceNamespace(instance)
+
+	serviceNs := util.GetServiceNamespace(instance)
 	drl, vsl, err := r.getRoutingLists(serviceNs,
-		map[string]string{experimentHost: instance.Spec.TargetService.Name})
+		map[string]string{routing.ExperimentHost: instance.Spec.TargetService.Name})
 	updateStatus := true
 
 	if err != nil || len(drl.Items) == 0 && len(vsl.Items) == 0 {
@@ -113,7 +118,7 @@ func (r *ReconcileExperiment) initializeRoutingRules(instance *iter8v1alpha1.Exp
 		serviceNamespace = instance.Namespace
 	}
 
-	r.rules = &IstioRoutingRules{}
+	r.rules = &routing.IstioRoutingRules{}
 
 	if instance.Spec.RoutingReference != nil {
 		if err = r.detectRoutingReferences(instance); err != nil {
@@ -121,7 +126,7 @@ func (r *ReconcileExperiment) initializeRoutingRules(instance *iter8v1alpha1.Exp
 		}
 	} else {
 		// Create Dummy Stable rules
-		dr := NewDestinationRule(serviceName, instance.GetName(), serviceNamespace).
+		dr := routing.NewDestinationRule(serviceName, instance.GetName(), serviceNamespace).
 			WithStableLabel().
 			WithInitLabel().
 			Build()
@@ -132,7 +137,7 @@ func (r *ReconcileExperiment) initializeRoutingRules(instance *iter8v1alpha1.Exp
 
 		log.Info("NewRuleCreated", "dr", dr.GetName())
 
-		vs := NewVirtualService(serviceName, instance.GetName(), serviceNamespace).
+		vs := routing.NewVirtualService(serviceName, instance.GetName(), serviceNamespace).
 			WithNewStableSet(serviceName).
 			WithInitLabel().
 			Build()
@@ -176,12 +181,12 @@ func (r *ReconcileExperiment) detectRoutingReferences(instance *iter8v1alpha1.Ex
 
 		// set stable labels
 		vs.SetLabels(map[string]string{
-			experimentLabel: instance.Name,
-			experimentHost:  instance.Spec.TargetService.Name,
-			experimentRole:  Stable,
+			routing.ExperimentLabel: instance.Name,
+			routing.ExperimentHost:  instance.Spec.TargetService.Name,
+			routing.ExperimentRole:  routing.Stable,
 		})
 
-		dr := NewDestinationRule(instance.Spec.TargetService.Name, instance.GetName(), ruleNamespace).
+		dr := routing.NewDestinationRule(instance.Spec.TargetService.Name, instance.GetName(), ruleNamespace).
 			WithStableLabel().
 			Build()
 
@@ -230,10 +235,10 @@ func (r *ReconcileExperiment) setExperimentEndStatus(context context.Context, in
 
 func (r *ReconcileExperiment) detectTargets(context context.Context, instance *iter8v1alpha1.Experiment) (bool, error) {
 	serviceName := instance.Spec.TargetService.Name
-	serviceNamespace := getServiceNamespace(instance)
+	serviceNamespace := util.GetServiceNamespace(instance)
 
 	if r.targets == nil {
-		r.targets = InitTargets()
+		r.targets = targets.InitTargets()
 	}
 	// Get k8s service
 	err := r.Get(context, types.NamespacedName{Name: serviceName, Namespace: serviceNamespace}, r.targets.Service)
@@ -260,7 +265,7 @@ func (r *ReconcileExperiment) detectTargets(context context.Context, instance *i
 	}
 
 	if err = r.Get(context, types.NamespacedName{Name: candidateName, Namespace: serviceNamespace}, r.targets.Candidate); err == nil {
-		if updateSubset(r.rules.DestinationRule, r.targets.Candidate, Candidate) {
+		if updateSubset(r.rules.DestinationRule, r.targets.Candidate, routing.Candidate) {
 			uddr, err := r.istioClient.NetworkingV1alpha3().
 				DestinationRules(r.rules.DestinationRule.GetNamespace()).
 				Update(r.rules.DestinationRule)
@@ -279,7 +284,7 @@ func (r *ReconcileExperiment) detectTargets(context context.Context, instance *i
 		now := metav1.Now()
 		ts := now.UTC().UnixNano() / int64(time.Millisecond)
 		instance.Status.StartTimestamp = strconv.FormatInt(ts, 10)
-		updateGrafanaURL(instance, getServiceNamespace(instance))
+		updateGrafanaURL(instance, util.GetServiceNamespace(instance))
 		return true, nil
 	}
 
@@ -287,20 +292,20 @@ func (r *ReconcileExperiment) detectTargets(context context.Context, instance *i
 }
 
 // To validate whether the detected rules can be handled by the experiment
-func validateDetectedRules(drl *v1alpha3.DestinationRuleList, vsl *v1alpha3.VirtualServiceList, instance *iter8v1alpha1.Experiment) (*IstioRoutingRules, error) {
-	out := &IstioRoutingRules{}
+func validateDetectedRules(drl *v1alpha3.DestinationRuleList, vsl *v1alpha3.VirtualServiceList, instance *iter8v1alpha1.Experiment) (*routing.IstioRoutingRules, error) {
+	out := &routing.IstioRoutingRules{}
 	// should only be one set of rules for stable or progressing
 	if len(drl.Items) == 1 && len(vsl.Items) == 1 {
-		drrole, drok := drl.Items[0].GetLabels()[experimentRole]
-		vsrole, vsok := vsl.Items[0].GetLabels()[experimentRole]
+		drrole, drok := drl.Items[0].GetLabels()[routing.ExperimentRole]
+		vsrole, vsok := vsl.Items[0].GetLabels()[routing.ExperimentRole]
 		if drok && vsok {
-			if drrole == Stable && vsrole == Stable {
+			if drrole == routing.Stable && vsrole == routing.Stable {
 				// Valid stable rules detected
 				out.DestinationRule = drl.Items[0].DeepCopy()
 				out.VirtualService = vsl.Items[0].DeepCopy()
-			} else if drrole == Progressing && vsrole == Progressing {
-				drLabel, drok := drl.Items[0].GetLabels()[experimentLabel]
-				vsLabel, vsok := vsl.Items[0].GetLabels()[experimentLabel]
+			} else if drrole == routing.Progressing && vsrole == routing.Progressing {
+				drLabel, drok := drl.Items[0].GetLabels()[routing.ExperimentLabel]
+				vsLabel, vsok := vsl.Items[0].GetLabels()[routing.ExperimentLabel]
 				if drok && vsok {
 					expName := instance.GetName()
 					if drLabel == expName && vsLabel == expName {
@@ -344,7 +349,7 @@ func validateVirtualService(instance *iter8v1alpha1.Experiment, vs *v1alpha3.Vir
 	for i, http := range vs.Spec.Http {
 		matchIndex := -1
 		for j, route := range http.Route {
-			if equalHost(route.Destination.Host, vsNamespace, instance.Spec.TargetService.Name, svcNamespace) {
+			if util.EqualHost(route.Destination.Host, vsNamespace, instance.Spec.TargetService.Name, svcNamespace) {
 				// Only one entry of destination is allowed in an HTTP route
 				if matchIndex < 0 {
 					matchIndex = j
@@ -365,7 +370,7 @@ func validateVirtualService(instance *iter8v1alpha1.Experiment, vs *v1alpha3.Vir
 func (r *ReconcileExperiment) progressExperiment(context context.Context, instance *iter8v1alpha1.Experiment) error {
 	// Progressing on Experiment
 	traffic := instance.Spec.TrafficControl
-	rolloutPercent := r.rules.GetWeight(Candidate)
+	rolloutPercent := r.rules.GetWeight(routing.Candidate)
 	strategy := instance.GetStrategy()
 	algorithm := analytics.GetAlgorithm(strategy)
 	if algorithm == nil {
@@ -421,10 +426,10 @@ func (r *ReconcileExperiment) progressExperiment(context context.Context, instan
 		r.MarkExperimentProgress(context, instance, true, iter8v1alpha1.ReasonIterationFailed,
 			"")
 	} else if rolloutPercent <= int32(traffic.GetMaxTrafficPercentage()) &&
-		r.rules.GetWeight(Candidate) != rolloutPercent {
+		r.rules.GetWeight(routing.Candidate) != rolloutPercent {
 		// Increase the traffic upto max traffic amount
 		// Update Traffic splitting rule
-		if err := r.rules.UpdateRolloutPercent(instance.Spec.TargetService.Name, getServiceNamespace(instance), rolloutPercent, r.istioClient); err != nil {
+		if err := r.rules.UpdateRolloutPercent(instance.Spec.TargetService.Name, util.GetServiceNamespace(instance), rolloutPercent, r.istioClient); err != nil {
 			r.MarkRoutingRulesError(context, instance, "%s", err.Error())
 			return err
 		}
@@ -465,4 +470,29 @@ func (r *ReconcileExperiment) startNextIteration(context context.Context, instan
 	instance.Status.CurrentIteration++
 	r.MarkExperimentProgress(context, instance, false, iter8v1alpha1.ReasonIterationUpdate,
 		"Iteration %d Started", instance.Status.CurrentIteration)
+}
+
+func updateSubset(dr *v1alpha3.DestinationRule, d *appsv1.Deployment, name string) bool {
+	update, found := true, false
+	for idx, subset := range dr.Spec.Subsets {
+		if subset.Name == routing.Stable && name == routing.Baseline {
+			dr.Spec.Subsets[idx].Name = name
+			dr.Spec.Subsets[idx].Labels = d.Spec.Template.Labels
+			found = true
+			break
+		}
+		if subset.Name == name {
+			found = true
+			update = false
+			break
+		}
+	}
+
+	if !found {
+		dr.Spec.Subsets = append(dr.Spec.Subsets, &networkingv1alpha3.Subset{
+			Name:   name,
+			Labels: d.Spec.Template.Labels,
+		})
+	}
+	return update
 }

@@ -80,9 +80,11 @@ func main() {
 		os.Exit(1)
 	}
 
+	stop := signals.SetupSignalHandler()
+
 	// Setup all Controllers
 	log.Info("Setting up controller")
-	if err := controller.AddToManager(mgr); err != nil {
+	if err := controller.AddToManager(mgr, stop); err != nil {
 		log.Error(err, "unable to register controllers to the manager")
 		os.Exit(1)
 	}
@@ -95,7 +97,7 @@ func main() {
 
 	// Start the Cmd
 	log.Info("Starting the Cmd.")
-	if err := mgr.Start(signals.SetupSignalHandler()); err != nil {
+	if err := mgr.Start(stop); err != nil {
 		log.Error(err, "unable to run the manager")
 		os.Exit(1)
 	}

@@ -98,7 +98,7 @@ func (r *ReconcileExperiment) finalizeIstio(context context.Context, instance *i
 		// clean up can be done only when all targets are presented
 		if targetsFound != nil && targetsFound.Status == corev1.ConditionTrue {
 			// Execute in failure condition
-			instance.Spec.Assessment = iter8v1alpha1.AssessmentOverrideFailure
+			instance.Action = iter8v1alpha1.ActionOverrideFailure
 			if err := r.targets.Cleanup(context, instance, r.Client); err != nil {
 				return reconcile.Result{}, err
 			}

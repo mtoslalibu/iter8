@@ -17,14 +17,11 @@ package experiment
 
 import (
 	"context"
-	"reflect"
-	"strconv"
-	"time"
 
+	appsv1 "k8s.io/api/apps/v1"
 	"k8s.io/apimachinery/pkg/api/errors"
-	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	runtime "k8s.io/apimachinery/pkg/runtime"
-	toolscache "k8s.io/client-go/tools/cache"
+	"k8s.io/apimachinery/pkg/types"
 	"k8s.io/client-go/tools/record"
 	"sigs.k8s.io/controller-runtime/pkg/client"
 	"sigs.k8s.io/controller-runtime/pkg/client/config"
@@ -37,9 +34,10 @@ import (
 	logf "sigs.k8s.io/controller-runtime/pkg/runtime/log"
 	"sigs.k8s.io/controller-runtime/pkg/source"
 
-	corev1 "k8s.io/api/core/v1"
-
 	iter8v1alpha1 "github.com/iter8-tools/iter8-controller/pkg/apis/iter8/v1alpha1"
+	iter8cache "github.com/iter8-tools/iter8-controller/pkg/controller/experiment/cache"
+	"github.com/iter8-tools/iter8-controller/pkg/controller/experiment/routing"
+	"github.com/iter8-tools/iter8-controller/pkg/controller/experiment/targets"
 	iter8notifier "github.com/iter8-tools/iter8-controller/pkg/notifier"
 	istioclient "istio.io/client-go/pkg/clientset/versioned"
 )
@@ -59,8 +57,8 @@ const (
 
 // Add creates a new Experiment Controller and adds it to the Manager with default RBAC. The Manager will set fields on the Controller
 // and Start it when the Manager is Started.
-func Add(mgr manager.Manager) error {
-	r, err := newReconciler(mgr)
+func Add(mgr manager.Manager, stop <-chan struct{}) error {
+	r, err := newReconciler(mgr, stop)
 	if err != nil {
 		return err
 	}
@@ -68,7 +66,7 @@ func Add(mgr manager.Manager) error {
 }
 
 // newReconciler returns a new reconcile.Reconciler
-func newReconciler(mgr manager.Manager) (reconcile.Reconciler, error) {
+func newReconciler(mgr manager.Manager, stop <-chan struct{}) (*ReconcileExperiment, error) {
 	cfg, err := config.GetConfig()
 	if err != nil {
 		log.Error(err, "unable to get client config")
@@ -81,34 +79,17 @@ func newReconciler(mgr manager.Manager) (reconcile.Reconciler, error) {
 		return nil, err
 	}
 
-	nc := iter8notifier.NewNotificationCenter(log)
+	k8sCache := mgr.GetCache()
 
-	cm := &corev1.ConfigMap{}
-	configmapInformer, err := mgr.GetCache().GetInformer(cm)
+	// Set up notifier configmap handler
+	nc := iter8notifier.NewNotificationCenter(log)
+	err = nc.RegisterHandler(k8sCache)
 	if err != nil {
+		log.Error(err, "Failed to register notifier config handlers")
 		return nil, err
 	}
 
-	configmapInformer.AddEventHandler(toolscache.FilteringResourceEventHandler{
-		FilterFunc: func(obj interface{}) bool {
-			cm := obj.(*corev1.ConfigMap)
-			if cm.GetName() == iter8notifier.ConfigMapName && cm.GetNamespace() == Iter8Namespace {
-				return true
-			}
-
-			return false
-		},
-		Handler: toolscache.ResourceEventHandlerFuncs{
-			AddFunc: iter8notifier.UpdateConfigFromConfigmap(nc),
-			UpdateFunc: func(oldObj, newObj interface{}) {
-				oldCm, newCm := oldObj.(*corev1.ConfigMap), newObj.(*corev1.ConfigMap)
-				if !reflect.DeepEqual(oldCm.Data, newCm.Data) {
-					iter8notifier.UpdateConfigFromConfigmap(nc)(newObj)
-				}
-			},
-			DeleteFunc: iter8notifier.RemoveNotifiers(nc),
-		},
-	})
+	iter8Cache := iter8cache.New(k8sCache, log)
 
 	return &ReconcileExperiment{
 		Client:             mgr.GetClient(),
@@ -116,16 +97,73 @@ func newReconciler(mgr manager.Manager) (reconcile.Reconciler, error) {
 		scheme:             mgr.GetScheme(),
 		eventRecorder:      mgr.GetEventRecorderFor(Iter8Controller),
 		notificationCenter: nc,
+		iter8Cache:         iter8Cache,
 	}, nil
 }
 
 // add adds a new Controller to mgr with r as the reconcile.Reconciler
-func add(mgr manager.Manager, r reconcile.Reconciler) error {
+func add(mgr manager.Manager, r *ReconcileExperiment) error {
 	// Create a new controller
 	c, err := controller.New("experiment-controller", mgr, controller.Options{Reconciler: r})
 	if err != nil {
 		return err
 	}
+
+	deploymentPredicate := predicate.Funcs{
+		CreateFunc: func(e event.CreateEvent) bool {
+			name, namespace := e.Meta.GetName(), e.Meta.GetNamespace()
+			key := r.iter8Cache.GetExperimentKey(name, namespace)
+			if key == "" {
+				return false
+			}
+
+			log.Info("TargetDetected", "Experiment", key, "Target", name+"."+namespace)
+
+			return true
+		},
+		UpdateFunc: func(e event.UpdateEvent) bool {
+			name, namespace := e.MetaOld.GetName(), e.MetaOld.GetNamespace()
+			key := r.iter8Cache.GetExperimentKey(name, namespace)
+			if key == "" {
+				return false
+			}
+			if e.ObjectOld != e.ObjectNew {
+				r.iter8Cache.AbortExperiment(key)
+				return true
+			}
+			return false
+		},
+		DeleteFunc: func(e event.DeleteEvent) bool {
+			name, namespace := e.Meta.GetName(), e.Meta.GetNamespace()
+			key := r.iter8Cache.GetExperimentKey(name, namespace)
+			if key == "" {
+				return false
+			}
+
+			r.iter8Cache.AbortExperiment(key)
+			return true
+		},
+	}
+
+	deploymentToExperiment := handler.ToRequestsFunc(
+		func(a handler.MapObject) []reconcile.Request {
+			name, namespace := a.Meta.GetName(), a.Meta.GetNamespace()
+			key := r.iter8Cache.GetExperimentKey(name, namespace)
+			experimentName, experimentNamespace := resolveExperiemntLabel(key)
+			return []reconcile.Request{
+				{
+					NamespacedName: types.NamespacedName{
+						Name:      experimentName,
+						Namespace: experimentNamespace,
+					},
+				},
+			}
+		},
+	)
+
+	err = c.Watch(&source.Kind{Type: &appsv1.Deployment{}},
+		&handler.EnqueueRequestsFromMapFunc{ToRequests: deploymentToExperiment},
+		deploymentPredicate)
 
 	// Watch for changes to Experiment
 	err = c.Watch(&source.Kind{Type: &iter8v1alpha1.Experiment{}}, &handler.EnqueueRequestForObject{},
@@ -136,7 +174,7 @@ func add(mgr manager.Manager, r reconcile.Reconciler) error {
 				oldInstance, _ := e.ObjectOld.(*iter8v1alpha1.Experiment)
 				newInstance, _ := e.ObjectNew.(*iter8v1alpha1.Experiment)
 				// Ignore event of revert changes in action field
-				if len(oldInstance.Spec.Action) > 0 && len(newInstance.Spec.Action) == 0 {
+				if len(oldInstance.Action) > 0 && len(newInstance.Action) == 0 {
 					return false
 				}
 
@@ -152,42 +190,6 @@ func add(mgr manager.Manager, r reconcile.Reconciler) error {
 		return err
 	}
 
-	// Watch for changes to ConfigMap
-
-	// ****** Skip knative logic for now *******
-	// p := predicate.Funcs{
-	// 	UpdateFunc: func(e event.UpdateEvent) bool {
-	// 		if _, ok := e.MetaOld.GetLabels()[experimentLabel]; !ok {
-	// 			return false
-	// 		}
-	// 		return e.ObjectOld != e.ObjectNew
-	// 	},
-	// 	CreateFunc: func(e event.CreateEvent) bool {
-	// 		_, ok := e.Meta.GetLabels()[experimentLabel]
-	// 		return ok
-	// 	},
-	// }
-
-	// Watch for Knative services changes
-	// mapFn := handler.ToRequestsFunc(
-	// 	func(a handler.MapObject) []reconcile.Request {
-	// 		experiment := a.Meta.GetLabels()[experimentLabel]
-	// 		return []reconcile.Request{
-	// 			{NamespacedName: types.NamespacedName{
-	// 				Name:      experiment,
-	// 				Namespace: a.Meta.GetNamespace(),
-	// 			}},
-	// 		}
-	// 	})
-
-	// err = c.Watch(&source.Kind{Type: &servingv1alpha1.Service{}},
-	// 	&handler.EnqueueRequestsFromMapFunc{ToRequests: mapFn},
-	// 	p)
-
-	// if err != nil {
-	// 	log.Info("NoKnativeServingWatch", zap.Error(err))
-	// }
-	// ****** Skip knative logic for now *******
 	return nil
 }
 
@@ -200,9 +202,10 @@ type ReconcileExperiment struct {
 	eventRecorder      record.EventRecorder
 	notificationCenter *iter8notifier.NotificationCenter
 	istioClient        istioclient.Interface
+	iter8Cache         iter8cache.Interface
 
-	targets *Targets
-	rules   *IstioRoutingRules
+	targets *targets.Targets
+	rules   *routing.IstioRoutingRules
 }
 
 // Reconcile reads that state of the cluster for a Experiment object and makes changes based on the state read
@@ -235,7 +238,7 @@ func (r *ReconcileExperiment) Reconcile(request reconcile.Request) (reconcile.Re
 
 	log := log.WithValues("namespace", instance.Namespace, "name", instance.Name)
 	ctx = context.WithValue(ctx, loggerKey, log)
-
+	log.Info("reconciling")
 	// Add finalizer to the experiment object
 	if err = addFinalizerIfAbsent(ctx, r, instance, Finalizer); err != nil {
 		return reconcile.Result{}, err
@@ -246,7 +249,7 @@ func (r *ReconcileExperiment) Reconcile(request reconcile.Request) (reconcile.Re
 		return r.finalize(ctx, instance)
 	}
 
-	log.Info("reconciling")
+	r.iter8Cache.RegisterExperiment(instance)
 
 	// Stop right here if the experiment is completed.
 	completed := instance.Status.GetCondition(iter8v1alpha1.ExperimentConditionExperimentCompleted)
@@ -255,7 +258,7 @@ func (r *ReconcileExperiment) Reconcile(request reconcile.Request) (reconcile.Re
 		return reconcile.Result{}, nil
 	}
 
-	if pause := r.handleUserAction(ctx, instance); pause {
+	if pause := r.pauseOrResume(ctx, instance); pause {
 		log.Info("ExperimentPaused")
 		return reconcile.Result{}, nil
 	}
@@ -316,6 +319,10 @@ func (r *ReconcileExperiment) Reconcile(request reconcile.Request) (reconcile.Re
 	}
 }
 
+func (r *ReconcileExperiment) init(context context.Context, instance *iter8v1alpha1.Experiment) {
+
+}
+
 func (r *ReconcileExperiment) finalize(context context.Context, instance *iter8v1alpha1.Experiment) (reconcile.Result, error) {
 	log := Logger(context)
 	log.Info("finalizing")
@@ -331,9 +338,9 @@ func (r *ReconcileExperiment) finalize(context context.Context, instance *iter8v
 	return reconcile.Result{}, removeFinalizer(context, r, instance, Finalizer)
 }
 
-func (r *ReconcileExperiment) handleUserAction(context context.Context, instance *iter8v1alpha1.Experiment) bool {
+func (r *ReconcileExperiment) pause(context context.Context, instance *iter8v1alpha1.Experiment) bool {
 	prevPhase := instance.Status.Phase
-	switch instance.Spec.Action {
+	switch instance.Action {
 	case iter8v1alpha1.ActionPause:
 		instance.Status.Phase = iter8v1alpha1.PhasePause
 		log.Info("UserAction", "pause experiment", "")
@@ -351,10 +358,22 @@ func (r *ReconcileExperiment) handleUserAction(context context.Context, instance
 	}
 
 	// clear instance action
-	instance.Spec.Action = ""
+	instance.Action = ""
 	if err := r.Update(context, instance); err != nil && !validUpdateErr(err) {
 		log.Error(err, "Fail to revert action", "")
 	}
 
 	return instance.Status.Phase == iter8v1alpha1.PhasePause
+}
+
+func (r *ReconcileExperiment) addLabelToDeployment(ctx context.Context, name, namespace, label, val string) error {
+	d := &appsv1.Deployment{}
+	err := r.Get(ctx, types.NamespacedName{Name: name, Namespace: namespace}, d)
+	if err != nil {
+		return err
+	}
+
+	d.SetLabels(map[string]string{label: val})
+
+	return r.Update(ctx, d)
 }

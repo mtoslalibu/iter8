@@ -19,20 +19,15 @@ import (
 	"bytes"
 	"encoding/json"
 	"fmt"
-	"gopkg.in/yaml.v2"
 	"io/ioutil"
 	"net/http"
-	"reflect"
 	"sync"
 
 	"github.com/go-logr/logr"
 	iter8v1alpha1 "github.com/iter8-tools/iter8-controller/pkg/apis/iter8/v1alpha1"
-	corev1 "k8s.io/api/core/v1"
 )
 
 const (
-	ConfigMapName = "iter8config-notifiers"
-
 	NotifierLevelVerbose = "verbose"
 	NotifierLevelNormal  = "normal"
 	NotifierLevelWarning = "warning"
@@ -67,14 +62,12 @@ func NewNotificationCenter(logger logr.Logger) *NotificationCenter {
 }
 
 // UpdateNotifier will update the notifier stored inside the center
-func (nc *NotificationCenter) UpdateNotifier(name string, cfg *Config) {
+func (nc *NotificationCenter) updateNotifier(name string, cfg *Config) {
 	var impl Notifier
 	switch cfg.Notifier {
 	case NotifierNameSlack:
 		impl = NewSlackWebhook()
 	}
-	nc.m.Lock()
-	defer nc.m.Unlock()
 
 	nc.Notifiers[name] = &ConfiguredNotifier{
 		config: cfg,
@@ -84,10 +77,7 @@ func (nc *NotificationCenter) UpdateNotifier(name string, cfg *Config) {
 }
 
 // RemoveNotifier will remove the notifier stored inside the center
-func (nc *NotificationCenter) RemoveNotifier(name string) {
-	nc.m.Lock()
-	defer nc.m.Unlock()
-
+func (nc *NotificationCenter) removeNotifier(name string) {
 	delete(nc.Notifiers, name)
 	nc.logger.Info("notifier channel removed", "name", name)
 }
@@ -132,50 +122,6 @@ func (c *Config) validateAndSetDefault() error {
 	}
 
 	return nil
-}
-
-// UpdateConfigFromConfigmap update notification
-func UpdateConfigFromConfigmap(nc *NotificationCenter) func(obj interface{}) {
-	return func(obj interface{}) {
-		cm := obj.(*corev1.ConfigMap)
-		data := cm.Data
-
-		for name, raw := range data {
-			newConfig := Config{}
-			if err := yaml.Unmarshal([]byte(raw), &newConfig); err != nil {
-				nc.logger.Error(err, "Fail to unmarshal cm", "name", name)
-				continue
-			}
-
-			if err := newConfig.validateAndSetDefault(); err != nil {
-				nc.logger.Error(err, "Invalid config for channel", "name", name)
-				continue
-			}
-
-			originalConfig, ok := nc.Notifiers[name]
-			if !ok || !reflect.DeepEqual(originalConfig, newConfig) {
-				nc.UpdateNotifier(name, &newConfig)
-			}
-		}
-
-		// Remove deleted channels
-		for old := range nc.Notifiers {
-			if _, ok := data[old]; !ok {
-				nc.RemoveNotifier(old)
-			}
-		}
-
-		return
-	}
-}
-
-// RemoveNotifiers will remove all the notifiers away
-func RemoveNotifiers(nc *NotificationCenter) func(obj interface{}) {
-	return func(obj interface{}) {
-		for ntf := range nc.Notifiers {
-			nc.RemoveNotifier(ntf)
-		}
-	}
 }
 
 func matchLabels(nLabels, eLabels map[string]string) bool {
