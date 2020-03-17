@@ -264,7 +264,7 @@ type SuccessCriterionStatus struct {
 	Conclusions []string `json:"conclusions"`
 
 	// Indicates whether or not the success criterion for the corresponding metric has been met
-	SuccessCriteriaMet bool `json:"success_criteria_met"`
+	SuccessCriterionMet bool `json:"success_criterion_met"`
 
 	// Indicates whether or not the experiment must be aborted on the basis of the criterion for this metric
 	AbortExperiment bool `json:"abort_experiment"`
