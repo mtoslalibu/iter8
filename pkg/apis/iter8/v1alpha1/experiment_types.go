@@ -166,11 +166,14 @@ type ExperimentStatus struct {
 	// * Conditions - the latest available observations of a resource's current state.
 	duckv1alpha1.Status `json:",inline"`
 
+	// CreateTimestamp is the timestamp when the experiment is created
+	CreateTimestamp int64 `json:"createTimestamp,omitempty"`
+
 	// StartTimestamp is the timestamp when the experiment starts
-	StartTimestamp string `json:"startTimestamp,omitempty"`
+	StartTimestamp int64 `json:"startTimestamp,omitempty"`
 
 	// EndTimestamp is the timestamp when experiment completes
-	EndTimestamp string `json:"endTimestamp,omitempty"`
+	EndTimestamp int64 `json:"endTimestamp,omitempty"`
 
 	// LastIncrementTime is the last time the traffic has been incremented
 	LastIncrementTime metav1.Time `json:"lastIncrementTime,omitempty"`
@@ -242,7 +245,7 @@ type TrafficControl struct {
 	Confidence *float64 `json:"confidence,omitempty"`
 }
 
-// Analysis ...
+// Analysis specifies the parameters for posting/reading the assessment from analytics server
 type Analysis struct {
 	// AnalyticsService endpoint
 	AnalyticsService string `json:"analyticsService,omitempty"`
@@ -252,6 +255,64 @@ type Analysis struct {
 
 	// List of criteria for assessing the candidate version
 	SuccessCriteria []SuccessCriterion `json:"successCriteria,omitempty"`
+
+	// The reward used by analytics to assess candidate
+	Reward *Reward `json:"reward,omitempty"`
+}
+
+type ToleranceType string
+
+const (
+	// ToleranceTypeDelta constant string for tolerances of type "delta"
+	ToleranceTypeDelta ToleranceType = "delta"
+	// ToleranceTypeThreshold constant string for tolerances of type "threshhold"
+	ToleranceTypeThreshold ToleranceType = "threshold"
+)
+
+// MinMax captures minimum and maximum values of the metric
+type MinMax struct {
+	// Min minimum possible value of the metric
+	Min float64 `json:"min"`
+
+	//Max maximum possible value of the metric
+	Max float64 `json:"max"`
+}
+
+// SuccessCriterion specifies the criteria for an experiment to succeed
+type SuccessCriterion struct {
+	// Name of the metric to which the criterion applies. Options:
+	MetricName string `json:"metricName"`
+
+	// 	Tolerance type. Options:
+	// "delta": compares the candidate against the baseline version with respect to the metric;
+	// "threshold": checks the candidate with respect to the metric
+	//+kubebuilder:validation:Enum={threshold,delta}
+	ToleranceType ToleranceType `json:"toleranceType"`
+
+	// Value to check
+	Tolerance float64 `json:"tolerance"`
+
+	// Minimum number of data points required to make a decision based on this criterion;
+	// If not specified, the default value is 10
+	// +optional
+	SampleSize *int `json:"sampleSize,omitempty"`
+
+	// Minimum and maximum values of the metric
+	MinMax *MinMax `json:"min_max,omitempty"`
+
+	// Indicates whether or not the experiment must finish if this criterion is not satisfied;
+	// defaults to false
+	// +optional
+	StopOnFailure *bool `json:"stopOnFailure,omitempty"`
+}
+
+// Reward specifies the criteria for an experiment to succeed
+type Reward struct {
+	// Name of the metric to which the criterion applies. Options:
+	MetricName string `json:"metricName"`
+
+	// Minimum and maximum values of the metric
+	MinMax *MinMax `json:"min_max,omitempty"`
 }
 
 // SuccessCriterionStatus contains assessment for a specific success criteria
@@ -306,52 +367,6 @@ func (s *Summary) Assessment2String() string {
 	}
 
 	return out
-}
-
-type ToleranceType string
-
-const (
-	// ToleranceTypeDelta constant string for tolerances of type "delta"
-	ToleranceTypeDelta ToleranceType = "delta"
-	// ToleranceTypeThreshold constant string for tolerances of type "threshhold"
-	ToleranceTypeThreshold ToleranceType = "threshold"
-)
-
-// MinMax captures minimum and maximum values of the metric
-type MinMax struct {
-	// Min minimum possible value of the metric
-	Min float64 `json:"min"`
-
-	//Max maximum possible value of the metric
-	Max float64 `json:"max"`
-}
-
-// SuccessCriterion specifies the criteria for an experiment to succeed
-type SuccessCriterion struct {
-	// Name of the metric to which the criterion applies. Options:
-	MetricName string `json:"metricName"`
-
-	// 	Tolerance type. Options:
-	// "delta": compares the candidate against the baseline version with respect to the metric;
-	// "threshold": checks the candidate with respect to the metric
-	//+kubebuilder:validation:Enum={threshold,delta}
-	ToleranceType ToleranceType `json:"toleranceType"`
-
-	// Value to check
-	Tolerance float64 `json:"tolerance"`
-
-	// Minimum number of data points required to make a decision based on this criterion;
-	// If not specified, the default value is 10
-	// +optional
-	SampleSize *int `json:"sampleSize,omitempty"`
-
-	// Minimum and maximum values of the metric
-	MinMax *MinMax `json:"min_max,omitempty"`
-
-	// Indicates whether or not the experiment must finish if this criterion is not satisfied;
-	// defaults to false
-	// +optional
-	StopOnFailure *bool `json:"stopOnFailure,omitempty"`
 }
 
 // GetStrategy gets the strategy used for traffic control. Default is "check_and_increment".
@@ -509,7 +524,7 @@ const (
 	ReasonAnalyticsServiceRunning = "AnalyticsServiceRunning"
 	ReasonIterationUpdate         = "IterationUpdate"
 	ReasonIterationSucceeded      = "IterationSucceeded"
-	ReasonIterationFailed         = "IterationFailed "
+	ReasonIterationFailed         = "IterationFailed"
 	ReasonExperimentSucceeded     = "ExperimentSucceeded"
 	ReasonExperimentFailed        = "ExperimentFailed"
 	ReasonSyncMetricsError        = "SyncMetricsError"
@@ -518,12 +533,23 @@ const (
 	ReasonRoutingRulesReady       = "RoutingRulesReady"
 )
 
-// InitializeConditions sets relevant unset conditions to Unknown state.
-func (s *ExperimentStatus) InitializeConditions() {
+// Init initialize status values
+func (s *ExperimentStatus) Init() {
+	// sets relevant unset conditions to Unknown state.
 	experimentCondSet.Manage(s).InitializeConditions()
-	if s.Phase == "" {
-		s.Phase = PhaseInitializing
+
+	s.CreateTimestamp = metav1.Now().UTC().UnixNano()
+
+	// TODO: not sure why this is needed
+	if s.LastIncrementTime.IsZero() {
+		s.LastIncrementTime = metav1.NewTime(time.Unix(0, 0))
 	}
+
+	if s.AnalysisState.Raw == nil {
+		s.AnalysisState.Raw = []byte("{}")
+	}
+
+	s.Phase = PhaseInitializing
 }
 
 // MarkMetricsSynced sets the condition that the metrics are synced with config map
