@@ -26,12 +26,13 @@ import (
 )
 
 func (r *ReconcileExperiment) syncKubernetes(context context.Context, instance *iter8v1alpha1.Experiment) (reconcile.Result, error) {
+	r.iter8Cache.RegisterExperiment(instance)
+
 	updateStatus, err := r.checkOrInitRules(context, instance)
 	if err != nil {
 		if updateStatus {
 			if err := r.Status().Update(context, instance); err != nil && !validUpdateErr(err) {
 				log.Info("Fail to update status: %v", err)
-				// End experiment
 				return reconcile.Result{}, nil
 			}
 		}
@@ -43,7 +44,6 @@ func (r *ReconcileExperiment) syncKubernetes(context context.Context, instance *
 		if updateStatus {
 			if err := r.Status().Update(context, instance); err != nil && !validUpdateErr(err) {
 				log.Info("Fail to update status: %v", err)
-				// End experiment
 				return reconcile.Result{}, nil
 			}
 		}
@@ -94,17 +94,9 @@ func (r *ReconcileExperiment) syncKubernetes(context context.Context, instance *
 func (r *ReconcileExperiment) finalizeIstio(context context.Context, instance *iter8v1alpha1.Experiment) (reconcile.Result, error) {
 	completed := instance.Status.GetCondition(iter8v1alpha1.ExperimentConditionExperimentCompleted)
 	if completed != nil && completed.Status != corev1.ConditionTrue {
-		targetsFound := instance.Status.GetCondition(iter8v1alpha1.ExperimentConditionTargetsProvided)
-		// clean up can be done only when all targets are presented
-		if targetsFound != nil && targetsFound.Status == corev1.ConditionTrue {
-			// Execute in failure condition
-			instance.Action = iter8v1alpha1.ActionOverrideFailure
-			if err := r.targets.Cleanup(context, instance, r.Client); err != nil {
-				return reconcile.Result{}, err
-			}
-			if err := r.rules.Cleanup(instance, r.targets, r.istioClient); err != nil {
-				return reconcile.Result{}, err
-			}
+		instance.Action = iter8v1alpha1.ActionOverrideFailure
+		if _, err := r.syncKubernetes(context, instance); err != nil {
+			log.Error(err, "Fail to execute finalize sync process")
 		}
 	}
 

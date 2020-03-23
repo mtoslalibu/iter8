@@ -16,7 +16,8 @@ limitations under the License.
 package targets
 
 import (
-	"sync"
+	iter8v1alpha1 "github.com/iter8-tools/iter8-controller/pkg/apis/iter8/v1alpha1"
+	"github.com/iter8-tools/iter8-controller/pkg/controller/experiment/util"
 )
 
 // TargetRole specifies the role of target
@@ -28,36 +29,33 @@ const (
 	RoleCandidate TargetRole = "candidate"
 )
 
-// TargetStatus indicates the status of one target
-type TargetStatus struct {
+// Status indicates the status of one target
+type Status struct {
 	role    TargetRole
 	existed bool
 }
 
-// TargetsAbstract stores the abstract info for all target items
-type TargetsAbstract struct {
+// Abstract stores the abstract info for all target items
+type Abstract struct {
 	Namespace      string
 	ServiceName    string
 	serviceExisted bool
 	// a map from deployment name to the status of deployment
-	targetsStatus map[string]*TargetStatus
-	// the lock for reading/modifying the status map
-	m sync.RWMutex
+	Status map[string]*Status
 }
 
-func (t *TargetsAbstract) updateServiceStatus(found bool) {
-	t.serviceExisted = found
-}
-
-func (t *TargetsAbstract) targetExisted(name string) bool {
-	t.m.Lock()
-	defer t.m.Unlock()
-	_, ok := t.targetsStatus[name]
-	return ok
-}
-
-func (t *TargetsAbstract) updateTargetStatus(name string, found bool) {
-	t.m.Lock()
-	defer t.m.Unlock()
-	t.targetsStatus[name].existed = found
+// NewAbstract returns a new abstract for targets of an experiment
+func NewAbstract(instance *iter8v1alpha1.Experiment) *Abstract {
+	ts := make(map[string]*Status)
+	ts[instance.Spec.TargetService.Baseline] = &Status{
+		role: RoleBaseline,
+	}
+	ts[instance.Spec.TargetService.Candidate] = &Status{
+		role: RoleCandidate,
+	}
+	return &Abstract{
+		Namespace:   util.GetServiceNamespace(instance),
+		ServiceName: instance.Spec.TargetService.Name,
+		Status:      ts,
+	}
 }

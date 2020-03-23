@@ -17,6 +17,7 @@ package experiment
 import (
 	"context"
 	"fmt"
+	"strconv"
 	"strings"
 	"time"
 
@@ -24,11 +25,13 @@ import (
 	"gopkg.in/yaml.v2"
 	corev1 "k8s.io/api/core/v1"
 	"k8s.io/apimachinery/pkg/api/meta"
+	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	runtime "k8s.io/apimachinery/pkg/runtime"
 	"k8s.io/apimachinery/pkg/types"
 	"sigs.k8s.io/controller-runtime/pkg/client"
 
 	iter8v1alpha1 "github.com/iter8-tools/iter8-controller/pkg/apis/iter8/v1alpha1"
+	"github.com/iter8-tools/iter8-controller/pkg/controller/experiment/util"
 )
 
 const (
@@ -73,9 +76,9 @@ func removeFinalizer(context context.Context, c client.Client, instance *iter8v1
 }
 
 func updateGrafanaURL(instance *iter8v1alpha1.Experiment, namespace string) {
-	endTs := instance.Status.EndTimestamp
-	if endTs == "" {
-		endTs = "now"
+	endTsStr := "now"
+	if instance.Status.EndTimestamp > 0 {
+		endTsStr = strconv.FormatInt(instance.Status.EndTimestamp/int64(time.Millisecond), 10)
 	}
 	instance.Status.GrafanaURL = instance.Spec.Analysis.GetGrafanaEndpoint() +
 		"/d/eXPEaNnZz/iter8-application-metrics?" +
@@ -83,8 +86,19 @@ func updateGrafanaURL(instance *iter8v1alpha1.Experiment, namespace string) {
 		"&var-service=" + instance.Spec.TargetService.Name +
 		"&var-baseline=" + instance.Spec.TargetService.Baseline +
 		"&var-candidate=" + instance.Spec.TargetService.Candidate +
-		"&from=" + instance.Status.StartTimestamp +
-		"&to=" + endTs
+		"&from=" + strconv.FormatInt(instance.Status.StartTimestamp/int64(time.Millisecond), 10) +
+		"&to=" + endTsStr
+}
+
+func markExperimentCompleted(instance *iter8v1alpha1.Experiment) {
+	// Clear analysis state
+	instance.Status.AnalysisState.Raw = []byte("{}")
+
+	// Update grafana url
+	instance.Status.EndTimestamp = metav1.Now().UTC().UnixNano()
+	updateGrafanaURL(instance, util.GetServiceNamespace(instance))
+
+	instance.Status.MarkExperimentCompleted()
 }
 
 func successMsg(instance *iter8v1alpha1.Experiment) string {

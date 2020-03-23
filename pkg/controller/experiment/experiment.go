@@ -19,7 +19,6 @@ import (
 	"context"
 	"encoding/json"
 	"fmt"
-	"strconv"
 	"time"
 
 	networkingv1alpha3 "istio.io/api/networking/v1alpha3"
@@ -57,7 +56,9 @@ func (r *ReconcileExperiment) cleanUp(context context.Context, instance *iter8v1
 	if err := r.rules.Cleanup(instance, r.targets, r.istioClient); err != nil {
 		return err
 	}
+	r.iter8Cache.RemoveExperiment(instance)
 	log.Info("Cleanup of experiment is done.")
+	r.iter8Cache.Print()
 	r.setExperimentEndStatus(context, instance)
 	return nil
 }
@@ -113,10 +114,7 @@ func (r *ReconcileExperiment) checkOrInitRules(context context.Context, instance
 
 func (r *ReconcileExperiment) initializeRoutingRules(instance *iter8v1alpha1.Experiment) (err error) {
 	serviceName := instance.Spec.TargetService.Name
-	serviceNamespace := instance.Spec.TargetService.Namespace
-	if serviceNamespace == "" {
-		serviceNamespace = instance.Namespace
-	}
+	serviceNamespace := util.GetServiceNamespace(instance)
 
 	r.rules = &routing.IstioRoutingRules{}
 
@@ -280,10 +278,8 @@ func (r *ReconcileExperiment) detectTargets(context context.Context, instance *i
 	}
 
 	if r.MarkTargetsFound(context, instance) {
-		// Update GrafanaURL
-		now := metav1.Now()
-		ts := now.UTC().UnixNano() / int64(time.Millisecond)
-		instance.Status.StartTimestamp = strconv.FormatInt(ts, 10)
+		// Update start timestamp and GrafanaURL
+		instance.Status.StartTimestamp = metav1.Now().UTC().UnixNano()
 		updateGrafanaURL(instance, util.GetServiceNamespace(instance))
 		return true, nil
 	}

@@ -17,8 +17,10 @@ package experiment
 
 import (
 	"context"
+	"reflect"
 
 	appsv1 "k8s.io/api/apps/v1"
+	corev1 "k8s.io/api/core/v1"
 	"k8s.io/apimachinery/pkg/api/errors"
 	runtime "k8s.io/apimachinery/pkg/runtime"
 	"k8s.io/apimachinery/pkg/types"
@@ -112,35 +114,22 @@ func add(mgr manager.Manager, r *ReconcileExperiment) error {
 	deploymentPredicate := predicate.Funcs{
 		CreateFunc: func(e event.CreateEvent) bool {
 			name, namespace := e.Meta.GetName(), e.Meta.GetNamespace()
-			key := r.iter8Cache.GetExperimentKey(name, namespace)
-			if key == "" {
+			_, _, ok := r.iter8Cache.DeploymentToExperiment(name, namespace)
+			if !ok {
 				return false
 			}
 
-			log.Info("TargetDetected", "Experiment", key, "Target", name+"."+namespace)
+			log.Info("TargetDetected", "Experiment", name+"."+namespace)
 
 			return true
 		},
-		UpdateFunc: func(e event.UpdateEvent) bool {
-			name, namespace := e.MetaOld.GetName(), e.MetaOld.GetNamespace()
-			key := r.iter8Cache.GetExperimentKey(name, namespace)
-			if key == "" {
-				return false
-			}
-			if e.ObjectOld != e.ObjectNew {
-				r.iter8Cache.AbortExperiment(key)
-				return true
-			}
-			return false
-		},
 		DeleteFunc: func(e event.DeleteEvent) bool {
 			name, namespace := e.Meta.GetName(), e.Meta.GetNamespace()
-			key := r.iter8Cache.GetExperimentKey(name, namespace)
-			if key == "" {
+			_, _, ok := r.iter8Cache.DeploymentToExperiment(name, namespace)
+			if !ok {
 				return false
 			}
 
-			r.iter8Cache.AbortExperiment(key)
 			return true
 		},
 	}
@@ -148,8 +137,51 @@ func add(mgr manager.Manager, r *ReconcileExperiment) error {
 	deploymentToExperiment := handler.ToRequestsFunc(
 		func(a handler.MapObject) []reconcile.Request {
 			name, namespace := a.Meta.GetName(), a.Meta.GetNamespace()
-			key := r.iter8Cache.GetExperimentKey(name, namespace)
-			experimentName, experimentNamespace := resolveExperiemntLabel(key)
+			experimentName, experimentNamespace, ok := r.iter8Cache.DeploymentToExperiment(name, namespace)
+			if !ok {
+				return nil
+			}
+			return []reconcile.Request{
+				{
+					NamespacedName: types.NamespacedName{
+						Name:      experimentName,
+						Namespace: experimentNamespace,
+					},
+				},
+			}
+		},
+	)
+
+	servicePredicate := predicate.Funcs{
+		CreateFunc: func(e event.CreateEvent) bool {
+			name, namespace := e.Meta.GetName(), e.Meta.GetNamespace()
+			_, _, ok := r.iter8Cache.ServiceToExperiment(name, namespace)
+			if !ok {
+				return false
+			}
+
+			log.Info("ServiceDetected", "Experiment", name+"."+namespace)
+
+			return true
+		},
+		DeleteFunc: func(e event.DeleteEvent) bool {
+			name, namespace := e.Meta.GetName(), e.Meta.GetNamespace()
+			_, _, ok := r.iter8Cache.ServiceToExperiment(name, namespace)
+			if !ok {
+				return false
+			}
+
+			return true
+		},
+	}
+
+	serviceToExperiment := handler.ToRequestsFunc(
+		func(a handler.MapObject) []reconcile.Request {
+			name, namespace := a.Meta.GetName(), a.Meta.GetNamespace()
+			experimentName, experimentNamespace, ok := r.iter8Cache.ServiceToExperiment(name, namespace)
+			if !ok {
+				return nil
+			}
 			return []reconcile.Request{
 				{
 					NamespacedName: types.NamespacedName{
@@ -164,6 +196,10 @@ func add(mgr manager.Manager, r *ReconcileExperiment) error {
 	err = c.Watch(&source.Kind{Type: &appsv1.Deployment{}},
 		&handler.EnqueueRequestsFromMapFunc{ToRequests: deploymentToExperiment},
 		deploymentPredicate)
+
+	err = c.Watch(&source.Kind{Type: &corev1.Service{}},
+		&handler.EnqueueRequestsFromMapFunc{ToRequests: serviceToExperiment},
+		servicePredicate)
 
 	// Watch for changes to Experiment
 	err = c.Watch(&source.Kind{Type: &iter8v1alpha1.Experiment{}}, &handler.EnqueueRequestForObject{},
@@ -183,6 +219,13 @@ func add(mgr manager.Manager, r *ReconcileExperiment) error {
 					return false
 				}
 
+				if !reflect.DeepEqual(e.ObjectOld, e.ObjectNew) {
+					log.Info("ObjectChanged", "oldObject", e.ObjectOld, "newObjet", e.ObjectNew)
+				}
+
+				if !reflect.DeepEqual(e.MetaOld, e.MetaNew) {
+					log.Info("MetaChanged", "oldMeta", e.MetaOld, "newMeta", e.MetaNew)
+				}
 				return true
 			},
 		})
@@ -240,7 +283,7 @@ func (r *ReconcileExperiment) Reconcile(request reconcile.Request) (reconcile.Re
 	ctx = context.WithValue(ctx, loggerKey, log)
 	log.Info("reconciling")
 	// Add finalizer to the experiment object
-	if err = addFinalizerIfAbsent(ctx, r, instance, Finalizer); err != nil {
+	if err = addFinalizerIfAbsent(ctx, r, instance, Finalizer); err != nil && validUpdateErr(err) {
 		return reconcile.Result{}, err
 	}
 
@@ -249,60 +292,22 @@ func (r *ReconcileExperiment) Reconcile(request reconcile.Request) (reconcile.Re
 		return r.finalize(ctx, instance)
 	}
 
-	r.iter8Cache.RegisterExperiment(instance)
-
-	// Stop right here if the experiment is completed.
-	completed := instance.Status.GetCondition(iter8v1alpha1.ExperimentConditionExperimentCompleted)
-	if completed != nil && completed.Status == corev1.ConditionTrue {
-		log.Info("RolloutCompleted", "Use a different name for experiment object to trigger a new experiment", "")
-		return reconcile.Result{}, nil
-	}
-
-	if pause := r.pauseOrResume(ctx, instance); pause {
-		log.Info("ExperimentPaused")
-		return reconcile.Result{}, nil
-	}
-
-	// TODO: not sure why this is needed
-	if instance.Status.LastIncrementTime.IsZero() {
-		instance.Status.LastIncrementTime = metav1.NewTime(time.Unix(0, 0))
-	}
-
-	if instance.Status.AnalysisState.Raw == nil {
-		instance.Status.AnalysisState.Raw = []byte("{}")
-	}
-
-	creationts := instance.ObjectMeta.GetCreationTimestamp()
-	now := metav1.Now()
-	if !creationts.Before(&now) {
-		// Delay experiment by 1 sec
-		return reconcile.Result{RequeueAfter: time.Second}, nil
-	}
-
-	// Update Grafana URL when experiment is created
-	if instance.Status.StartTimestamp == "" {
-		ts := now.UTC().UnixNano() / int64(time.Millisecond)
-		instance.Status.StartTimestamp = strconv.FormatInt(ts, 10)
-		updateGrafanaURL(instance, getServiceNamespace(instance))
-	}
-
-	instance.Status.InitializeConditions()
-
-	// Sync metric definitions from the config map
-	metricsSycned := instance.Status.GetCondition(iter8v1alpha1.ExperimentConditionMetricsSynced)
-	if metricsSycned == nil || metricsSycned.Status != corev1.ConditionTrue {
-		if err := readMetrics(ctx, r, instance); err != nil && !validUpdateErr(err) {
-			r.MarkSyncMetricsError(ctx, instance, "Fail to read metrics: %v", err)
-
-			if err := r.Status().Update(ctx, instance); err != nil && !validUpdateErr(err) {
-				log.Info("Fail to update status: %v", err)
-				// End experiment
-				return reconcile.Result{}, nil
-			}
-
+	// Init metadata of experiment instance
+	if instance.Status.CreateTimestamp == 0 {
+		instance.Status.Init()
+		if err := r.Status().Update(ctx, instance); err != nil && !validUpdateErr(err) {
+			log.Info("Fail to update status: %v", err)
 			return reconcile.Result{}, nil
 		}
-		r.MarkSyncMetrics(ctx, instance)
+	}
+
+	if !r.proceed(ctx, instance) {
+		log.Info("NotToProceed", "phase", instance.Status.Phase)
+		return reconcile.Result{}, nil
+	}
+
+	if err := r.syncMetrics(ctx, instance); err != nil {
+		return reconcile.Result{}, nil
 	}
 
 	apiVersion := instance.Spec.TargetService.APIVersion
@@ -319,8 +324,29 @@ func (r *ReconcileExperiment) Reconcile(request reconcile.Request) (reconcile.Re
 	}
 }
 
-func (r *ReconcileExperiment) init(context context.Context, instance *iter8v1alpha1.Experiment) {
+func (r *ReconcileExperiment) syncMetrics(ctx context.Context, instance *iter8v1alpha1.Experiment) error {
+	if len(instance.Spec.Analysis.SuccessCriteria) == 0 {
+		return nil
+	}
+	// Sync metric definitions from the config map
+	metricsSycned := instance.Status.GetCondition(iter8v1alpha1.ExperimentConditionMetricsSynced)
+	if metricsSycned == nil || metricsSycned.Status != corev1.ConditionTrue {
+		if err := readMetrics(ctx, r, instance); err != nil && validUpdateErr(err) {
+			r.MarkSyncMetricsError(ctx, instance, "Fail to read metrics: %v", err)
 
+			if err := r.Status().Update(ctx, instance); err != nil && !validUpdateErr(err) {
+				log.Info("Fail to update status: %v", err)
+				// TODO: need a better way of handling this error
+				return err
+			}
+
+			// pause, waits for update
+			return err
+		}
+		r.MarkSyncMetrics(ctx, instance)
+	}
+
+	return nil
 }
 
 func (r *ReconcileExperiment) finalize(context context.Context, instance *iter8v1alpha1.Experiment) (reconcile.Result, error) {
@@ -338,8 +364,12 @@ func (r *ReconcileExperiment) finalize(context context.Context, instance *iter8v
 	return reconcile.Result{}, removeFinalizer(context, r, instance, Finalizer)
 }
 
-func (r *ReconcileExperiment) pause(context context.Context, instance *iter8v1alpha1.Experiment) bool {
+func (r *ReconcileExperiment) proceed(context context.Context, instance *iter8v1alpha1.Experiment) bool {
+	if instance.Status.Phase == iter8v1alpha1.PhaseCompleted {
+		return false
+	}
 	prevPhase := instance.Status.Phase
+
 	switch instance.Action {
 	case iter8v1alpha1.ActionPause:
 		instance.Status.Phase = iter8v1alpha1.PhasePause
@@ -347,8 +377,6 @@ func (r *ReconcileExperiment) pause(context context.Context, instance *iter8v1al
 	case iter8v1alpha1.ActionResume:
 		instance.Status.Phase = iter8v1alpha1.PhaseProgressing
 		log.Info("UserAction", "resume experiment", "")
-	default:
-		return false
 	}
 
 	if prevPhase != instance.Status.Phase {
@@ -357,13 +385,16 @@ func (r *ReconcileExperiment) pause(context context.Context, instance *iter8v1al
 		}
 	}
 
-	// clear instance action
-	instance.Action = ""
-	if err := r.Update(context, instance); err != nil && !validUpdateErr(err) {
-		log.Error(err, "Fail to revert action", "")
+	// clear pause/resume action
+	switch instance.Action {
+	case iter8v1alpha1.ActionPause, iter8v1alpha1.ActionResume:
+		instance.Action = ""
+		if err := r.Update(context, instance); err != nil && !validUpdateErr(err) {
+			log.Error(err, "Fail to revert action", "")
+		}
 	}
 
-	return instance.Status.Phase == iter8v1alpha1.PhasePause
+	return instance.Status.Phase != iter8v1alpha1.PhasePause
 }
 
 func (r *ReconcileExperiment) addLabelToDeployment(ctx context.Context, name, namespace, label, val string) error {

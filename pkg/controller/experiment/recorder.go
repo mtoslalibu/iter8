@@ -19,14 +19,10 @@ import (
 	"context"
 	"fmt"
 	"os"
-	"strconv"
-	"time"
 
 	corev1 "k8s.io/api/core/v1"
-	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 
 	iter8v1alpha1 "github.com/iter8-tools/iter8-controller/pkg/apis/iter8/v1alpha1"
-	"github.com/iter8-tools/iter8-controller/pkg/controller/experiment/util"
 )
 
 var recordLevel = os.Getenv("RECORD_LEVEL")
@@ -144,16 +140,4 @@ func (r *ReconcileExperiment) recordNormalEvent(broadcast bool, instance *iter8v
 	if broadcast || recordLevel == "verbose" {
 		r.eventRecorder.Eventf(instance, corev1.EventTypeNormal, reason, messageFormat, messageA...)
 	}
-}
-
-func markExperimentCompleted(instance *iter8v1alpha1.Experiment) {
-	// Clear analysis state
-	instance.Status.AnalysisState.Raw = []byte("{}")
-
-	// Update grafana url
-	ts := metav1.Now().UTC().UnixNano() / int64(time.Millisecond)
-	instance.Status.EndTimestamp = strconv.FormatInt(ts, 10)
-	updateGrafanaURL(instance, util.GetServiceNamespace(instance))
-
-	instance.Status.MarkExperimentCompleted()
 }

@@ -412,7 +412,7 @@ spec:
                         description: 'Name of the metric to which the criterion applies
                           example: iter8_latency'
                         type: string
-                      success_criteria_met:
+                      success_criterion_met:
                         description: Indicates whether or not the success criterion
                           for the corresponding metric has been met
                         type: boolean
@@ -420,7 +420,7 @@ spec:
                     - abort_experiment
                     - conclusions
                     - metric_name
-                    - success_criteria_met
+                    - success_criterion_met
                     type: object
                   type: array
               type: object
