@@ -128,11 +128,19 @@ func (b *DestinationRuleBuilder) WithStableToProgressing(baseline *appsv1.Deploy
 	return b.WithSubset(Baseline, baseline)
 }
 
-func (b *DestinationRuleBuilder) WithProgressingToStable(stable *appsv1.Deployment) *DestinationRuleBuilder {
+func (b *DestinationRuleBuilder) WithProgressingToStable(stableSubset string) *DestinationRuleBuilder {
 	b = b.WithStableLabel()
+
+	for _, subset := range b.Spec.Subsets {
+		if subset.Name == stableSubset {
+			subset.Name = Stable
+			b.Spec.Subsets[0] = subset
+			break
+		}
+	}
 	// Remove old entries
-	b.Spec.Subsets = nil
-	return b.WithSubset(Stable, stable)
+	b.Spec.Subsets = b.Spec.Subsets[:1]
+	return b
 }
 
 // WithSubset adds subset to the rule if not existed(will not compare subset labels)

@@ -22,7 +22,6 @@ import (
 	"istio.io/client-go/pkg/apis/networking/v1alpha3"
 	istioclient "istio.io/client-go/pkg/clientset/versioned"
 
-	appsv1 "k8s.io/api/apps/v1"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 )
 
@@ -102,15 +101,15 @@ func (r *IstioRoutingRules) Cleanup(instance *iter8v1alpha1.Experiment, targets 
 			// experiment is successful
 			switch instance.Spec.TrafficControl.GetOnSuccess() {
 			case "baseline":
-				r.ToStable(targets.Baseline, Baseline, serviceName, serviceName)
+				r.ToStable(Baseline, serviceName, serviceName)
 			case "candidate":
-				r.ToStable(targets.Candidate, Candidate, serviceName, serviceName)
+				r.ToStable(Candidate, serviceName, serviceName)
 			case "both":
 				r.SetStableLabels()
 			}
 
 		} else {
-			r.ToStable(targets.Baseline, Baseline, serviceName, serviceName)
+			r.ToStable(Baseline, serviceName, serviceName)
 		}
 
 		err = r.UpdateRemoveRules(ic)
@@ -118,9 +117,9 @@ func (r *IstioRoutingRules) Cleanup(instance *iter8v1alpha1.Experiment, targets 
 	return
 }
 
-func (r *IstioRoutingRules) ToStable(stableDep *appsv1.Deployment, stableName, serviceName, serviceNamespace string) {
+func (r *IstioRoutingRules) ToStable(stableName, serviceName, serviceNamespace string) {
 	r.DestinationRule = NewDestinationRuleBuilder(r.DestinationRule).
-		WithProgressingToStable(stableDep).
+		WithProgressingToStable(stableName).
 		RemoveExperimentLabel().
 		Build()
 	r.VirtualService = NewVirtualServiceBuilder(r.VirtualService).

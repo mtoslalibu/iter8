@@ -18,14 +18,11 @@ package experiment
 import (
 	"context"
 	"fmt"
-	"os"
 
 	corev1 "k8s.io/api/core/v1"
 
 	iter8v1alpha1 "github.com/iter8-tools/iter8-controller/pkg/apis/iter8/v1alpha1"
 )
-
-var recordLevel = os.Getenv("RECORD_LEVEL")
 
 // MarkTargetsError records the condition that the target components are missing
 func (r *ReconcileExperiment) MarkTargetsError(context context.Context, instance *iter8v1alpha1.Experiment,
@@ -137,7 +134,7 @@ func (r *ReconcileExperiment) MarkRoutingRulesReady(context context.Context, ins
 
 func (r *ReconcileExperiment) recordNormalEvent(broadcast bool, instance *iter8v1alpha1.Experiment, reason string,
 	messageFormat string, messageA ...interface{}) {
-	if broadcast || recordLevel == "verbose" {
+	if broadcast {
 		r.eventRecorder.Eventf(instance, corev1.EventTypeNormal, reason, messageFormat, messageA...)
 	}
 }

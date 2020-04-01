@@ -16,11 +16,21 @@ package util
 
 import (
 	"context"
-	iter8v1alpha1 "github.com/iter8-tools/iter8-controller/pkg/apis/iter8/v1alpha1"
 
 	runtime "k8s.io/apimachinery/pkg/runtime"
 	"sigs.k8s.io/controller-runtime/pkg/client"
+
+	iter8v1alpha1 "github.com/iter8-tools/iter8-controller/pkg/apis/iter8/v1alpha1"
+	"github.com/iter8-tools/iter8-controller/pkg/controller/experiment/cache/abstract"
 )
+
+const (
+	AbstractKey = "experimentAbstract"
+)
+
+func ExperimentAbstract(ctx context.Context) abstract.ExperimentInterface {
+	return ctx.Value(AbstractKey).(abstract.ExperimentInterface)
+}
 
 func GetServiceNamespace(instance *iter8v1alpha1.Experiment) string {
 	serviceNamespace := instance.Spec.TargetService.Namespace

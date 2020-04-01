@@ -36,6 +36,7 @@ import (
 	logf "sigs.k8s.io/controller-runtime/pkg/runtime/log"
 	"sigs.k8s.io/controller-runtime/pkg/source"
 
+	"github.com/iter8-tools/iter8-controller/pkg/analytics/metrics"
 	iter8v1alpha1 "github.com/iter8-tools/iter8-controller/pkg/apis/iter8/v1alpha1"
 	iter8cache "github.com/iter8-tools/iter8-controller/pkg/controller/experiment/cache"
 	"github.com/iter8-tools/iter8-controller/pkg/controller/experiment/routing"
@@ -91,7 +92,7 @@ func newReconciler(mgr manager.Manager, stop <-chan struct{}) (*ReconcileExperim
 		return nil, err
 	}
 
-	iter8Cache := iter8cache.New(k8sCache, log)
+	iter8Cache := iter8cache.New(log)
 
 	return &ReconcileExperiment{
 		Client:             mgr.GetClient(),
@@ -114,21 +115,23 @@ func add(mgr manager.Manager, r *ReconcileExperiment) error {
 	deploymentPredicate := predicate.Funcs{
 		CreateFunc: func(e event.CreateEvent) bool {
 			name, namespace := e.Meta.GetName(), e.Meta.GetNamespace()
-			_, _, ok := r.iter8Cache.DeploymentToExperiment(name, namespace)
+			ok := r.iter8Cache.MarkTargetDeploymentFound(name, namespace)
 			if !ok {
 				return false
 			}
 
-			log.Info("TargetDetected", "Experiment", name+"."+namespace)
+			log.Info("TargetDetected", "", name+"."+namespace)
 
 			return true
 		},
 		DeleteFunc: func(e event.DeleteEvent) bool {
 			name, namespace := e.Meta.GetName(), e.Meta.GetNamespace()
-			_, _, ok := r.iter8Cache.DeploymentToExperiment(name, namespace)
+			ok := r.iter8Cache.MarkTargetDeploymentMissing(name, namespace)
 			if !ok {
 				return false
 			}
+
+			log.Info("DeploymentDeleted", "", name+"."+namespace)
 
 			return true
 		},
@@ -152,25 +155,30 @@ func add(mgr manager.Manager, r *ReconcileExperiment) error {
 		},
 	)
 
+	err = c.Watch(&source.Kind{Type: &appsv1.Deployment{}},
+		&handler.EnqueueRequestsFromMapFunc{ToRequests: deploymentToExperiment},
+		deploymentPredicate)
+
 	servicePredicate := predicate.Funcs{
 		CreateFunc: func(e event.CreateEvent) bool {
 			name, namespace := e.Meta.GetName(), e.Meta.GetNamespace()
-			_, _, ok := r.iter8Cache.ServiceToExperiment(name, namespace)
+			ok := r.iter8Cache.MarkTargetServiceFound(name, namespace)
 			if !ok {
 				return false
 			}
 
-			log.Info("ServiceDetected", "Experiment", name+"."+namespace)
+			log.Info("ServiceDetected", "", name+"."+namespace)
 
 			return true
 		},
 		DeleteFunc: func(e event.DeleteEvent) bool {
 			name, namespace := e.Meta.GetName(), e.Meta.GetNamespace()
-			_, _, ok := r.iter8Cache.ServiceToExperiment(name, namespace)
+			ok := r.iter8Cache.MarkTargetServiceMissing(name, namespace)
 			if !ok {
 				return false
 			}
 
+			log.Info("ServiceDeleted", "", name+"."+namespace)
 			return true
 		},
 	}
@@ -193,10 +201,6 @@ func add(mgr manager.Manager, r *ReconcileExperiment) error {
 		},
 	)
 
-	err = c.Watch(&source.Kind{Type: &appsv1.Deployment{}},
-		&handler.EnqueueRequestsFromMapFunc{ToRequests: deploymentToExperiment},
-		deploymentPredicate)
-
 	err = c.Watch(&source.Kind{Type: &corev1.Service{}},
 		&handler.EnqueueRequestsFromMapFunc{ToRequests: serviceToExperiment},
 		servicePredicate)
@@ -209,13 +213,21 @@ func add(mgr manager.Manager, r *ReconcileExperiment) error {
 			UpdateFunc: func(e event.UpdateEvent) bool {
 				oldInstance, _ := e.ObjectOld.(*iter8v1alpha1.Experiment)
 				newInstance, _ := e.ObjectNew.(*iter8v1alpha1.Experiment)
+				// Ignore finalizer update
+				if len(oldInstance.Finalizers) == 0 && len(newInstance.Finalizers) > 0 {
+					log.Info("UpdateRequestDetected", "FinalizerChanged", "Reject")
+					return false
+				}
+
 				// Ignore event of revert changes in action field
 				if len(oldInstance.Action) > 0 && len(newInstance.Action) == 0 {
+					log.Info("UpdateRequestDetected", "ActionReverted", "Reject")
 					return false
 				}
 
 				// Ignore event of metrics load
 				if len(oldInstance.Metrics) == 0 && len(newInstance.Metrics) > 0 {
+					log.Info("UpdateRequestDetected", "MetrcisLoad", "Reject")
 					return false
 				}
 
@@ -226,6 +238,8 @@ func add(mgr manager.Manager, r *ReconcileExperiment) error {
 				if !reflect.DeepEqual(e.MetaOld, e.MetaNew) {
 					log.Info("MetaChanged", "oldMeta", e.MetaOld, "newMeta", e.MetaNew)
 				}
+
+				log.Info("UpdateRequestDetected", "Unknown", "pass")
 				return true
 			},
 		})
@@ -279,17 +293,23 @@ func (r *ReconcileExperiment) Reconcile(request reconcile.Request) (reconcile.Re
 		return reconcile.Result{}, err
 	}
 
+	ctx = r.iter8Cache.RegisterExperiment(ctx, instance)
 	log := log.WithValues("namespace", instance.Namespace, "name", instance.Name)
 	ctx = context.WithValue(ctx, loggerKey, log)
 	log.Info("reconciling")
 	// Add finalizer to the experiment object
-	if err = addFinalizerIfAbsent(ctx, r, instance, Finalizer); err != nil && validUpdateErr(err) {
+	if err = addFinalizerIfAbsent(ctx, r, instance, Finalizer); err != nil && !validUpdateErr(err) {
 		return reconcile.Result{}, err
 	}
 
 	// Check whether object has been deleted
 	if instance.DeletionTimestamp != nil {
 		return r.finalize(ctx, instance)
+	}
+
+	if !r.proceed(ctx, instance) {
+		log.Info("NotToProceed", "phase", instance.Status.Phase)
+		return reconcile.Result{}, nil
 	}
 
 	// Init metadata of experiment instance
@@ -299,11 +319,6 @@ func (r *ReconcileExperiment) Reconcile(request reconcile.Request) (reconcile.Re
 			log.Info("Fail to update status: %v", err)
 			return reconcile.Result{}, nil
 		}
-	}
-
-	if !r.proceed(ctx, instance) {
-		log.Info("NotToProceed", "phase", instance.Status.Phase)
-		return reconcile.Result{}, nil
 	}
 
 	if err := r.syncMetrics(ctx, instance); err != nil {
@@ -319,8 +334,8 @@ func (r *ReconcileExperiment) Reconcile(request reconcile.Request) (reconcile.Re
 		return r.syncKnative(ctx, instance)
 	default:
 		instance.Status.MarkTargetsError("UnsupportedAPIVersion", "%s", apiVersion)
-		err := r.Status().Update(ctx, instance)
-		return reconcile.Result{}, err
+		r.Status().Update(ctx, instance)
+		return reconcile.Result{}, nil
 	}
 }
 
@@ -331,7 +346,7 @@ func (r *ReconcileExperiment) syncMetrics(ctx context.Context, instance *iter8v1
 	// Sync metric definitions from the config map
 	metricsSycned := instance.Status.GetCondition(iter8v1alpha1.ExperimentConditionMetricsSynced)
 	if metricsSycned == nil || metricsSycned.Status != corev1.ConditionTrue {
-		if err := readMetrics(ctx, r, instance); err != nil && validUpdateErr(err) {
+		if err := metrics.Read(ctx, r, instance); err != nil && !validUpdateErr(err) {
 			r.MarkSyncMetricsError(ctx, instance, "Fail to read metrics: %v", err)
 
 			if err := r.Status().Update(ctx, instance); err != nil && !validUpdateErr(err) {
@@ -340,13 +355,43 @@ func (r *ReconcileExperiment) syncMetrics(ctx context.Context, instance *iter8v1
 				return err
 			}
 
-			// pause, waits for update
 			return err
 		}
 		r.MarkSyncMetrics(ctx, instance)
 	}
 
 	return nil
+}
+
+func addFinalizerIfAbsent(context context.Context, c client.Client, instance *iter8v1alpha1.Experiment, fName string) (err error) {
+	for _, finalizer := range instance.ObjectMeta.GetFinalizers() {
+		if finalizer == fName {
+			return
+		}
+	}
+
+	instance.SetFinalizers(append(instance.GetFinalizers(), Finalizer))
+	if err = c.Update(context, instance); err != nil {
+		Logger(context).Info("setting finalizer failed. (retrying)", "error", err)
+	}
+
+	return
+}
+
+func removeFinalizer(context context.Context, c client.Client, instance *iter8v1alpha1.Experiment, fName string) (err error) {
+	finalizers := make([]string, 0)
+	for _, f := range instance.GetFinalizers() {
+		if f != fName {
+			finalizers = append(finalizers, f)
+		}
+	}
+	instance.SetFinalizers(finalizers)
+	if err = c.Update(context, instance); err != nil {
+		Logger(context).Info("setting finalizer failed. (retrying)", "error", err)
+	}
+
+	Logger(context).Info("FinalizerRemoved")
+	return
 }
 
 func (r *ReconcileExperiment) finalize(context context.Context, instance *iter8v1alpha1.Experiment) (reconcile.Result, error) {
@@ -368,43 +413,6 @@ func (r *ReconcileExperiment) proceed(context context.Context, instance *iter8v1
 	if instance.Status.Phase == iter8v1alpha1.PhaseCompleted {
 		return false
 	}
-	prevPhase := instance.Status.Phase
 
-	switch instance.Action {
-	case iter8v1alpha1.ActionPause:
-		instance.Status.Phase = iter8v1alpha1.PhasePause
-		log.Info("UserAction", "pause experiment", "")
-	case iter8v1alpha1.ActionResume:
-		instance.Status.Phase = iter8v1alpha1.PhaseProgressing
-		log.Info("UserAction", "resume experiment", "")
-	}
-
-	if prevPhase != instance.Status.Phase {
-		if err := r.Status().Update(context, instance); err != nil && !validUpdateErr(err) {
-			log.Info("Fail to update status: %v", err)
-		}
-	}
-
-	// clear pause/resume action
-	switch instance.Action {
-	case iter8v1alpha1.ActionPause, iter8v1alpha1.ActionResume:
-		instance.Action = ""
-		if err := r.Update(context, instance); err != nil && !validUpdateErr(err) {
-			log.Error(err, "Fail to revert action", "")
-		}
-	}
-
-	return instance.Status.Phase != iter8v1alpha1.PhasePause
-}
-
-func (r *ReconcileExperiment) addLabelToDeployment(ctx context.Context, name, namespace, label, val string) error {
-	d := &appsv1.Deployment{}
-	err := r.Get(ctx, types.NamespacedName{Name: name, Namespace: namespace}, d)
-	if err != nil {
-		return err
-	}
-
-	d.SetLabels(map[string]string{label: val})
-
-	return r.Update(ctx, d)
+	return true
 }

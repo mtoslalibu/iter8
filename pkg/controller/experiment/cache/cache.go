@@ -16,41 +16,42 @@ limitations under the License.
 package cache
 
 import (
+	"context"
 	"sync"
 
 	"github.com/go-logr/logr"
-	"sigs.k8s.io/controller-runtime/pkg/cache"
 
 	iter8v1alpha1 "github.com/iter8-tools/iter8-controller/pkg/apis/iter8/v1alpha1"
-	"github.com/iter8-tools/iter8-controller/pkg/controller/experiment/cache/targets"
-	_ "github.com/iter8-tools/iter8-controller/pkg/controller/experiment/routing"
+	"github.com/iter8-tools/iter8-controller/pkg/controller/experiment/cache/abstract"
 	"github.com/iter8-tools/iter8-controller/pkg/controller/experiment/util"
 )
 
+// Interface defines the interface for iter8cache
 type Interface interface {
 	// Given name and namespace of the target deployment, return the experiment key
 	DeploymentToExperiment(name, namespace string) (experiment, experimentNamespace string, exist bool)
 	// Given name and namespace of the target service, return the experiment key
 	ServiceToExperiment(name, namespace string) (experiment, experimentNamespace string, exist bool)
-	RegisterExperiment(instance *iter8v1alpha1.Experiment)
+	RegisterExperiment(context context.Context, instance *iter8v1alpha1.Experiment) context.Context
 	RemoveExperiment(instance *iter8v1alpha1.Experiment)
-	Print()
+
+	MarkTargetDeploymentFound(name, namespace string) bool
+	MarkTargetServiceFound(name, namespace string) bool
+
+	MarkTargetDeploymentMissing(name, namespace string) bool
+	MarkTargetServiceMissing(name, namespace string) bool
 }
 
 var _ Interface = &Impl{}
 
-// ExperimentAbstract includes basic info for one Experiment
-type ExperimentAbstract struct {
-	namespace       string
-	phase           iter8v1alpha1.Phase
-	targetsAbstract *targets.Abstract
-}
-
 // Impl is the implementation of Iter8Cache
 type Impl struct {
-	k8sCache cache.Cache
+	logger logr.Logger
+
+	// the mutext to protect the maps
+	m sync.RWMutex
 	// an ExperimentAbstract store with experimentName.experimentNamespace as key for access
-	experimentAbstractStore map[string]*ExperimentAbstract
+	experimentAbstractStore map[string]*abstract.Experiment
 
 	// a lookup map from target to experiment
 	// targetName.targetNamespace -> experimentName.experimentNamespace
@@ -58,44 +59,47 @@ type Impl struct {
 
 	// a lookup map from target service to experiment
 	service2Experiment map[string]string
-
-	logger logr.Logger
-
-	m sync.RWMutex
 }
 
-func New(k8sCache cache.Cache, logger logr.Logger) Interface {
+// New returns a new iter8cache implementation
+func New(logger logr.Logger) Interface {
 	return &Impl{
-		k8sCache:                k8sCache,
-		experimentAbstractStore: make(map[string]*ExperimentAbstract),
+		experimentAbstractStore: make(map[string]*abstract.Experiment),
 		deployment2Experiment:   make(map[string]string),
 		service2Experiment:      make(map[string]string),
 		logger:                  logger,
 	}
 }
 
-func (c *Impl) RegisterExperiment(instance *iter8v1alpha1.Experiment) {
-	eakey := experimentKey(instance)
-	if _, ok := c.experimentAbstractStore[eakey]; ok {
-		return
-	}
-	targetNamespace := util.GetServiceNamespace(instance)
+// RegisterExperiment creates new abstracts into the cache and snapshot the abstract into context
+func (c *Impl) RegisterExperiment(ctx context.Context, instance *iter8v1alpha1.Experiment) context.Context {
+	c.m.Lock()
+	defer c.m.Unlock()
 
-	ea := &ExperimentAbstract{
-		namespace:       instance.Namespace,
-		targetsAbstract: targets.NewAbstract(instance),
+	eakey := experimentKey(instance)
+	if _, ok := c.experimentAbstractStore[eakey]; !ok {
+		targetNamespace := util.GetServiceNamespace(instance)
+		ea := abstract.NewExperiment(instance, targetNamespace)
+		c.experimentAbstractStore[eakey] = ea
+		service := instance.Spec.TargetService.Name
+		baseline := instance.Spec.TargetService.Baseline
+		candidate := instance.Spec.TargetService.Candidate
+
+		c.service2Experiment[targetKey(service, targetNamespace)] = eakey
+		c.deployment2Experiment[targetKey(baseline, targetNamespace)] = eakey
+		c.deployment2Experiment[targetKey(candidate, targetNamespace)] = eakey
 	}
-	c.experimentAbstractStore[eakey] = ea
-	service := instance.Spec.TargetService.Name
-	baseline := instance.Spec.TargetService.Baseline
-	candidate := instance.Spec.TargetService.Candidate
-	c.service2Experiment[targetKey(service, targetNamespace)] = eakey
-	c.deployment2Experiment[targetKey(baseline, targetNamespace)] = eakey
-	c.deployment2Experiment[targetKey(candidate, targetNamespace)] = eakey
+
+	ctx = context.WithValue(ctx, util.AbstractKey, c.experimentAbstractStore[eakey])
+
+	return ctx
 }
 
 // DeploymentToExperiment returns the experiment key given name and namespace of target deployment
 func (c *Impl) DeploymentToExperiment(targetName, targetNamespace string) (string, string, bool) {
+	c.m.Lock()
+	defer c.m.Unlock()
+
 	tKey := targetKey(targetName, targetNamespace)
 	if _, ok := c.deployment2Experiment[tKey]; !ok {
 		return "", "", false
@@ -105,8 +109,41 @@ func (c *Impl) DeploymentToExperiment(targetName, targetNamespace string) (strin
 	return name, namespace, true
 }
 
+func (c *Impl) MarkTargetDeploymentFound(targetName, targetNamespace string) bool {
+	c.m.Lock()
+	defer c.m.Unlock()
+
+	tKey := targetKey(targetName, targetNamespace)
+	eaKey, ok := c.deployment2Experiment[tKey]
+	if !ok {
+		return false
+	}
+
+	c.experimentAbstractStore[eaKey].TargetsAbstract.MarkTargetFound(targetName, true)
+
+	return true
+}
+
+func (c *Impl) MarkTargetDeploymentMissing(targetName, targetNamespace string) bool {
+	c.m.Lock()
+	defer c.m.Unlock()
+
+	tKey := targetKey(targetName, targetNamespace)
+	eaKey, ok := c.deployment2Experiment[tKey]
+	if !ok {
+		return false
+	}
+
+	c.experimentAbstractStore[eaKey].TargetsAbstract.MarkTargetFound(targetName, false)
+
+	return true
+}
+
 // ServiceToExperiment returns the experiment key given name and namespace of target service
 func (c *Impl) ServiceToExperiment(targetName, targetNamespace string) (string, string, bool) {
+	c.m.Lock()
+	defer c.m.Unlock()
+
 	tKey := targetKey(targetName, targetNamespace)
 	if _, ok := c.service2Experiment[tKey]; !ok {
 		return "", "", false
@@ -117,21 +154,52 @@ func (c *Impl) ServiceToExperiment(targetName, targetNamespace string) (string, 
 	return name, namespace, true
 }
 
-func (c *Impl) Print() {
-	c.logger.Info("CacheStatus", "deployment2experiment", c.deployment2Experiment,
-		"service2experiment", c.service2Experiment)
+func (c *Impl) MarkTargetServiceFound(targetName, targetNamespace string) bool {
+	c.m.Lock()
+	defer c.m.Unlock()
+
+	tKey := targetKey(targetName, targetNamespace)
+	eaKey, ok := c.service2Experiment[tKey]
+	if !ok {
+		return false
+	}
+
+	c.experimentAbstractStore[eaKey].TargetsAbstract.MarkServiceFound(true)
+
+	return true
 }
 
+func (c *Impl) MarkTargetServiceMissing(targetName, targetNamespace string) bool {
+	c.m.Lock()
+	defer c.m.Unlock()
+
+	tKey := targetKey(targetName, targetNamespace)
+	eaKey, ok := c.service2Experiment[tKey]
+	if !ok {
+		return false
+	}
+
+	c.experimentAbstractStore[eaKey].TargetsAbstract.MarkServiceFound(false)
+
+	return true
+}
+
+// RemoveExperiment removes the experiment abstract from the cache
 func (c *Impl) RemoveExperiment(instance *iter8v1alpha1.Experiment) {
-	ea, ok := c.experimentAbstractStore[experimentKey(instance)]
+	c.m.Lock()
+	defer c.m.Unlock()
+
+	eakey := experimentKey(instance)
+	ea, ok := c.experimentAbstractStore[eakey]
 	if !ok {
 		return
 	}
 
-	ta := ea.targetsAbstract
+	ta := ea.TargetsAbstract
 	targetNamespace := ta.Namespace
 	delete(c.service2Experiment, targetKey(ta.ServiceName, targetNamespace))
 	for name := range ta.Status {
 		delete(c.deployment2Experiment, targetKey(name, targetNamespace))
 	}
+	delete(c.experimentAbstractStore, eakey)
 }

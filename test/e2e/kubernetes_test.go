@@ -17,17 +17,17 @@ package e2e
 import (
 	"testing"
 
+	networkingv1alpha3 "istio.io/api/networking/v1alpha3"
+	"istio.io/client-go/pkg/apis/networking/v1alpha3"
+	appsv1 "k8s.io/api/apps/v1"
 	corev1 "k8s.io/api/core/v1"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/apimachinery/pkg/runtime"
 
 	analtyicsapi "github.com/iter8-tools/iter8-controller/pkg/analytics/api"
 	iter8v1alpha1 "github.com/iter8-tools/iter8-controller/pkg/apis/iter8/v1alpha1"
-	"github.com/iter8-tools/iter8-controller/pkg/controller/experiment"
+	"github.com/iter8-tools/iter8-controller/pkg/controller/experiment/routing"
 	"github.com/iter8-tools/iter8-controller/test"
-	networkingv1alpha3 "istio.io/api/networking/v1alpha3"
-	"istio.io/client-go/pkg/apis/networking/v1alpha3"
-	appsv1 "k8s.io/api/apps/v1"
 )
 
 const (
@@ -414,13 +414,13 @@ func getSlowKubernetesExperiment(name, serviceName, baseline, candidate, analyti
 func getStableDestinationRule(serviceName, name string, obj runtime.Object) runtime.Object {
 	deploy := obj.(*appsv1.Deployment)
 
-	return experiment.NewDestinationRule(serviceName, name, Flags.Namespace).
+	return routing.NewDestinationRule(serviceName, name, Flags.Namespace).
 		WithStableDeployment(deploy).
 		Build()
 }
 
 func getStableVirtualService(serviceName, name string) runtime.Object {
-	return experiment.NewVirtualService(serviceName, name, Flags.Namespace).
+	return routing.NewVirtualService(serviceName, name, Flags.Namespace).
 		WithNewStableSet(serviceName).
 		Build()
 }

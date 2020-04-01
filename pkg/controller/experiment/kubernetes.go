@@ -19,15 +19,14 @@ import (
 	"context"
 	"time"
 
-	iter8v1alpha1 "github.com/iter8-tools/iter8-controller/pkg/apis/iter8/v1alpha1"
+	corev1 "k8s.io/api/core/v1"
 	"sigs.k8s.io/controller-runtime/pkg/reconcile"
 
-	corev1 "k8s.io/api/core/v1"
+	iter8v1alpha1 "github.com/iter8-tools/iter8-controller/pkg/apis/iter8/v1alpha1"
+	"github.com/iter8-tools/iter8-controller/pkg/controller/experiment/util"
 )
 
 func (r *ReconcileExperiment) syncKubernetes(context context.Context, instance *iter8v1alpha1.Experiment) (reconcile.Result, error) {
-	r.iter8Cache.RegisterExperiment(instance)
-
 	updateStatus, err := r.checkOrInitRules(context, instance)
 	if err != nil {
 		if updateStatus {
@@ -39,16 +38,29 @@ func (r *ReconcileExperiment) syncKubernetes(context context.Context, instance *
 		return reconcile.Result{}, nil
 	}
 
-	updateStatus, err = r.detectTargets(context, instance)
-	if err != nil {
-		if updateStatus {
-			if err := r.Status().Update(context, instance); err != nil && !validUpdateErr(err) {
-				log.Info("Fail to update status: %v", err)
-				return reconcile.Result{}, nil
+	if detectTargets(context, instance) {
+		updateStatus, err = r.detectTargets(context, instance)
+		if err != nil {
+			if updateStatus {
+				if err := r.Status().Update(context, instance); err != nil && !validUpdateErr(err) {
+					log.Info("Fail to update status: %v", err)
+					return reconcile.Result{}, nil
+				}
 			}
+			return reconcile.Result{}, nil
+		}
+	}
+
+	if progress(context, instance) {
+		err := r.progressExperiment(context, instance)
+		if err := r.Status().Update(context, instance); err != nil && !validUpdateErr(err) {
+			log.Info("Fail to update status: %v", err)
+			return reconcile.Result{}, nil
 		}
 
-		return reconcile.Result{}, nil
+		if err != nil {
+			return reconcile.Result{}, nil
+		}
 	}
 
 	if completed, err := r.checkExperimentCompleted(context, instance); completed {
@@ -61,34 +73,11 @@ func (r *ReconcileExperiment) syncKubernetes(context context.Context, instance *
 		return reconcile.Result{}, err
 	}
 
-	now := time.Now()
 	traffic := instance.Spec.TrafficControl
-	// TODO: check err in getting the time value
 	interval, _ := traffic.GetIntervalDuration()
-
-	if now.After(instance.Status.LastIncrementTime.Add(interval)) {
-		err := r.progressExperiment(context, instance)
-		if err := r.Status().Update(context, instance); err != nil && !validUpdateErr(err) {
-			log.Info("Fail to update status: %v", err)
-			// End experiment
-			return reconcile.Result{}, nil
-		}
-
-		if err != nil {
-			return reconcile.Result{}, nil
-		}
-
-		if instance.Spec.TrafficControl.GetMaxIterations() < instance.Status.CurrentIteration {
-			log.Info("Experiment Succeeded, requeue")
-			return reconcile.Result{Requeue: true}, nil
-		}
-
-		// Next iteration
-		log.Info("Requeue for next iteration")
-		return reconcile.Result{RequeueAfter: interval}, nil
-	}
-
-	return reconcile.Result{}, nil
+	// Next iteration
+	log.Info("Requeue for next iteration")
+	return reconcile.Result{RequeueAfter: interval}, nil
 }
 
 func (r *ReconcileExperiment) finalizeIstio(context context.Context, instance *iter8v1alpha1.Experiment) (reconcile.Result, error) {
@@ -101,4 +90,29 @@ func (r *ReconcileExperiment) finalizeIstio(context context.Context, instance *i
 	}
 
 	return reconcile.Result{}, removeFinalizer(context, r, instance, Finalizer)
+}
+
+func progress(context context.Context, instance *iter8v1alpha1.Experiment) bool {
+	if util.ExperimentAbstract(context).AbortExperiment() {
+		return false
+	}
+
+	if instance.Action.TerminateExperiment() {
+		return false
+	}
+
+	now := time.Now()
+	traffic := instance.Spec.TrafficControl
+	interval, _ := traffic.GetIntervalDuration()
+
+	return now.After(instance.Status.LastIncrementTime.Add(interval))
+}
+
+func detectTargets(context context.Context, instance *iter8v1alpha1.Experiment) bool {
+	if util.ExperimentAbstract(context).AbortExperiment() {
+		return false
+	}
+
+	cond := instance.Status.GetCondition(iter8v1alpha1.ExperimentConditionTargetsProvided)
+	return cond.Status != corev1.ConditionTrue
 }

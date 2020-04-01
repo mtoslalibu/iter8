@@ -56,9 +56,10 @@ func (r *ReconcileExperiment) cleanUp(context context.Context, instance *iter8v1
 	if err := r.rules.Cleanup(instance, r.targets, r.istioClient); err != nil {
 		return err
 	}
+
 	r.iter8Cache.RemoveExperiment(instance)
 	log.Info("Cleanup of experiment is done.")
-	r.iter8Cache.Print()
+
 	r.setExperimentEndStatus(context, instance)
 	return nil
 }
@@ -258,6 +259,7 @@ func (r *ReconcileExperiment) detectTargets(context context.Context, instance *i
 			instance.Status.TrafficSplit.Baseline = 100
 		}
 	} else {
+
 		r.MarkTargetsError(context, instance, "Missing Baseline")
 		return true, fmt.Errorf("Missing Baseline %s", baselineName)
 	}
@@ -423,6 +425,7 @@ func (r *ReconcileExperiment) progressExperiment(context context.Context, instan
 			"")
 	} else if rolloutPercent <= int32(traffic.GetMaxTrafficPercentage()) &&
 		r.rules.GetWeight(routing.Candidate) != rolloutPercent {
+		log.Info("NewTrafficUpdate")
 		// Increase the traffic upto max traffic amount
 		// Update Traffic splitting rule
 		if err := r.rules.UpdateRolloutPercent(instance.Spec.TargetService.Name, util.GetServiceNamespace(instance), rolloutPercent, r.istioClient); err != nil {

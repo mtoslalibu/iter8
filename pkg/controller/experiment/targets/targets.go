@@ -41,7 +41,8 @@ func InitTargets() *Targets {
 }
 
 func (t *Targets) Cleanup(context context.Context, instance *iter8v1alpha1.Experiment, client client.Client) error {
-	if instance.Spec.CleanUp == iter8v1alpha1.CleanUpDelete {
+	if !util.ExperimentAbstract(context).AbortExperiment() &&
+		instance.Spec.CleanUp == iter8v1alpha1.CleanUpDelete {
 		if instance.Succeeded() {
 			// experiment is successful
 			switch instance.Spec.TrafficControl.GetOnSuccess() {
