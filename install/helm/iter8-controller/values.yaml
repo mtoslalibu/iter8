@@ -4,7 +4,7 @@
 
 image:
   repository: iter8/iter8-controller
-  tag: stable
+  tag: v0.0.1
   pullPolicy: Always
 
 namespace: iter8
