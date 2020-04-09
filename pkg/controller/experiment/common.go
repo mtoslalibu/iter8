@@ -65,27 +65,6 @@ func markExperimentCompleted(instance *iter8v1alpha1.Experiment) {
 	instance.Status.MarkExperimentCompleted()
 }
 
-func successMsg(instance *iter8v1alpha1.Experiment) string {
-	if instance.Action == iter8v1alpha1.ActionOverrideSuccess {
-		return "Override Success"
-	} else if instance.Status.AssessmentSummary.AllSuccessCriteriaMet {
-		return "All Success Criteria Were Met"
-	} else {
-		return "Last Iteration Was Completed"
-	}
-}
-
-func failureMsg(instance *iter8v1alpha1.Experiment) string {
-	if instance.Action == iter8v1alpha1.ActionOverrideFailure {
-		return "Override Failure"
-	} else if !instance.Status.AssessmentSummary.AllSuccessCriteriaMet {
-		return "Not All Success Criteria Met"
-	} else {
-		// Should not be reached
-		return "Unexpected Condition"
-	}
-}
-
 func setLabels(obj runtime.Object, newLabels map[string]string) error {
 	accessor, err := meta.Accessor(obj)
 	if err != nil {

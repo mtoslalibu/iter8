@@ -39,7 +39,7 @@ import (
 func (r *ReconcileExperiment) checkExperimentCompleted(context context.Context, instance *iter8v1alpha1.Experiment) (bool, error) {
 	// check experiment is finished
 	if instance.Spec.TrafficControl.GetMaxIterations() < instance.Status.CurrentIteration ||
-		instance.Action.TerminateExperiment() {
+		instance.Action.TerminateExperiment() || util.ExperimentAbstract(context).Terminate() {
 		if err := r.cleanUp(context, instance); err != nil {
 			return true, err
 		}
@@ -53,7 +53,7 @@ func (r *ReconcileExperiment) cleanUp(context context.Context, instance *iter8v1
 	if err := r.targets.Cleanup(context, instance, r.Client); err != nil {
 		return err
 	}
-	if err := r.rules.Cleanup(instance, r.targets, r.istioClient); err != nil {
+	if err := r.rules.Cleanup(context, instance, r.istioClient); err != nil {
 		return err
 	}
 
@@ -209,27 +209,43 @@ func (r *ReconcileExperiment) detectRoutingReferences(instance *iter8v1alpha1.Ex
 }
 
 func (r *ReconcileExperiment) setExperimentEndStatus(context context.Context, instance *iter8v1alpha1.Experiment) (err error) {
-	if instance.Succeeded() {
-		// experiment is successful
-
-		switch instance.Spec.TrafficControl.GetOnSuccess() {
-		case "baseline":
-			instance.Status.TrafficSplit.Baseline = 100
-			instance.Status.TrafficSplit.Candidate = 0
-		case "candidate":
-			instance.Status.TrafficSplit.Baseline = 0
-			instance.Status.TrafficSplit.Candidate = 100
-		case "both":
-		}
-
-		r.MarkExperimentSucceeded(context, instance, "%s", successMsg(instance))
-	} else {
+	switch util.GetStableTarget(context, instance) {
+	case "baseline":
 		instance.Status.TrafficSplit.Baseline = 100
 		instance.Status.TrafficSplit.Candidate = 0
-		r.MarkExperimentFailed(context, instance, "%s", failureMsg(instance))
+	case "candidate":
+		instance.Status.TrafficSplit.Baseline = 0
+		instance.Status.TrafficSplit.Candidate = 100
+	}
+
+	msg := completeStatusMessage(context, instance)
+	if instance.Succeeded() {
+		r.MarkExperimentSucceeded(context, instance, "%s", msg)
+	} else {
+		r.MarkExperimentFailed(context, instance, "%s", msg)
 	}
 
 	return
+}
+
+func completeStatusMessage(context context.Context, instance *iter8v1alpha1.Experiment) string {
+	out := ""
+	if len(instance.Action) > 0 {
+		out = string(instance.Action) + " (User Action)"
+	} else if util.ExperimentAbstract(context).Terminate() {
+		out = util.ExperimentAbstract(context).GetDeletedTarget() + " Deleted (User Action)"
+	} else if len(instance.Status.AssessmentSummary.SuccessCriteriaStatus) > 0 {
+		if instance.Status.AssessmentSummary.AllSuccessCriteriaMet {
+			out = "All Success Criteria Were Met"
+		} else {
+			out = "Not All Success Criteria Were Met"
+		}
+	} else if instance.Spec.TrafficControl.GetMaxIterations() < instance.Status.CurrentIteration {
+		out = "Last Iteration Was Completed"
+	} else {
+		out = "Unknown"
+	}
+	return out
 }
 
 func (r *ReconcileExperiment) detectTargets(context context.Context, instance *iter8v1alpha1.Experiment) (bool, error) {
@@ -368,7 +384,7 @@ func validateVirtualService(instance *iter8v1alpha1.Experiment, vs *v1alpha3.Vir
 func (r *ReconcileExperiment) progressExperiment(context context.Context, instance *iter8v1alpha1.Experiment) error {
 	// Progressing on Experiment
 	traffic := instance.Spec.TrafficControl
-	rolloutPercent := r.rules.GetWeight(routing.Candidate)
+	rolloutPercent := instance.Status.TrafficSplit.Candidate
 	strategy := instance.GetStrategy()
 	algorithm := analytics.GetAlgorithm(strategy)
 	if algorithm == nil {
@@ -378,7 +394,7 @@ func (r *ReconcileExperiment) progressExperiment(context context.Context, instan
 	}
 
 	if algorithm.GetPath() == "" {
-		rolloutPercent += int32(traffic.GetStepSize())
+		rolloutPercent += int(traffic.GetStepSize())
 	} else {
 		// Get latest analysis
 		payload, err := analytics.MakeRequest(instance, r.targets.Baseline, r.targets.Candidate, algorithm)
@@ -414,7 +430,7 @@ func (r *ReconcileExperiment) progressExperiment(context context.Context, instan
 		}
 
 		// read latest rollout percent
-		rolloutPercent = int32(response.Candidate.TrafficPercentage)
+		rolloutPercent = int(response.Candidate.TrafficPercentage)
 		r.MarkAnalyticsServiceRunning(context, instance)
 	}
 
@@ -423,12 +439,12 @@ func (r *ReconcileExperiment) progressExperiment(context context.Context, instan
 	if instance.Status.CurrentIteration > 0 && !instance.Succeeded() {
 		r.MarkExperimentProgress(context, instance, true, iter8v1alpha1.ReasonIterationFailed,
 			"")
-	} else if rolloutPercent <= int32(traffic.GetMaxTrafficPercentage()) &&
-		r.rules.GetWeight(routing.Candidate) != rolloutPercent {
+	} else if rolloutPercent <= int(traffic.GetMaxTrafficPercentage()) &&
+		instance.Status.TrafficSplit.Candidate != rolloutPercent {
 		log.Info("NewTrafficUpdate")
 		// Increase the traffic upto max traffic amount
 		// Update Traffic splitting rule
-		if err := r.rules.UpdateRolloutPercent(instance.Spec.TargetService.Name, util.GetServiceNamespace(instance), rolloutPercent, r.istioClient); err != nil {
+		if err := r.rules.UpdateRolloutPercent(instance.Spec.TargetService.Name, util.GetServiceNamespace(instance), int32(rolloutPercent), r.istioClient); err != nil {
 			r.MarkRoutingRulesError(context, instance, "%s", err.Error())
 			return err
 		}
@@ -453,7 +469,7 @@ func (r *ReconcileExperiment) abortExperiment(context context.Context, instance 
 	if err = r.targets.Cleanup(context, instance, r.Client); err != nil {
 		return
 	}
-	if err = r.rules.Cleanup(instance, r.targets, r.istioClient); err != nil {
+	if err = r.rules.Cleanup(context, instance, r.istioClient); err != nil {
 		return
 	}
 

@@ -20,13 +20,19 @@ import (
 )
 
 type ExperimentInterface interface {
-	AbortExperiment() bool
+	Terminate() bool
+	GetDeletedTarget() string
+	MarkTargetFound(name string, found bool)
+	MarkServiceFound(found bool)
 }
+
+var _ ExperimentInterface = &Experiment{}
 
 // Experiment includes abstract info for one Experiment
 type Experiment struct {
 	namespace       string
 	TargetsAbstract *Targets
+	terminate       bool
 }
 
 func NewExperiment(instance *iter8v1alpha1.Experiment, targetNamespace string) *Experiment {
@@ -36,15 +42,34 @@ func NewExperiment(instance *iter8v1alpha1.Experiment, targetNamespace string) *
 	}
 }
 
-func (e *Experiment) AbortExperiment() bool {
-	ta := e.TargetsAbstract
-	if ta.serviceCondition == ConditionDeleted {
-		return true
+func (e *Experiment) Terminate() bool {
+	return e.terminate
+}
+
+func (e *Experiment) GetDeletedTarget() string {
+	if e.TargetsAbstract.serviceCondition == ConditionDeleted {
+		return string(RoleService)
 	}
-	for _, status := range ta.Status {
+
+	for _, status := range e.TargetsAbstract.Status {
 		if status.condition == ConditionDeleted {
-			return true
+			return string(status.role)
 		}
 	}
-	return false
+
+	return ""
+}
+
+func (e *Experiment) MarkTargetFound(name string, found bool) {
+	if found == false {
+		e.terminate = true
+	}
+	e.TargetsAbstract.MarkTargetFound(name, found)
+}
+
+func (e *Experiment) MarkServiceFound(found bool) {
+	if found == false {
+		e.terminate = true
+	}
+	e.TargetsAbstract.MarkServiceFound(found)
 }

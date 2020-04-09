@@ -40,6 +40,27 @@ func GetServiceNamespace(instance *iter8v1alpha1.Experiment) string {
 	return serviceNamespace
 }
 
+func GetStableTarget(context context.Context, instance *iter8v1alpha1.Experiment) string {
+	out := ""
+	ea := ExperimentAbstract(context)
+	if ea.Terminate() {
+		switch ea.GetDeletedTarget() {
+		case "baseline":
+			out = "candidate"
+		case "candidate":
+			out = "baseline"
+		default:
+			out = "both"
+		}
+	} else if instance.Succeeded() {
+		out = instance.Spec.TrafficControl.GetOnSuccess()
+	} else {
+		out = "baseline"
+	}
+
+	return out
+}
+
 func DeleteObjects(context context.Context, client client.Client, objs ...runtime.Object) error {
 	for _, obj := range objs {
 		if err := client.Delete(context, obj); err != nil {

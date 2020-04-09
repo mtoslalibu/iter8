@@ -24,6 +24,8 @@ type TargetRole string
 type Condition string
 
 const (
+	RoleService TargetRole = "service"
+
 	RoleBaseline TargetRole = "baseline"
 
 	RoleCandidate TargetRole = "candidate"

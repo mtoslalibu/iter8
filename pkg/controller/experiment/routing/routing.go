@@ -16,13 +16,15 @@ limitations under the License.
 package routing
 
 import (
-	iter8v1alpha1 "github.com/iter8-tools/iter8-controller/pkg/apis/iter8/v1alpha1"
-	"github.com/iter8-tools/iter8-controller/pkg/controller/experiment/targets"
+	"context"
 
 	"istio.io/client-go/pkg/apis/networking/v1alpha3"
 	istioclient "istio.io/client-go/pkg/clientset/versioned"
-
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
+
+	iter8v1alpha1 "github.com/iter8-tools/iter8-controller/pkg/apis/iter8/v1alpha1"
+	"github.com/iter8-tools/iter8-controller/pkg/controller/experiment/targets"
+	"github.com/iter8-tools/iter8-controller/pkg/controller/experiment/util"
 )
 
 type IstioRoutingRules struct {
@@ -92,24 +94,20 @@ func (r *IstioRoutingRules) DeleteAll(ic istioclient.Interface) (err error) {
 	return
 }
 
-func (r *IstioRoutingRules) Cleanup(instance *iter8v1alpha1.Experiment, targets *targets.Targets, ic istioclient.Interface) (err error) {
+func (r *IstioRoutingRules) Cleanup(context context.Context, instance *iter8v1alpha1.Experiment, ic istioclient.Interface) (err error) {
 	if instance.Spec.CleanUp == iter8v1alpha1.CleanUpDelete && r.IsInit() {
 		err = r.DeleteAll(ic)
 	} else {
 		serviceName := instance.Spec.TargetService.Name
-		if instance.Succeeded() {
-			// experiment is successful
-			switch instance.Spec.TrafficControl.GetOnSuccess() {
-			case "baseline":
-				r.ToStable(Baseline, serviceName, serviceName)
-			case "candidate":
-				r.ToStable(Candidate, serviceName, serviceName)
-			case "both":
-				r.SetStableLabels()
-			}
+		serviceNs := util.GetServiceNamespace(instance)
 
-		} else {
-			r.ToStable(Baseline, serviceName, serviceName)
+		switch util.GetStableTarget(context, instance) {
+		case "baseline":
+			r.ToStable(Baseline, serviceName, serviceNs)
+		case "candidate":
+			r.ToStable(Candidate, serviceName, serviceNs)
+		case "both":
+			r.SetStableLabels()
 		}
 
 		err = r.UpdateRemoveRules(ic)

@@ -91,7 +91,7 @@ func (c *Impl) RegisterExperiment(ctx context.Context, instance *iter8v1alpha1.E
 	}
 
 	ctx = context.WithValue(ctx, util.AbstractKey, c.experimentAbstractStore[eakey])
-
+	c.logger.Info("ExperimentAbstract", eakey, c.experimentAbstractStore[eakey].TargetsAbstract)
 	return ctx
 }
 
@@ -119,7 +119,7 @@ func (c *Impl) MarkTargetDeploymentFound(targetName, targetNamespace string) boo
 		return false
 	}
 
-	c.experimentAbstractStore[eaKey].TargetsAbstract.MarkTargetFound(targetName, true)
+	c.experimentAbstractStore[eaKey].MarkTargetFound(targetName, true)
 
 	return true
 }
@@ -134,7 +134,7 @@ func (c *Impl) MarkTargetDeploymentMissing(targetName, targetNamespace string) b
 		return false
 	}
 
-	c.experimentAbstractStore[eaKey].TargetsAbstract.MarkTargetFound(targetName, false)
+	c.experimentAbstractStore[eaKey].MarkTargetFound(targetName, false)
 
 	return true
 }
@@ -164,7 +164,7 @@ func (c *Impl) MarkTargetServiceFound(targetName, targetNamespace string) bool {
 		return false
 	}
 
-	c.experimentAbstractStore[eaKey].TargetsAbstract.MarkServiceFound(true)
+	c.experimentAbstractStore[eaKey].MarkServiceFound(true)
 
 	return true
 }
@@ -179,7 +179,7 @@ func (c *Impl) MarkTargetServiceMissing(targetName, targetNamespace string) bool
 		return false
 	}
 
-	c.experimentAbstractStore[eaKey].TargetsAbstract.MarkServiceFound(false)
+	c.experimentAbstractStore[eaKey].MarkServiceFound(false)
 
 	return true
 }
