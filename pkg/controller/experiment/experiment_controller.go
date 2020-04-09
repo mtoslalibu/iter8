@@ -124,6 +124,9 @@ func add(mgr manager.Manager, r *ReconcileExperiment) error {
 
 			return true
 		},
+		UpdateFunc: func(event.UpdateEvent) bool {
+			return false
+		},
 		DeleteFunc: func(e event.DeleteEvent) bool {
 			name, namespace := e.Meta.GetName(), e.Meta.GetNamespace()
 			ok := r.iter8Cache.MarkTargetDeploymentMissing(name, namespace)
@@ -170,6 +173,9 @@ func add(mgr manager.Manager, r *ReconcileExperiment) error {
 			log.Info("ServiceDetected", "", name+"."+namespace)
 
 			return true
+		},
+		UpdateFunc: func(event.UpdateEvent) bool {
+			return false
 		},
 		DeleteFunc: func(e event.DeleteEvent) bool {
 			name, namespace := e.Meta.GetName(), e.Meta.GetNamespace()

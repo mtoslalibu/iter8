@@ -51,6 +51,7 @@ func (r *ReconcileExperiment) syncKubernetes(context context.Context, instance *
 		}
 	}
 
+	hasProgressed := false
 	if progress(context, instance) {
 		err := r.progressExperiment(context, instance)
 		if err := r.Status().Update(context, instance); err != nil && !validUpdateErr(err) {
@@ -61,6 +62,8 @@ func (r *ReconcileExperiment) syncKubernetes(context context.Context, instance *
 		if err != nil {
 			return reconcile.Result{}, nil
 		}
+
+		hasProgressed = true
 	}
 
 	if completed, err := r.checkExperimentCompleted(context, instance); completed {
@@ -73,11 +76,16 @@ func (r *ReconcileExperiment) syncKubernetes(context context.Context, instance *
 		return reconcile.Result{}, err
 	}
 
-	traffic := instance.Spec.TrafficControl
-	interval, _ := traffic.GetIntervalDuration()
-	// Next iteration
-	log.Info("Requeue for next iteration")
-	return reconcile.Result{RequeueAfter: interval}, nil
+	if hasProgressed {
+		traffic := instance.Spec.TrafficControl
+		interval, _ := traffic.GetIntervalDuration()
+		// Next iteration
+		log.Info("Requeue for next iteration")
+		return reconcile.Result{RequeueAfter: interval}, nil
+	}
+
+	log.Info("Request not processed")
+	return reconcile.Result{}, nil
 }
 
 func (r *ReconcileExperiment) finalizeIstio(context context.Context, instance *iter8v1alpha1.Experiment) (reconcile.Result, error) {
@@ -94,10 +102,6 @@ func (r *ReconcileExperiment) finalizeIstio(context context.Context, instance *i
 
 func progress(context context.Context, instance *iter8v1alpha1.Experiment) bool {
 	if util.ExperimentAbstract(context).AbortExperiment() {
-		return false
-	}
-
-	if instance.Action.TerminateExperiment() {
 		return false
 	}
 
