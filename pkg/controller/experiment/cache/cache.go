@@ -90,8 +90,20 @@ func (c *Impl) RegisterExperiment(ctx context.Context, instance *iter8v1alpha1.E
 		c.deployment2Experiment[targetKey(candidate, targetNamespace)] = eakey
 	}
 
-	ctx = context.WithValue(ctx, util.AbstractKey, c.experimentAbstractStore[eakey])
-	c.logger.Info("ExperimentAbstract", eakey, c.experimentAbstractStore[eakey].TargetsAbstract)
+	ea := c.experimentAbstractStore[eakey]
+
+	// Abort Experiment by setting action flag
+	if ea.Terminate() {
+		switch ea.GetDeletedRole() {
+		case "baseline":
+			instance.Action = iter8v1alpha1.ActionOverrideSuccess
+		case "candidate", "service":
+			instance.Action = iter8v1alpha1.ActionOverrideFailure
+		}
+	}
+
+	ctx = context.WithValue(ctx, util.AbstractKey, ea.GetSnapshot())
+	c.logger.Info("ExperimentAbstract", eakey, ea)
 	return ctx
 }
 

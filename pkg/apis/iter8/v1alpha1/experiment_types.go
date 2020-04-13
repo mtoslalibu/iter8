@@ -669,6 +669,7 @@ func (e *Experiment) Succeeded() bool {
 		return e.Action == ActionOverrideSuccess ||
 			e.Action == ""
 	}
+
 	return e.Action == ActionOverrideSuccess ||
 		e.Status.AssessmentSummary.AllSuccessCriteriaMet && e.Action != ActionOverrideFailure
 }

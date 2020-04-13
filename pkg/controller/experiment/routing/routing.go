@@ -52,10 +52,10 @@ func (rules *IstioRoutingRules) IsInit() bool {
 	return drok && vsok
 }
 
-func (r *IstioRoutingRules) StableToProgressing(targets *targets.Targets, expName, serviceNamespace string, ic istioclient.Interface) error {
+func (r *IstioRoutingRules) StableToProgressing(instance *iter8v1alpha1.Experiment, targets *targets.Targets, ic istioclient.Interface) error {
 	r.DestinationRule = NewDestinationRuleBuilder(r.DestinationRule).
 		WithStableToProgressing(targets.Baseline).
-		WithExperimentRegisterd(expName).
+		WithExperimentRegisterd(instance.Name).
 		Build()
 
 	if dr, err := ic.NetworkingV1alpha3().
@@ -67,8 +67,8 @@ func (r *IstioRoutingRules) StableToProgressing(targets *targets.Targets, expNam
 	}
 
 	r.VirtualService = NewVirtualServiceBuilder(r.VirtualService).
-		WithStableToProgressing(targets.Service.GetName(), serviceNamespace).
-		WithExperimentRegisterd(expName).
+		WithStableToProgressing(targets.Service.GetName(), util.GetServiceNamespace(instance)).
+		WithExperimentRegisterd(instance.Name).
 		Build()
 	if vs, err := ic.NetworkingV1alpha3().
 		VirtualServices(r.VirtualService.GetNamespace()).
@@ -78,6 +78,8 @@ func (r *IstioRoutingRules) StableToProgressing(targets *targets.Targets, expNam
 		r.VirtualService = vs
 	}
 
+	instance.Status.TrafficSplit.Baseline = 100
+	instance.Status.TrafficSplit.Candidate = 0
 	return nil
 }
 
@@ -104,13 +106,25 @@ func (r *IstioRoutingRules) Cleanup(context context.Context, instance *iter8v1al
 		switch util.GetStableTarget(context, instance) {
 		case "baseline":
 			r.ToStable(Baseline, serviceName, serviceNs)
+			err = r.UpdateRemoveRules(ic)
+			if err != nil {
+				return
+			}
+			instance.Status.TrafficSplit.Baseline = 100
+			instance.Status.TrafficSplit.Candidate = 0
 		case "candidate":
 			r.ToStable(Candidate, serviceName, serviceNs)
+			err = r.UpdateRemoveRules(ic)
+			if err != nil {
+				return
+			}
+			instance.Status.TrafficSplit.Baseline = 0
+			instance.Status.TrafficSplit.Candidate = 100
 		case "both":
 			r.SetStableLabels()
+			err = r.UpdateRemoveRules(ic)
 		}
 
-		err = r.UpdateRemoveRules(ic)
 	}
 	return
 }
@@ -155,9 +169,9 @@ func (r *IstioRoutingRules) GetWeight(subset string) int32 {
 	return 0
 }
 
-func (r *IstioRoutingRules) UpdateRolloutPercent(serviceName, serviceNamespace string, w int32, ic istioclient.Interface) error {
+func (r *IstioRoutingRules) UpdateRolloutPercent(instance *iter8v1alpha1.Experiment, rolloutPercent int, ic istioclient.Interface) error {
 	vs := NewVirtualServiceBuilder(r.VirtualService).
-		WithRolloutPercent(serviceName, serviceNamespace, w).
+		WithRolloutPercent(instance.Spec.TargetService.Name, util.GetServiceNamespace(instance), int32(rolloutPercent)).
 		Build()
 
 	if vs, err := ic.NetworkingV1alpha3().VirtualServices(vs.Namespace).Update(vs); err != nil {
@@ -166,5 +180,7 @@ func (r *IstioRoutingRules) UpdateRolloutPercent(serviceName, serviceNamespace s
 		r.VirtualService = vs
 	}
 
+	instance.Status.TrafficSplit.Baseline = 100 - rolloutPercent
+	instance.Status.TrafficSplit.Candidate = rolloutPercent
 	return nil
 }

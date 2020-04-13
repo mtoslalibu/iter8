@@ -19,6 +19,7 @@ import (
 	"context"
 	"reflect"
 
+	istioclient "istio.io/client-go/pkg/clientset/versioned"
 	appsv1 "k8s.io/api/apps/v1"
 	corev1 "k8s.io/api/core/v1"
 	"k8s.io/apimachinery/pkg/api/errors"
@@ -41,13 +42,11 @@ import (
 	iter8cache "github.com/iter8-tools/iter8-controller/pkg/controller/experiment/cache"
 	"github.com/iter8-tools/iter8-controller/pkg/controller/experiment/routing"
 	"github.com/iter8-tools/iter8-controller/pkg/controller/experiment/targets"
+	"github.com/iter8-tools/iter8-controller/pkg/controller/experiment/util"
 	iter8notifier "github.com/iter8-tools/iter8-controller/pkg/notifier"
-	istioclient "istio.io/client-go/pkg/clientset/versioned"
 )
 
 var log = logf.Log.WithName("experiment-controller")
-
-type loggerKeyType string
 
 const (
 	KubernetesService      = "v1"
@@ -55,7 +54,6 @@ const (
 
 	Iter8Controller = "iter8-controller"
 	Finalizer       = "finalizer.iter8-tools"
-	loggerKey       = loggerKeyType("logger")
 )
 
 // Add creates a new Experiment Controller and adds it to the Manager with default RBAC. The Manager will set fields on the Controller
@@ -294,11 +292,12 @@ func (r *ReconcileExperiment) Reconcile(request reconcile.Request) (reconcile.Re
 	}
 
 	ctx = r.iter8Cache.RegisterExperiment(ctx, instance)
+
 	log := log.WithValues("namespace", instance.Namespace, "name", instance.Name)
-	ctx = context.WithValue(ctx, loggerKey, log)
+	ctx = context.WithValue(ctx, util.LoggerKey, log)
 	log.Info("reconciling")
 	// Add finalizer to the experiment object
-	if err = addFinalizerIfAbsent(ctx, r, instance, Finalizer); err != nil && !validUpdateErr(err) {
+	if err = addFinalizerIfAbsent(ctx, r, instance, Finalizer); err != nil && !util.ValidUpdateErr(err) {
 		return reconcile.Result{}, err
 	}
 
@@ -315,7 +314,7 @@ func (r *ReconcileExperiment) Reconcile(request reconcile.Request) (reconcile.Re
 	// Init metadata of experiment instance
 	if instance.Status.CreateTimestamp == 0 {
 		instance.Status.Init()
-		if err := r.Status().Update(ctx, instance); err != nil && !validUpdateErr(err) {
+		if err := r.Status().Update(ctx, instance); err != nil && !util.ValidUpdateErr(err) {
 			log.Info("Fail to update status: %v", err)
 			return reconcile.Result{}, nil
 		}
@@ -346,10 +345,10 @@ func (r *ReconcileExperiment) syncMetrics(ctx context.Context, instance *iter8v1
 	// Sync metric definitions from the config map
 	metricsSycned := instance.Status.GetCondition(iter8v1alpha1.ExperimentConditionMetricsSynced)
 	if metricsSycned == nil || metricsSycned.Status != corev1.ConditionTrue {
-		if err := metrics.Read(ctx, r, instance); err != nil && !validUpdateErr(err) {
+		if err := metrics.Read(ctx, r, instance); err != nil && !util.ValidUpdateErr(err) {
 			r.MarkSyncMetricsError(ctx, instance, "Fail to read metrics: %v", err)
 
-			if err := r.Status().Update(ctx, instance); err != nil && !validUpdateErr(err) {
+			if err := r.Status().Update(ctx, instance); err != nil && !util.ValidUpdateErr(err) {
 				log.Info("Fail to update status: %v", err)
 				// TODO: need a better way of handling this error
 				return err
@@ -372,7 +371,7 @@ func addFinalizerIfAbsent(context context.Context, c client.Client, instance *it
 
 	instance.SetFinalizers(append(instance.GetFinalizers(), Finalizer))
 	if err = c.Update(context, instance); err != nil {
-		Logger(context).Info("setting finalizer failed. (retrying)", "error", err)
+		util.Logger(context).Info("setting finalizer failed. (retrying)", "error", err)
 	}
 
 	return
@@ -387,15 +386,15 @@ func removeFinalizer(context context.Context, c client.Client, instance *iter8v1
 	}
 	instance.SetFinalizers(finalizers)
 	if err = c.Update(context, instance); err != nil {
-		Logger(context).Info("setting finalizer failed. (retrying)", "error", err)
+		util.Logger(context).Info("setting finalizer failed. (retrying)", "error", err)
 	}
 
-	Logger(context).Info("FinalizerRemoved")
+	util.Logger(context).Info("FinalizerRemoved")
 	return
 }
 
 func (r *ReconcileExperiment) finalize(context context.Context, instance *iter8v1alpha1.Experiment) (reconcile.Result, error) {
-	log := Logger(context)
+	log := util.Logger(context)
 	log.Info("finalizing")
 
 	apiVersion := instance.Spec.TargetService.APIVersion

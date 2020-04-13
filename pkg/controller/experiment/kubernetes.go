@@ -27,10 +27,12 @@ import (
 )
 
 func (r *ReconcileExperiment) syncKubernetes(context context.Context, instance *iter8v1alpha1.Experiment) (reconcile.Result, error) {
+	log := util.Logger(context)
+
 	updateStatus, err := r.checkOrInitRules(context, instance)
 	if err != nil {
 		if updateStatus {
-			if err := r.Status().Update(context, instance); err != nil && !validUpdateErr(err) {
+			if err := r.Status().Update(context, instance); err != nil && !util.ValidUpdateErr(err) {
 				log.Info("Fail to update status: %v", err)
 				return reconcile.Result{}, nil
 			}
@@ -42,7 +44,7 @@ func (r *ReconcileExperiment) syncKubernetes(context context.Context, instance *
 		updateStatus, err = r.detectTargets(context, instance)
 		if err != nil {
 			if updateStatus {
-				if err := r.Status().Update(context, instance); err != nil && !validUpdateErr(err) {
+				if err := r.Status().Update(context, instance); err != nil && !util.ValidUpdateErr(err) {
 					log.Info("Fail to update status: %v", err)
 					return reconcile.Result{}, nil
 				}
@@ -54,7 +56,7 @@ func (r *ReconcileExperiment) syncKubernetes(context context.Context, instance *
 	hasProgressed := false
 	if progress(context, instance) {
 		err := r.progressExperiment(context, instance)
-		if err := r.Status().Update(context, instance); err != nil && !validUpdateErr(err) {
+		if err := r.Status().Update(context, instance); err != nil && !util.ValidUpdateErr(err) {
 			log.Info("Fail to update status: %v", err)
 			return reconcile.Result{}, nil
 		}
@@ -67,7 +69,7 @@ func (r *ReconcileExperiment) syncKubernetes(context context.Context, instance *
 	}
 
 	if completed, err := r.checkExperimentCompleted(context, instance); completed {
-		if err := r.Status().Update(context, instance); err != nil && !validUpdateErr(err) {
+		if err := r.Status().Update(context, instance); err != nil && !util.ValidUpdateErr(err) {
 			log.Info("Fail to update status: %v", err)
 			// End experiment
 			return reconcile.Result{}, nil
@@ -93,18 +95,15 @@ func (r *ReconcileExperiment) finalizeIstio(context context.Context, instance *i
 	if completed != nil && completed.Status != corev1.ConditionTrue {
 		instance.Action = iter8v1alpha1.ActionOverrideFailure
 		if _, err := r.syncKubernetes(context, instance); err != nil {
-			log.Error(err, "Fail to execute finalize sync process")
+			util.Logger(context).Error(err, "Fail to execute finalize sync process")
 		}
+		r.iter8Cache.RemoveExperiment(instance)
 	}
 
 	return reconcile.Result{}, removeFinalizer(context, r, instance, Finalizer)
 }
 
 func progress(context context.Context, instance *iter8v1alpha1.Experiment) bool {
-	if util.ExperimentAbstract(context).Terminate() {
-		return false
-	}
-
 	if instance.Action.TerminateExperiment() {
 		return false
 	}

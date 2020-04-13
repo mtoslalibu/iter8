@@ -19,6 +19,7 @@ import (
 	"context"
 	"encoding/json"
 	"fmt"
+	"strconv"
 	"time"
 
 	networkingv1alpha3 "istio.io/api/networking/v1alpha3"
@@ -50,17 +51,15 @@ func (r *ReconcileExperiment) checkExperimentCompleted(context context.Context, 
 }
 
 func (r *ReconcileExperiment) cleanUp(context context.Context, instance *iter8v1alpha1.Experiment) error {
-	if err := r.targets.Cleanup(context, instance, r.Client); err != nil {
-		return err
-	}
+	r.targets.Cleanup(context, instance, r.Client)
+
 	if err := r.rules.Cleanup(context, instance, r.istioClient); err != nil {
 		return err
 	}
 
 	r.iter8Cache.RemoveExperiment(instance)
+	r.setExperimentEndStatus(context, instance, "")
 	log.Info("Cleanup of experiment is done.")
-
-	r.setExperimentEndStatus(context, instance)
 	return nil
 }
 
@@ -87,11 +86,13 @@ func (r *ReconcileExperiment) checkOrInitRules(context context.Context, instance
 	updateStatus := true
 
 	if err != nil || len(drl.Items) == 0 && len(vsl.Items) == 0 {
-		Logger(context).Info("NoRulesDetected")
+		util.Logger(context).Info("NoRulesDetected")
 		// Initialize routing rules
 		if err = r.initializeRoutingRules(instance); err != nil {
+			markExperimentCompleted(instance)
 			r.MarkRoutingRulesError(context, instance, "Error in Initializing routing rules: %s, Experiment Ended.", err.Error())
 			r.MarkExperimentFailed(context, instance, "Error in Initializing routing rules: %s, Experiment Ended.", err.Error())
+			r.iter8Cache.RemoveExperiment(instance)
 		} else {
 			r.MarkRoutingRulesReady(context, instance,
 				"Init Routing Rules Suceeded, DR: %s, VS: %s",
@@ -104,9 +105,11 @@ func (r *ReconcileExperiment) checkOrInitRules(context context.Context, instance
 				r.rules.DestinationRule.GetName(), r.rules.VirtualService.GetName())
 			updateStatus = false
 		} else {
+			markExperimentCompleted(instance)
 			r.MarkRoutingRulesError(context, instance,
 				"UnexpectedCondition: %s , Experiment Ended", err.Error())
 			r.MarkExperimentFailed(context, instance, "UnexpectedCondition: %s , Experiment Ended", err.Error())
+			r.iter8Cache.RemoveExperiment(instance)
 		}
 	}
 
@@ -208,17 +211,12 @@ func (r *ReconcileExperiment) detectRoutingReferences(instance *iter8v1alpha1.Ex
 	return fmt.Errorf("Referenced rule not supported")
 }
 
-func (r *ReconcileExperiment) setExperimentEndStatus(context context.Context, instance *iter8v1alpha1.Experiment) (err error) {
-	switch util.GetStableTarget(context, instance) {
-	case "baseline":
-		instance.Status.TrafficSplit.Baseline = 100
-		instance.Status.TrafficSplit.Candidate = 0
-	case "candidate":
-		instance.Status.TrafficSplit.Baseline = 0
-		instance.Status.TrafficSplit.Candidate = 100
+func (r *ReconcileExperiment) setExperimentEndStatus(context context.Context, instance *iter8v1alpha1.Experiment, msg string) (err error) {
+	markExperimentCompleted(instance)
+	if len(msg) == 0 {
+		msg = completeStatusMessage(context, instance)
 	}
 
-	msg := completeStatusMessage(context, instance)
 	if instance.Succeeded() {
 		r.MarkExperimentSucceeded(context, instance, "%s", msg)
 	} else {
@@ -230,10 +228,10 @@ func (r *ReconcileExperiment) setExperimentEndStatus(context context.Context, in
 
 func completeStatusMessage(context context.Context, instance *iter8v1alpha1.Experiment) string {
 	out := ""
-	if len(instance.Action) > 0 {
-		out = string(instance.Action) + " (User Action)"
-	} else if util.ExperimentAbstract(context).Terminate() {
-		out = util.ExperimentAbstract(context).GetDeletedTarget() + " Deleted (User Action)"
+	if util.ExperimentAbstract(context).Terminate() {
+		out = util.ExperimentAbstract(context).GetTerminateStatus()
+	} else if instance.Action.TerminateExperiment() {
+		out = "Abort"
 	} else if len(instance.Status.AssessmentSummary.SuccessCriteriaStatus) > 0 {
 		if instance.Status.AssessmentSummary.AllSuccessCriteriaMet {
 			out = "All Success Criteria Were Met"
@@ -268,14 +266,12 @@ func (r *ReconcileExperiment) detectTargets(context context.Context, instance *i
 		//	Convert state from stable to progressing
 		if r.rules.IsStable() {
 			// Need to pass baseline into the builder
-			if err := r.rules.StableToProgressing(r.targets, instance.Name, serviceNamespace, r.istioClient); err != nil {
+			if err := r.rules.StableToProgressing(instance, r.targets, r.istioClient); err != nil {
 				r.MarkTargetsError(context, instance, "%s", err.Error())
 				return true, err
 			}
-			instance.Status.TrafficSplit.Baseline = 100
 		}
 	} else {
-
 		r.MarkTargetsError(context, instance, "Missing Baseline")
 		return true, fmt.Errorf("Missing Baseline %s", baselineName)
 	}
@@ -426,7 +422,8 @@ func (r *ReconcileExperiment) progressExperiment(context context.Context, instan
 
 		// abort experiment
 		if response.Assessment.Summary.AbortExperiment {
-			return r.abortExperiment(context, instance)
+			instance.Action = iter8v1alpha1.ActionOverrideFailure
+			return nil
 		}
 
 		// read latest rollout percent
@@ -444,12 +441,10 @@ func (r *ReconcileExperiment) progressExperiment(context context.Context, instan
 		log.Info("NewTrafficUpdate")
 		// Increase the traffic upto max traffic amount
 		// Update Traffic splitting rule
-		if err := r.rules.UpdateRolloutPercent(instance.Spec.TargetService.Name, util.GetServiceNamespace(instance), int32(rolloutPercent), r.istioClient); err != nil {
+		if err := r.rules.UpdateRolloutPercent(instance, rolloutPercent, r.istioClient); err != nil {
 			r.MarkRoutingRulesError(context, instance, "%s", err.Error())
 			return err
 		}
-		instance.Status.TrafficSplit.Baseline = 100 - int(rolloutPercent)
-		instance.Status.TrafficSplit.Candidate = int(rolloutPercent)
 
 		r.MarkExperimentProgress(context, instance, true, iter8v1alpha1.ReasonIterationSucceeded,
 			"New Traffic, baseline: %d, candidate: %d",
@@ -462,29 +457,6 @@ func (r *ReconcileExperiment) progressExperiment(context context.Context, instan
 	r.MarkExperimentProgress(context, instance, false, iter8v1alpha1.ReasonIterationUpdate,
 		"Iteration %d Started", instance.Status.CurrentIteration)
 	return nil
-}
-
-func (r *ReconcileExperiment) abortExperiment(context context.Context, instance *iter8v1alpha1.Experiment) (err error) {
-	// rollback to baseline and mark experiment as complete
-	if err = r.targets.Cleanup(context, instance, r.Client); err != nil {
-		return
-	}
-	if err = r.rules.Cleanup(context, instance, r.istioClient); err != nil {
-		return
-	}
-
-	instance.Status.TrafficSplit.Baseline = 100
-	instance.Status.TrafficSplit.Candidate = 0
-
-	r.MarkExperimentFailed(context, instance, "%s", "Aborted")
-	return
-}
-
-func (r *ReconcileExperiment) startNextIteration(context context.Context, instance *iter8v1alpha1.Experiment) {
-	instance.Status.LastIncrementTime = metav1.NewTime(time.Now())
-	instance.Status.CurrentIteration++
-	r.MarkExperimentProgress(context, instance, false, iter8v1alpha1.ReasonIterationUpdate,
-		"Iteration %d Started", instance.Status.CurrentIteration)
 }
 
 func updateSubset(dr *v1alpha3.DestinationRule, d *appsv1.Deployment, name string) bool {
@@ -510,4 +482,30 @@ func updateSubset(dr *v1alpha3.DestinationRule, d *appsv1.Deployment, name strin
 		})
 	}
 	return update
+}
+
+func updateGrafanaURL(instance *iter8v1alpha1.Experiment, namespace string) {
+	endTsStr := "now"
+	if instance.Status.EndTimestamp > 0 {
+		endTsStr = strconv.FormatInt(instance.Status.EndTimestamp/int64(time.Millisecond), 10)
+	}
+	instance.Status.GrafanaURL = instance.Spec.Analysis.GetGrafanaEndpoint() +
+		"/d/eXPEaNnZz/iter8-application-metrics?" +
+		"var-namespace=" + namespace +
+		"&var-service=" + instance.Spec.TargetService.Name +
+		"&var-baseline=" + instance.Spec.TargetService.Baseline +
+		"&var-candidate=" + instance.Spec.TargetService.Candidate +
+		"&from=" + strconv.FormatInt(instance.Status.StartTimestamp/int64(time.Millisecond), 10) +
+		"&to=" + endTsStr
+}
+
+func markExperimentCompleted(instance *iter8v1alpha1.Experiment) {
+	// Clear analysis state
+	instance.Status.AnalysisState.Raw = []byte("{}")
+
+	// Update grafana url
+	instance.Status.EndTimestamp = metav1.Now().UTC().UnixNano()
+	updateGrafanaURL(instance, util.GetServiceNamespace(instance))
+
+	instance.Status.MarkExperimentCompleted()
 }

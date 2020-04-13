@@ -71,7 +71,7 @@ func NewTargets(instance *iter8v1alpha1.Experiment, namespace string) *Targets {
 	}
 }
 
-func (t *Targets) MarkTargetFound(name string, found bool) {
+func (t *Targets) markTargetFound(name string, found bool) {
 	if found {
 		t.Status[name].condition = ConditionDetected
 	} else {
@@ -79,10 +79,30 @@ func (t *Targets) MarkTargetFound(name string, found bool) {
 	}
 }
 
-func (t *Targets) MarkServiceFound(found bool) {
+func (t *Targets) markServiceFound(found bool) {
 	if found {
 		t.serviceCondition = ConditionDetected
 	} else {
 		t.serviceCondition = ConditionDeleted
 	}
+}
+
+func (t *Targets) targetToString(name string) string {
+	s, ok := t.Status[name]
+	if !ok {
+		return ""
+	}
+	return name + "(" + string(s.role) + ") " + string(s.condition)
+}
+
+func (t *Targets) serviceToString() string {
+	return t.ServiceName + "(" + string(RoleService) + ") " + string(t.serviceCondition)
+}
+
+func (t *Targets) targetRole(name string) string {
+	s, ok := t.Status[name]
+	if !ok {
+		return ""
+	}
+	return string(s.role)
 }

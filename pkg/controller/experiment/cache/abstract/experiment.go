@@ -20,24 +20,32 @@ import (
 )
 
 type ExperimentInterface interface {
-	Terminate() bool
-	GetDeletedTarget() string
 	MarkTargetFound(name string, found bool)
 	MarkServiceFound(found bool)
 }
 
+type Snapshot interface {
+	Terminate() bool
+	GetTerminateStatus() string
+	GetDeletedRole() string
+}
+
 var _ ExperimentInterface = &Experiment{}
+var _ Snapshot = &Experiment{}
 
 // Experiment includes abstract info for one Experiment
 type Experiment struct {
-	namespace       string
+	Namespace       string
 	TargetsAbstract *Targets
+
 	terminate       bool
+	terminateStatus string
+	deletedRole     string
 }
 
 func NewExperiment(instance *iter8v1alpha1.Experiment, targetNamespace string) *Experiment {
 	return &Experiment{
-		namespace:       instance.Namespace,
+		Namespace:       instance.Namespace,
 		TargetsAbstract: NewTargets(instance, targetNamespace),
 	}
 }
@@ -46,30 +54,34 @@ func (e *Experiment) Terminate() bool {
 	return e.terminate
 }
 
-func (e *Experiment) GetDeletedTarget() string {
-	if e.TargetsAbstract.serviceCondition == ConditionDeleted {
-		return string(RoleService)
-	}
+func (e *Experiment) GetTerminateStatus() string {
+	return e.terminateStatus
+}
 
-	for _, status := range e.TargetsAbstract.Status {
-		if status.condition == ConditionDeleted {
-			return string(status.role)
-		}
-	}
-
-	return ""
+func (e *Experiment) GetDeletedRole() string {
+	return e.deletedRole
 }
 
 func (e *Experiment) MarkTargetFound(name string, found bool) {
+	e.TargetsAbstract.markTargetFound(name, found)
 	if found == false {
 		e.terminate = true
+		e.terminateStatus = e.TargetsAbstract.targetToString(name)
+		e.deletedRole = e.TargetsAbstract.targetRole(name)
 	}
-	e.TargetsAbstract.MarkTargetFound(name, found)
 }
 
 func (e *Experiment) MarkServiceFound(found bool) {
+	e.TargetsAbstract.markServiceFound(found)
 	if found == false {
 		e.terminate = true
+		e.terminateStatus = e.TargetsAbstract.serviceToString()
+		e.deletedRole = string(RoleService)
 	}
-	e.TargetsAbstract.MarkServiceFound(found)
+}
+
+func (e *Experiment) GetSnapshot() Snapshot {
+	out := &Experiment{}
+	*out = *e
+	return out
 }
