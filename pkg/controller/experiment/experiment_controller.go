@@ -60,8 +60,8 @@ const (
 
 // Add creates a new Experiment Controller and adds it to the Manager with default RBAC. The Manager will set fields on the Controller
 // and Start it when the Manager is Started.
-func Add(mgr manager.Manager, stop <-chan struct{}) error {
-	r, err := newReconciler(mgr, stop)
+func Add(mgr manager.Manager) error {
+	r, err := newReconciler(mgr)
 	if err != nil {
 		return err
 	}
@@ -69,7 +69,7 @@ func Add(mgr manager.Manager, stop <-chan struct{}) error {
 }
 
 // newReconciler returns a new reconcile.Reconciler
-func newReconciler(mgr manager.Manager, stop <-chan struct{}) (*ReconcileExperiment, error) {
+func newReconciler(mgr manager.Manager) (*ReconcileExperiment, error) {
 	cfg, err := config.GetConfig()
 	if err != nil {
 		log.Error(err, "unable to get client config")

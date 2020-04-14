@@ -105,8 +105,6 @@ type TargetService struct {
 type Phase string
 
 const (
-	// PhaseInit indicates experiment is being initializing
-	PhaseInit Phase = "Init"
 	// PhasePause indicates experiment is paused
 	PhasePause Phase = "Pause"
 	// PhaseProgressing indicates experiment is progressing
