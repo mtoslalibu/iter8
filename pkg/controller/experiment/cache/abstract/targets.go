@@ -17,37 +17,28 @@ package abstract
 
 import (
 	iter8v1alpha1 "github.com/iter8-tools/iter8-controller/pkg/apis/iter8/v1alpha1"
+	"github.com/iter8-tools/iter8-controller/pkg/controller/experiment/targets"
 )
 
-// TargetRole specifies the role of target
-type TargetRole string
-type Condition string
+type condition string
 
 const (
-	RoleService TargetRole = "service"
-
-	RoleBaseline TargetRole = "baseline"
-
-	RoleCandidate TargetRole = "candidate"
-
-	ConditionUnknown Condition = "unknown"
-
-	ConditionDetected Condition = "detected"
-
-	ConditionDeleted Condition = "deleted"
+	conditionUnknown  condition = "unknown"
+	conditionDetected condition = "detected"
+	conditionDeleted  condition = "deleted"
 )
 
 // Status indicates the status of one target
 type Status struct {
-	role      TargetRole
-	condition Condition
+	role      targets.Role
+	condition condition
 }
 
 // Targets stores the abstract info for all target items
 type Targets struct {
 	Namespace        string
 	ServiceName      string
-	serviceCondition Condition
+	serviceCondition condition
 	// a map from deployment name to the status of deployment
 	Status map[string]*Status
 }
@@ -56,34 +47,34 @@ type Targets struct {
 func NewTargets(instance *iter8v1alpha1.Experiment, namespace string) *Targets {
 	ts := make(map[string]*Status)
 	ts[instance.Spec.TargetService.Baseline] = &Status{
-		role:      RoleBaseline,
-		condition: ConditionUnknown,
+		role:      targets.RoleBaseline,
+		condition: conditionUnknown,
 	}
 	ts[instance.Spec.TargetService.Candidate] = &Status{
-		role:      RoleCandidate,
-		condition: ConditionUnknown,
+		role:      targets.RoleCandidate,
+		condition: conditionUnknown,
 	}
 	return &Targets{
 		Namespace:        namespace,
 		ServiceName:      instance.Spec.TargetService.Name,
-		serviceCondition: ConditionUnknown,
+		serviceCondition: conditionUnknown,
 		Status:           ts,
 	}
 }
 
 func (t *Targets) markTargetFound(name string, found bool) {
 	if found {
-		t.Status[name].condition = ConditionDetected
+		t.Status[name].condition = conditionDetected
 	} else {
-		t.Status[name].condition = ConditionDeleted
+		t.Status[name].condition = conditionDeleted
 	}
 }
 
 func (t *Targets) markServiceFound(found bool) {
 	if found {
-		t.serviceCondition = ConditionDetected
+		t.serviceCondition = conditionDetected
 	} else {
-		t.serviceCondition = ConditionDeleted
+		t.serviceCondition = conditionDeleted
 	}
 }
 
@@ -96,13 +87,13 @@ func (t *Targets) targetToString(name string) string {
 }
 
 func (t *Targets) serviceToString() string {
-	return t.ServiceName + "(" + string(RoleService) + ") " + string(t.serviceCondition)
+	return t.ServiceName + "(" + string(targets.RoleService) + ") " + string(t.serviceCondition)
 }
 
-func (t *Targets) targetRole(name string) string {
+func (t *Targets) targetRole(name string) targets.Role {
 	s, ok := t.Status[name]
 	if !ok {
 		return ""
 	}
-	return string(s.role)
+	return s.role
 }

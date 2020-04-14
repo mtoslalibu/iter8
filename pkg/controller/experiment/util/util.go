@@ -16,48 +16,19 @@ package util
 
 import (
 	"context"
-	"strings"
 
 	"github.com/go-logr/logr"
-
-	iter8v1alpha1 "github.com/iter8-tools/iter8-controller/pkg/apis/iter8/v1alpha1"
-	"github.com/iter8-tools/iter8-controller/pkg/controller/experiment/cache/abstract"
 )
 
 type loggerKeyType string
 
+const (
+	LoggerKey = loggerKeyType("logger")
+)
+
 // Logger gets the logger from the context.
 func Logger(ctx context.Context) logr.Logger {
 	return ctx.Value(LoggerKey).(logr.Logger)
-}
-
-const (
-	AbstractKey = "experimentAbstract"
-	LoggerKey   = loggerKeyType("logger")
-)
-
-func ExperimentAbstract(ctx context.Context) abstract.Snapshot {
-	return ctx.Value(AbstractKey).(abstract.Snapshot)
-}
-
-func GetServiceNamespace(instance *iter8v1alpha1.Experiment) string {
-	serviceNamespace := instance.Spec.TargetService.Namespace
-	if serviceNamespace == "" {
-		serviceNamespace = instance.Namespace
-	}
-	return serviceNamespace
-}
-
-func GetStableTarget(context context.Context, instance *iter8v1alpha1.Experiment) string {
-	out := ""
-
-	if instance.Succeeded() {
-		out = instance.Spec.TrafficControl.GetOnSuccess()
-	} else {
-		out = "baseline"
-	}
-
-	return out
 }
 
 func EqualHost(host1, ns1, host2, ns2 string) bool {
@@ -67,9 +38,4 @@ func EqualHost(host1, ns1, host2, ns2 string) bool {
 		return true
 	}
 	return false
-}
-
-func ValidUpdateErr(err error) bool {
-	benignMsg := "the object has been modified"
-	return strings.Contains(err.Error(), benignMsg)
 }

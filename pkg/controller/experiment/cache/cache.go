@@ -23,7 +23,6 @@ import (
 
 	iter8v1alpha1 "github.com/iter8-tools/iter8-controller/pkg/apis/iter8/v1alpha1"
 	"github.com/iter8-tools/iter8-controller/pkg/controller/experiment/cache/abstract"
-	"github.com/iter8-tools/iter8-controller/pkg/controller/experiment/util"
 )
 
 // Interface defines the interface for iter8cache
@@ -78,7 +77,7 @@ func (c *Impl) RegisterExperiment(ctx context.Context, instance *iter8v1alpha1.E
 
 	eakey := experimentKey(instance)
 	if _, ok := c.experimentAbstractStore[eakey]; !ok {
-		targetNamespace := util.GetServiceNamespace(instance)
+		targetNamespace := instance.ServiceNamespace()
 		ea := abstract.NewExperiment(instance, targetNamespace)
 		c.experimentAbstractStore[eakey] = ea
 		service := instance.Spec.TargetService.Name
@@ -91,19 +90,9 @@ func (c *Impl) RegisterExperiment(ctx context.Context, instance *iter8v1alpha1.E
 	}
 
 	ea := c.experimentAbstractStore[eakey]
-
-	// Abort Experiment by setting action flag
-	if ea.Terminate() {
-		switch ea.GetDeletedRole() {
-		case "baseline":
-			instance.Action = iter8v1alpha1.ActionOverrideSuccess
-		case "candidate", "service":
-			instance.Action = iter8v1alpha1.ActionOverrideFailure
-		}
-	}
-
-	ctx = context.WithValue(ctx, util.AbstractKey, ea.GetSnapshot())
-	c.logger.Info("ExperimentAbstract", eakey, ea)
+	eas := ea.GetSnapshot()
+	ctx = context.WithValue(ctx, abstract.SnapshotKey, eas)
+	c.logger.Info("ExperimentAbstract", eakey, eas)
 	return ctx
 }
 

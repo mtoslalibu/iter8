@@ -105,8 +105,6 @@ type TargetService struct {
 type Phase string
 
 const (
-	// PhaseInit indicates experiment is being initializing
-	PhaseInit Phase = "Init"
 	// PhasePause indicates experiment is paused
 	PhasePause Phase = "Pause"
 	// PhaseProgressing indicates experiment is progressing
@@ -303,6 +301,15 @@ type Summary struct {
 	SuccessCriteriaStatus []SuccessCriterionStatus `json:"success_criteria,omitempty"`
 }
 
+// ServiceNamespace gets the namespace for targets
+func (e *Experiment) ServiceNamespace() string {
+	serviceNamespace := e.Spec.TargetService.Namespace
+	if serviceNamespace == "" {
+		serviceNamespace = e.Namespace
+	}
+	return serviceNamespace
+}
+
 // Assessment2String prints formatted output of assessment summary
 func (s *Summary) Assessment2String() string {
 	if len(s.Conclusions) == 0 {
@@ -488,6 +495,8 @@ const (
 	ReasonSyncMetricsSucceeded    = "SyncMetricsSucceeded"
 	ReasonRoutingRulesError       = "RoutingRulesError"
 	ReasonRoutingRulesReady       = "RoutingRulesReady"
+	ReasonActionPause             = "ActionPause"
+	ReasonActionResume            = "ActionResume"
 )
 
 // Init initialize status values
@@ -525,6 +534,10 @@ func (s *ExperimentStatus) MarkMetricsSyncedError(reason, messageFormat string, 
 	s.Phase = PhasePause
 	s.Message = composeMessage(reason, messageFormat, messageA...)
 	return prevStat != corev1.ConditionFalse
+}
+
+func (s *ExperimentStatus) TargetsFound() bool {
+	return s.GetCondition(ExperimentConditionTargetsProvided).Status == corev1.ConditionTrue
 }
 
 // MarkTargetsFound sets the condition that the all target have been found
@@ -607,6 +620,24 @@ func (s *ExperimentStatus) MarkExperimentFailed(reason, messageFormat string, me
 	experimentCondSet.Manage(s).MarkFalse(ExperimentConditionExperimentSucceeded, reason, messageFormat, messageA...)
 	s.Phase = PhaseCompleted
 	s.Message = composeMessage(reason, messageFormat, messageA...)
+}
+
+// MarkActionPause sets the phase and status that experiment is paused by action
+// returns true if this is a newly-set operation
+func (s *ExperimentStatus) MarkActionPause() bool {
+	prevPhase, prevMsg := s.Phase, s.Message
+	s.Phase = PhasePause
+	s.Message = ReasonActionPause
+	return prevPhase != s.Phase || s.Message != prevMsg
+}
+
+// MarkActionResume sets the phase and status that experiment is resmued by action
+// returns true if this is a newly-set operation
+func (s *ExperimentStatus) MarkActionResume() bool {
+	prevPhase, prevMsg := s.Phase, s.Message
+	s.Phase = PhaseProgressing
+	s.Message = ReasonActionResume
+	return prevPhase != s.Phase || s.Message != prevMsg
 }
 
 func composeMessage(reason, messageFormat string, messageA ...interface{}) string {

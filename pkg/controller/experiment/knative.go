@@ -23,14 +23,10 @@ import (
 
 	servingv1alpha1 "github.com/knative/serving/pkg/apis/serving/v1alpha1"
 	corev1 "k8s.io/api/core/v1"
-	// metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
-	// runtime "k8s.io/apimachinery/pkg/runtime"
+
+	iter8v1alpha1 "github.com/iter8-tools/iter8-controller/pkg/apis/iter8/v1alpha1"
 	"k8s.io/apimachinery/pkg/types"
 	"sigs.k8s.io/controller-runtime/pkg/reconcile"
-
-	// "github.com/iter8-tools/iter8-controller/pkg/analytics"
-	iter8v1alpha1 "github.com/iter8-tools/iter8-controller/pkg/apis/iter8/v1alpha1"
-	"github.com/iter8-tools/iter8-controller/pkg/controller/experiment/util"
 )
 
 func (r *ReconcileExperiment) syncKnative(context context.Context, instance *iter8v1alpha1.Experiment) (reconcile.Result, error) {
@@ -351,7 +347,7 @@ func (r *ReconcileExperiment) finalizeKnative(context context.Context, instance 
 
 		// Get Knative service
 		serviceName := instance.Spec.TargetService.Name
-		serviceNamespace := util.GetServiceNamespace(instance)
+		serviceNamespace := instance.ServiceNamespace()
 
 		kservice := &servingv1alpha1.Service{}
 		err := r.Get(context, types.NamespacedName{Name: serviceName, Namespace: serviceNamespace}, kservice)
