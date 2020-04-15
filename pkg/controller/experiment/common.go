@@ -16,80 +16,27 @@ package experiment
 
 import (
 	"context"
-	"fmt"
 	"strconv"
 	"strings"
 	"time"
 
 	"github.com/go-logr/logr"
-	"gopkg.in/yaml.v2"
-	corev1 "k8s.io/api/core/v1"
 	"k8s.io/apimachinery/pkg/api/meta"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	runtime "k8s.io/apimachinery/pkg/runtime"
-	"k8s.io/apimachinery/pkg/types"
-	"sigs.k8s.io/controller-runtime/pkg/client"
 
 	iter8v1alpha1 "github.com/iter8-tools/iter8-controller/pkg/apis/iter8/v1alpha1"
+	"github.com/iter8-tools/iter8-controller/pkg/controller/experiment/util"
 )
 
 const (
 	MetricsConfigMap = "iter8config-metrics"
 	Iter8Namespace   = "iter8"
-
-	Baseline    = "baseline"
-	Candidate   = "candidate"
-	Stable      = "stable"
-	Progressing = "progressing"
-
-	experimentInit  = "iter8-tools/init"
-	experimentRole  = "iter8-tools/role"
-	experimentLabel = "iter8-tools/experiment"
-	experimentHost  = "iter8-tools/host"
 )
 
 // Logger gets the logger from the context.
 func Logger(ctx context.Context) logr.Logger {
 	return ctx.Value(loggerKey).(logr.Logger)
-}
-
-func addFinalizerIfAbsent(context context.Context, c client.Client, instance *iter8v1alpha1.Experiment, fName string) (err error) {
-	for _, finalizer := range instance.ObjectMeta.GetFinalizers() {
-		if finalizer == fName {
-			return
-		}
-	}
-
-	instance.SetFinalizers(append(instance.GetFinalizers(), Finalizer))
-	if err = c.Update(context, instance); err != nil {
-		Logger(context).Info("setting finalizer failed. (retrying)", "error", err)
-	}
-
-	return
-}
-
-func removeFinalizer(context context.Context, c client.Client, instance *iter8v1alpha1.Experiment, fName string) (err error) {
-	finalizers := make([]string, 0)
-	for _, f := range instance.GetFinalizers() {
-		if f != fName {
-			finalizers = append(finalizers, f)
-		}
-	}
-	instance.SetFinalizers(finalizers)
-	if err = c.Update(context, instance); err != nil {
-		Logger(context).Info("setting finalizer failed. (retrying)", "error", err)
-	}
-
-	Logger(context).Info("FinalizerRemoved")
-	return
-}
-
-func getServiceNamespace(instance *iter8v1alpha1.Experiment) string {
-	serviceNamespace := instance.Spec.TargetService.Namespace
-	if serviceNamespace == "" {
-		serviceNamespace = instance.Namespace
-	}
-	return serviceNamespace
 }
 
 func updateGrafanaURL(instance *iter8v1alpha1.Experiment, namespace string) {
@@ -113,13 +60,13 @@ func markExperimentCompleted(instance *iter8v1alpha1.Experiment) {
 
 	// Update grafana url
 	instance.Status.EndTimestamp = metav1.Now().UTC().UnixNano()
-	updateGrafanaURL(instance, getServiceNamespace(instance))
+	updateGrafanaURL(instance, util.GetServiceNamespace(instance))
 
 	instance.Status.MarkExperimentCompleted()
 }
 
 func successMsg(instance *iter8v1alpha1.Experiment) string {
-	if instance.Spec.Assessment == iter8v1alpha1.AssessmentOverrideSuccess {
+	if instance.Action == iter8v1alpha1.ActionOverrideSuccess {
 		return "Override Success"
 	} else if instance.Status.AssessmentSummary.AllSuccessCriteriaMet {
 		return "All Success Criteria Were Met"
@@ -129,7 +76,7 @@ func successMsg(instance *iter8v1alpha1.Experiment) string {
 }
 
 func failureMsg(instance *iter8v1alpha1.Experiment) string {
-	if instance.Spec.Assessment == iter8v1alpha1.AssessmentOverrideFailure {
+	if instance.Action == iter8v1alpha1.ActionOverrideFailure {
 		return "Override Failure"
 	} else if !instance.Status.AssessmentSummary.AllSuccessCriteriaMet {
 		return "Not All Success Criteria Met"
@@ -137,114 +84,6 @@ func failureMsg(instance *iter8v1alpha1.Experiment) string {
 		// Should not be reached
 		return "Unexpected Condition"
 	}
-}
-
-// Metrics list of Metric
-type Metrics []Metric
-
-// Metric structure of cm/iter8_metric
-type Metric struct {
-	Name               string `yaml:"name"`
-	IsCounter          bool   `yaml:"is_counter"`
-	AbsentValue        string `yaml:"absent_value"`
-	SampleSizeTemplate string `yaml:"sample_size_query_template"`
-}
-
-func readMetrics(context context.Context, c client.Client, instance *iter8v1alpha1.Experiment) error {
-	log := Logger(context)
-	cm := &corev1.ConfigMap{}
-	err := c.Get(context, types.NamespacedName{Name: MetricsConfigMap, Namespace: Iter8Namespace}, cm)
-	if err != nil {
-		if err = c.Get(context, types.NamespacedName{Name: MetricsConfigMap, Namespace: instance.GetNamespace()}, cm); err != nil {
-			log.Info("MetricsConfigMapNotFound")
-			return err
-		}
-	}
-
-	data := cm.Data
-	var templates map[string]string
-	metrics := Metrics{}
-
-	err = yaml.Unmarshal([]byte(data["query_templates"]), &templates)
-	if err != nil {
-		log.Error(err, "FailToReadYaml", "query_templates", data["query_templates"])
-		return err
-	}
-
-	err = yaml.Unmarshal([]byte(data["metrics"]), &metrics)
-	if err != nil {
-		log.Error(err, "FailToReadYaml", "metrics", data["metrics"])
-		return err
-	}
-
-	instance.Metrics = make(map[string]iter8v1alpha1.ExperimentMetric)
-	criteria := make(map[string]bool)
-
-	for _, criterion := range instance.Spec.Analysis.SuccessCriteria {
-		criteria[criterion.MetricName] = true
-	}
-
-	for _, metric := range metrics {
-		if !criteria[metric.Name] {
-			continue
-		}
-
-		m := iter8v1alpha1.ExperimentMetric{
-			IsCounter:   metric.IsCounter,
-			AbsentValue: metric.AbsentValue,
-		}
-		qTpl, ok := templates[metric.Name]
-		if !ok {
-			return fmt.Errorf("FailToReadQueryTemplateForMetric %s", metric.Name)
-		}
-		sTpl, ok := templates[metric.SampleSizeTemplate]
-		if !ok {
-			return fmt.Errorf("FailToReadSampleSizeTemplateForMetric %s", metric.Name)
-		}
-		m.QueryTemplate = qTpl
-		m.SampleSizeTemplate = sTpl
-		instance.Metrics[metric.Name] = m
-	}
-
-	return c.Update(context, instance)
-}
-
-func (r *ReconcileExperiment) executeStatusUpdate(ctx context.Context, instance *iter8v1alpha1.Experiment) (err error) {
-	trial := 3
-	for trial > 0 {
-		if err = r.Status().Update(ctx, instance); err == nil {
-			break
-		}
-		time.Sleep(time.Second * 5)
-		trial--
-	}
-	return
-}
-
-func removeExperimentLabel(objs ...runtime.Object) (err error) {
-	for _, obj := range objs {
-		accessor, err := meta.Accessor(obj)
-		if err != nil {
-			return err
-		}
-		labels := accessor.GetLabels()
-		delete(labels, experimentLabel)
-		if _, ok := labels[experimentInit]; ok {
-			delete(labels, experimentInit)
-		}
-		accessor.SetLabels(labels)
-	}
-
-	return nil
-}
-
-func deleteObjects(context context.Context, client client.Client, objs ...runtime.Object) error {
-	for _, obj := range objs {
-		if err := client.Delete(context, obj); err != nil {
-			return err
-		}
-	}
-	return nil
 }
 
 func setLabels(obj runtime.Object, newLabels map[string]string) error {
