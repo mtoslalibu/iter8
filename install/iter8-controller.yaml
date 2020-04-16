@@ -740,6 +740,7 @@ metadata:
 spec:
   selector:
     control-plane: controller-manager
+  type: ClusterIP
   ports:
   - port: 443
 ---
@@ -763,14 +764,16 @@ spec:
       containers:
       - command:
         - /manager
-        image: "kalantar/iter8-controller:test"
+        image: "iter8/iter8-controller:stable"
         imagePullPolicy: Always
         name: manager
         env:
-          - name: POD_NAMESPACE
+          - name: SERVICE_NAMESPACE
             valueFrom:
               fieldRef:
                 fieldPath: metadata.namespace
+          - name: WEBHOOK_PORT
+            value: value 443
         resources:
           limits:
             cpu: 100m
