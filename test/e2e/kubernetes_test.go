@@ -17,17 +17,17 @@ package e2e
 import (
 	"testing"
 
+	networkingv1alpha3 "istio.io/api/networking/v1alpha3"
+	"istio.io/client-go/pkg/apis/networking/v1alpha3"
+	appsv1 "k8s.io/api/apps/v1"
 	corev1 "k8s.io/api/core/v1"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/apimachinery/pkg/runtime"
 
 	analtyicsapi "github.com/iter8-tools/iter8-controller/pkg/analytics/api"
 	iter8v1alpha1 "github.com/iter8-tools/iter8-controller/pkg/apis/iter8/v1alpha1"
-	"github.com/iter8-tools/iter8-controller/pkg/controller/experiment"
+	"github.com/iter8-tools/iter8-controller/pkg/controller/experiment/routing"
 	"github.com/iter8-tools/iter8-controller/test"
-	networkingv1alpha3 "istio.io/api/networking/v1alpha3"
-	"istio.io/client-go/pkg/apis/networking/v1alpha3"
-	appsv1 "k8s.io/api/apps/v1"
 )
 
 const (
@@ -251,6 +251,27 @@ func TestKubernetesExperiment(t *testing.T) {
 				getStableVirtualService("reviews", "greedy-rollbackward"),
 			},
 		},
+		"reward-rollforward": testCase{
+			mocks: map[string]analtyicsapi.Response{
+				"reward-rollforward": test.GetSuccessMockResponse(),
+			},
+			initObjects: []runtime.Object{
+				getReviewsService(),
+				getRatingsService(),
+				getReviewsDeployment("v1"),
+				getReviewsDeployment("v2"),
+				getRatingsDeployment(),
+			},
+			object: getRewardFastKubernetesExperiment("reward-rollforward", "reviews", "reviews-v1", "reviews-v2", service.GetURL()),
+			wantState: test.WantAllStates(
+				test.CheckExperimentFinished,
+				test.CheckExperimentSuccess,
+			),
+			wantResults: []runtime.Object{
+				getStableDestinationRule("reviews", "reward-rollforward", getReviewsDeployment("v2")),
+				getStableVirtualService("reviews", "reward-rollforward"),
+			},
+		},
 	}
 
 	runTestCases(t, service, testCases)
@@ -353,18 +374,24 @@ func getFastKubernetesExperiment(name, serviceName, baseline, candidate, analyti
 }
 
 func getGreedyFastKubernetesExperiment(name, serviceName, baseline, candidate, analyticsHost string) *iter8v1alpha1.Experiment {
-	experiment := test.NewExperiment(name, Flags.Namespace).
-		WithKubernetesTargetService(serviceName, baseline, candidate).
-		WithAnalyticsHost(analyticsHost).
-		WithDummySuccessCriterion().
-		Build()
+	experiment := getFastKubernetesExperiment(name, serviceName, baseline, candidate, analyticsHost)
 
-	onesec := "1s"
-	one := 1
 	greedy := "epsilon_greedy"
-	experiment.Spec.TrafficControl.Interval = &onesec
-	experiment.Spec.TrafficControl.MaxIterations = &one
 	experiment.Spec.TrafficControl.Strategy = &greedy
+
+	return experiment
+}
+
+func getRewardFastKubernetesExperiment(name, serviceName, baseline, candidate, analyticsHost string) *iter8v1alpha1.Experiment {
+	experiment := getFastKubernetesExperiment(name, serviceName, baseline, candidate, analyticsHost)
+
+	experiment.Spec.Analysis.Reward = &iter8v1alpha1.Reward{
+		MetricName: "iter8_latency",
+		MinMax: &iter8v1alpha1.MinMax{
+			Min: 0,
+			Max: 10,
+		},
+	}
 
 	return experiment
 }
@@ -387,13 +414,13 @@ func getSlowKubernetesExperiment(name, serviceName, baseline, candidate, analyti
 func getStableDestinationRule(serviceName, name string, obj runtime.Object) runtime.Object {
 	deploy := obj.(*appsv1.Deployment)
 
-	return experiment.NewDestinationRule(serviceName, name, Flags.Namespace).
+	return routing.NewDestinationRule(serviceName, name, Flags.Namespace).
 		WithStableDeployment(deploy).
 		Build()
 }
 
 func getStableVirtualService(serviceName, name string) runtime.Object {
-	return experiment.NewVirtualService(serviceName, name, Flags.Namespace).
+	return routing.NewVirtualService(serviceName, name, Flags.Namespace).
 		WithNewStableSet(serviceName).
 		Build()
 }

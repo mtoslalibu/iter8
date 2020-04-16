@@ -45,6 +45,14 @@ type Experiment struct {
 	Spec    ExperimentSpec    `json:"spec,omitempty"`
 	Status  ExperimentStatus  `json:"status,omitempty"`
 	Metrics ExperimentMetrics `json:"metrics,omitempty"`
+	// Action provides user an option to take action in the experiment
+	// pause: pause the progress of experiment
+	// resume: resume the experiment
+	// override_failure: force the experiment to failure status
+	// override_success: force the experiment to success status
+	// +optional.
+	//+kubebuilder:validation:Enum={pause,resume,override_failure,override_success}
+	Action ExperimentAction `json:"action,omitempty"`
 }
 
 // ExperimentList contains a list of Experiment
@@ -54,36 +62,6 @@ type ExperimentList struct {
 	metav1.ListMeta `json:"metadata,omitempty"`
 	Items           []Experiment `json:"items"`
 }
-
-// AssessmentType ...
-type AssessmentType string
-
-const (
-	// AssessmentOverrideSuccess indicates that the experiment should be forced to a successful termination
-	AssessmentOverrideSuccess AssessmentType = "override_success"
-	// AssessmentOverrideFailure indicates that the experiment should be forced to a failed termination
-	AssessmentOverrideFailure AssessmentType = "override_failure"
-	// AssessmentNull indicates that the experiment should be progress normally
-	AssessmentNull AssessmentType = ""
-)
-
-// CleanUpType ...
-type CleanUpType string
-
-const (
-	// CleanUpDelete indicates unused deployment should be removed on experiment completion
-	CleanUpDelete CleanUpType = "delete"
-	// CleanUpNull indicates no action should ne taken on experiment completion
-	CleanUpNull CleanUpType = ""
-)
-
-// TBD Can we remove these?
-const (
-	// StrategyIncrementWithoutCheck ...
-	StrategyIncrementWithoutCheck string = "increment_without_check"
-	// StrategyCheckAndIncrement ...
-	StrategyCheckAndIncrement string = "check_and_increment"
-)
 
 // ExperimentSpec defines the desired state of Experiment
 type ExperimentSpec struct {
@@ -98,11 +76,6 @@ type ExperimentSpec struct {
 	// +optional
 	Analysis Analysis `json:"analysis,omitempty"`
 
-	// Assessment is a flag to terminate experiment with action
-	// +optional.
-	//+kubebuilder:validation:Enum={override_success,override_failure}
-	Assessment AssessmentType `json:"assessment,omitempty"`
-
 	// CleanUp is a flag to determine the action to take at the end of experiment
 	// +optional.
 	//+kubebuilder:validation:Enum=delete
@@ -113,25 +86,15 @@ type ExperimentSpec struct {
 	RoutingReference *corev1.ObjectReference `json:"routingReference,omitempty"`
 }
 
-// GetStrategy returns the actual strategy of the experiment
-func (e *Experiment) GetStrategy() string {
-	strategy := e.Spec.TrafficControl.GetStrategy()
-	if strategy != StrategyIncrementWithoutCheck &&
-		(e.Spec.Analysis.SuccessCriteria == nil || len(e.Spec.Analysis.SuccessCriteria) == 0) {
-		strategy = StrategyIncrementWithoutCheck
-	}
-	return strategy
-}
+// CleanUpType defines the possible input for cleanup
+type CleanUpType string
 
-// Succeeded determines whether experiment is a success or not
-func (e *Experiment) Succeeded() bool {
-	if e.GetStrategy() == StrategyIncrementWithoutCheck {
-		return e.Spec.Assessment == AssessmentOverrideSuccess ||
-			e.Spec.Assessment == AssessmentNull
-	}
-	return e.Spec.Assessment == AssessmentOverrideSuccess ||
-		e.Status.AssessmentSummary.AllSuccessCriteriaMet && e.Spec.Assessment == AssessmentNull
-}
+const (
+	// CleanUpDelete indicates unused deployment should be removed on experiment completion
+	CleanUpDelete CleanUpType = "delete"
+	// CleanUpNull indicates no action should ne taken on experiment completion
+	CleanUpNull CleanUpType = ""
+)
 
 // TargetService defines what to watch in the controller
 type TargetService struct {
@@ -149,8 +112,6 @@ type TargetService struct {
 type Phase string
 
 const (
-	// PhaseInitializing indicates experiment is intializing
-	PhaseInitializing Phase = "Initializing"
 	// PhasePause indicates experiment is paused
 	PhasePause Phase = "Pause"
 	// PhaseProgressing indicates experiment is progressing
@@ -166,11 +127,14 @@ type ExperimentStatus struct {
 	// * Conditions - the latest available observations of a resource's current state.
 	duckv1alpha1.Status `json:",inline"`
 
+	// CreateTimestamp is the timestamp when the experiment is created
+	CreateTimestamp int64 `json:"createTimestamp,omitempty"`
+
 	// StartTimestamp is the timestamp when the experiment starts
-	StartTimestamp string `json:"startTimestamp,omitempty"`
+	StartTimestamp int64 `json:"startTimestamp,omitempty"`
 
 	// EndTimestamp is the timestamp when experiment completes
-	EndTimestamp string `json:"endTimestamp,omitempty"`
+	EndTimestamp int64 `json:"endTimestamp,omitempty"`
 
 	// LastIncrementTime is the last time the traffic has been incremented
 	LastIncrementTime metav1.Time `json:"lastIncrementTime,omitempty"`
@@ -242,7 +206,7 @@ type TrafficControl struct {
 	Confidence *float64 `json:"confidence,omitempty"`
 }
 
-// Analysis ...
+// Analysis specifies the parameters for posting/reading the assessment from analytics server
 type Analysis struct {
 	// AnalyticsService endpoint
 	AnalyticsService string `json:"analyticsService,omitempty"`
@@ -252,60 +216,9 @@ type Analysis struct {
 
 	// List of criteria for assessing the candidate version
 	SuccessCriteria []SuccessCriterion `json:"successCriteria,omitempty"`
-}
 
-// SuccessCriterionStatus contains assessment for a specific success criteria
-type SuccessCriterionStatus struct {
-	// Name of the metric to which the criterion applies
-	// example: iter8_latency
-	MetricName string `json:"metric_name"`
-
-	// Assessment of this success criteria in plain English
-	Conclusions []string `json:"conclusions"`
-
-	// Indicates whether or not the success criterion for the corresponding metric has been met
-	SuccessCriteriaMet bool `json:"success_criteria_met"`
-
-	// Indicates whether or not the experiment must be aborted on the basis of the criterion for this metric
-	AbortExperiment bool `json:"abort_experiment"`
-}
-
-// Summary contains assessment summary from the analytics service
-type Summary struct {
-	// Overall summary based on all success criteria
-	Conclusions []string `json:"conclusions,omitempty"`
-
-	// Indicates whether or not all success criteria for assessing the candidate version
-	// have been met
-	AllSuccessCriteriaMet bool `json:"all_success_criteria_met,omitempty"`
-
-	// Indicates whether or not the experiment must be aborted based on the success criteria
-	AbortExperiment bool `json:"abort_experiment,omitempty"`
-
-	// The list of status for all success criteria applied
-	SuccessCriteriaStatus []SuccessCriterionStatus `json:"success_criteria,omitempty"`
-}
-
-func (s *Summary) Assessment2String() string {
-	if len(s.Conclusions) == 0 {
-		return "Not Available"
-	}
-
-	out := "Conclusions:\n"
-	for _, s := range s.Conclusions {
-		out += "- " + s + "\n"
-	}
-
-	out += "Success Criteria Status:\n"
-	for _, ss := range s.SuccessCriteriaStatus {
-		out += "- metric name: " + ss.MetricName + "\n"
-		out += "   conclusions:\n"
-		for _, c := range ss.Conclusions {
-			out += "   - " + c + "\n"
-		}
-	}
-
-	return out
+	// The reward used by analytics to assess candidate
+	Reward *Reward `json:"reward,omitempty"`
 }
 
 type ToleranceType string
@@ -354,11 +267,75 @@ type SuccessCriterion struct {
 	StopOnFailure *bool `json:"stopOnFailure,omitempty"`
 }
 
+// Reward specifies the criteria for an experiment to succeed
+type Reward struct {
+	// Name of the metric to which the criterion applies. Options:
+	MetricName string `json:"metricName"`
+
+	// Minimum and maximum values of the metric
+	MinMax *MinMax `json:"min_max,omitempty"`
+}
+
+// SuccessCriterionStatus contains assessment for a specific success criteria
+type SuccessCriterionStatus struct {
+	// Name of the metric to which the criterion applies
+	// example: iter8_latency
+	MetricName string `json:"metric_name"`
+
+	// Assessment of this success criteria in plain English
+	Conclusions []string `json:"conclusions"`
+
+	// Indicates whether or not the success criterion for the corresponding metric has been met
+	SuccessCriterionMet bool `json:"success_criterion_met"`
+
+	// Indicates whether or not the experiment must be aborted on the basis of the criterion for this metric
+	AbortExperiment bool `json:"abort_experiment"`
+}
+
+// Summary contains assessment summary from the analytics service
+type Summary struct {
+	// Overall summary based on all success criteria
+	Conclusions []string `json:"conclusions,omitempty"`
+
+	// Indicates whether or not all success criteria for assessing the candidate version
+	// have been met
+	AllSuccessCriteriaMet bool `json:"all_success_criteria_met,omitempty"`
+
+	// Indicates whether or not the experiment must be aborted based on the success criteria
+	AbortExperiment bool `json:"abort_experiment,omitempty"`
+
+	// The list of status for all success criteria applied
+	SuccessCriteriaStatus []SuccessCriterionStatus `json:"success_criteria,omitempty"`
+}
+
+// Assessment2String prints formatted output of assessment summary
+func (s *Summary) Assessment2String() string {
+	if len(s.Conclusions) == 0 {
+		return "Not Available"
+	}
+
+	out := "Conclusions:\n"
+	for _, s := range s.Conclusions {
+		out += "- " + s + "\n"
+	}
+
+	out += "Success Criteria Status:\n"
+	for _, ss := range s.SuccessCriteriaStatus {
+		out += "- metric name: " + ss.MetricName + "\n"
+		out += "   conclusions:\n"
+		for _, c := range ss.Conclusions {
+			out += "   - " + c + "\n"
+		}
+	}
+
+	return out
+}
+
 // GetStrategy gets the strategy used for traffic control. Default is "check_and_increment".
 func (t *TrafficControl) GetStrategy() string {
 	strategy := t.Strategy
 	if strategy == nil {
-		defaultValue := StrategyCheckAndIncrement
+		defaultValue := "check_and_increment"
 		strategy = &defaultValue
 	}
 	return *strategy
@@ -509,7 +486,7 @@ const (
 	ReasonAnalyticsServiceRunning = "AnalyticsServiceRunning"
 	ReasonIterationUpdate         = "IterationUpdate"
 	ReasonIterationSucceeded      = "IterationSucceeded"
-	ReasonIterationFailed         = "IterationFailed "
+	ReasonIterationFailed         = "IterationFailed"
 	ReasonExperimentSucceeded     = "ExperimentSucceeded"
 	ReasonExperimentFailed        = "ExperimentFailed"
 	ReasonSyncMetricsError        = "SyncMetricsError"
@@ -518,12 +495,23 @@ const (
 	ReasonRoutingRulesReady       = "RoutingRulesReady"
 )
 
-// InitializeConditions sets relevant unset conditions to Unknown state.
-func (s *ExperimentStatus) InitializeConditions() {
+// Init initialize status values
+func (s *ExperimentStatus) Init() {
+	// sets relevant unset conditions to Unknown state.
 	experimentCondSet.Manage(s).InitializeConditions()
-	if s.Phase == "" {
-		s.Phase = PhaseInitializing
+
+	s.CreateTimestamp = metav1.Now().UTC().UnixNano()
+
+	// TODO: not sure why this is needed
+	if s.LastIncrementTime.IsZero() {
+		s.LastIncrementTime = metav1.NewTime(time.Unix(0, 0))
 	}
+
+	if s.AnalysisState.Raw == nil {
+		s.AnalysisState.Raw = []byte("{}")
+	}
+
+	s.Phase = PhaseProgressing
 }
 
 // MarkMetricsSynced sets the condition that the metrics are synced with config map
@@ -634,10 +622,6 @@ func composeMessage(reason, messageFormat string, messageA ...interface{}) strin
 	return out
 }
 
-func init() {
-	SchemeBuilder.Register(&Experiment{}, &ExperimentList{})
-}
-
 // ExperimentMetrics is a map from metric name to metric definition
 type ExperimentMetrics map[string]ExperimentMetric
 
@@ -654,4 +638,46 @@ type ExperimentMetric struct {
 
 	// AbsentValue  is default value when data source does not provide a value
 	AbsentValue string `json:"absent_value"`
+}
+
+// ExperimentAction defines the external action that can be performed to the experiment
+type ExperimentAction string
+
+const (
+	// ActionOverrideSuccess indicates that the experiment should be forced to a successful termination
+	ActionOverrideSuccess ExperimentAction = "override_success"
+	// ActionOverrideFailure indicates that the experiment should be forced to a failed termination
+	ActionOverrideFailure ExperimentAction = "override_failure"
+	// ActionPause indicates a request for pausing experiment
+	ActionPause ExperimentAction = "pause"
+	// ActionResume indicates a request for resuming experiment
+	ActionResume ExperimentAction = "resume"
+)
+
+func (a ExperimentAction) TerminateExperiment() bool {
+	return a == ActionOverrideFailure || a == ActionOverrideSuccess
+}
+
+// GetStrategy returns the actual strategy of the experiment
+func (e *Experiment) GetStrategy() string {
+	strategy := e.Spec.TrafficControl.GetStrategy()
+	if strategy != "increment_without_check" &&
+		(e.Spec.Analysis.SuccessCriteria == nil || len(e.Spec.Analysis.SuccessCriteria) == 0) {
+		strategy = "increment_without_check"
+	}
+	return strategy
+}
+
+// Succeeded determines whether experiment is a success or not
+func (e *Experiment) Succeeded() bool {
+	if e.GetStrategy() == "increment_without_check" {
+		return e.Action == ActionOverrideSuccess ||
+			e.Action == ""
+	}
+	return e.Action == ActionOverrideSuccess ||
+		e.Status.AssessmentSummary.AllSuccessCriteriaMet && e.Action != ActionOverrideFailure
+}
+
+func init() {
+	SchemeBuilder.Register(&Experiment{}, &ExperimentList{})
 }
