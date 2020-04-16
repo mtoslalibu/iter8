@@ -45,7 +45,14 @@ type Experiment struct {
 	Spec    ExperimentSpec    `json:"spec,omitempty"`
 	Status  ExperimentStatus  `json:"status,omitempty"`
 	Metrics ExperimentMetrics `json:"metrics,omitempty"`
-	Action  ExperimentAction  `json:"action,omitempty"`
+	// Action provides user an option to take action in the experiment
+	// pause: pause the progress of experiment
+	// resume: resume the experiment
+	// override_failure: force the experiment to failure status
+	// override_success: force the experiment to success status
+	// +optional.
+	//+kubebuilder:validation:Enum={pause,resume,override_failure,override_success}
+	Action ExperimentAction `json:"action,omitempty"`
 }
 
 // ExperimentList contains a list of Experiment
@@ -105,8 +112,6 @@ type TargetService struct {
 type Phase string
 
 const (
-	// PhaseInit indicates experiment is being initializing
-	PhaseInit Phase = "Init"
 	// PhasePause indicates experiment is paused
 	PhasePause Phase = "Pause"
 	// PhaseProgressing indicates experiment is progressing
