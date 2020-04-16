@@ -763,7 +763,7 @@ spec:
       containers:
       - command:
         - /manager
-        image: "iter8/iter8-controller:stable"
+        image: "kalantar/iter8-controller:test"
         imagePullPolicy: Always
         name: manager
         env:
@@ -774,9 +774,9 @@ spec:
         resources:
           limits:
             cpu: 100m
-            memory: 30Mi
+            memory: 75Mi
           requests:
             cpu: 100m
-            memory: 20Mi
+            memory: 50Mi
       terminationGracePeriodSeconds: 10
 

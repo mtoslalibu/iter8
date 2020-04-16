@@ -16,8 +16,10 @@ limitations under the License.
 package notifier
 
 import (
-	"gopkg.in/yaml.v2"
+	"os"
 	"reflect"
+
+	"gopkg.in/yaml.v2"
 
 	corev1 "k8s.io/api/core/v1"
 	runtime "k8s.io/apimachinery/pkg/runtime"
@@ -26,8 +28,8 @@ import (
 )
 
 const (
-	ConfigMapName      = "iter8config-notifiers"
-	ConfigMapNamespace = "iter8"
+	configMapName    = "iter8config-notifiers"
+	defaultNamespace = "iter8"
 )
 
 // RegisterHandler adds event handlers to k8s cache
@@ -47,7 +49,7 @@ func getTypedHandler(nc *NotificationCenter) (runtime.Object, toolscache.Filteri
 	handler := toolscache.FilteringResourceEventHandler{
 		FilterFunc: func(obj interface{}) bool {
 			cm := obj.(*corev1.ConfigMap)
-			if cm.GetNamespace() == ConfigMapNamespace && cm.GetName() == ConfigMapName {
+			if cm.GetNamespace() == iter8Namespace() && cm.GetName() == configMapName {
 				nc.logger.Info("notifier configmap detected", "name", cm.GetName())
 				return true
 			}
@@ -117,4 +119,12 @@ func removeNotifiers(nc *NotificationCenter) func(obj interface{}) {
 			nc.removeNotifier(ntf)
 		}
 	}
+}
+
+func iter8Namespace() string {
+	retVal := defaultNamespace
+	if namespace := os.Getenv("SERVICE_NAMESPACE"); namespace != "" {
+		retVal = namespace
+	}
+	return retVal
 }

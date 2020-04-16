@@ -29,11 +29,6 @@ import (
 	"github.com/iter8-tools/iter8-controller/pkg/controller/experiment/util"
 )
 
-const (
-	MetricsConfigMap = "iter8config-metrics"
-	Iter8Namespace   = "iter8"
-)
-
 // Logger gets the logger from the context.
 func Logger(ctx context.Context) logr.Logger {
 	return ctx.Value(loggerKey).(logr.Logger)

@@ -8,3 +8,7 @@ image:
   pullPolicy: Always
 
 namespace: iter8
+
+service:
+  type: ClusterIP
+  port: 443
