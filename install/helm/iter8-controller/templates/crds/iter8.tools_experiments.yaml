@@ -52,6 +52,17 @@ spec:
     openAPIV3Schema:
       description: Experiment is the Schema for the experiments API
       properties:
+        action:
+          description: 'Action provides user an option to take action in the experiment
+            pause: pause the progress of experiment resume: resume the experiment
+            override_failure: force the experiment to failure status override_success:
+            force the experiment to success status'
+          enum:
+          - pause
+          - resume
+          - override_failure
+          - override_success
+          type: string
         apiVersion:
           description: 'APIVersion defines the versioned schema of this representation
             of an object. Servers should convert recognized schemas to the latest
@@ -182,12 +193,6 @@ spec:
                     type: object
                   type: array
               type: object
-            assessment:
-              description: Assessment is a flag to terminate experiment with action
-              enum:
-              - override_success
-              - override_failure
-              type: string
             cleanup:
               description: CleanUp is a flag to determine the action to take at the
                 end of experiment

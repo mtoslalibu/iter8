@@ -18,12 +18,15 @@ import (
 	"github.com/iter8-tools/iter8-controller/pkg/analytics/algorithm"
 	"github.com/iter8-tools/iter8-controller/pkg/analytics/algorithm/check_and_increment"
 	"github.com/iter8-tools/iter8-controller/pkg/analytics/algorithm/epsilongreedy"
+	"github.com/iter8-tools/iter8-controller/pkg/analytics/algorithm/increment_without_check"
 	"github.com/iter8-tools/iter8-controller/pkg/analytics/algorithm/obr"
 	"github.com/iter8-tools/iter8-controller/pkg/analytics/algorithm/pbr"
 )
 
 func GetAlgorithm(strategy string) algorithm.Interface {
 	switch strategy {
+	case increment_without_check.Strategy:
+		return increment_without_check.Impl{}
 	case check_and_increment.Strategy:
 		return check_and_increment.Impl{}
 	case epsilongreedy.Strategy:
