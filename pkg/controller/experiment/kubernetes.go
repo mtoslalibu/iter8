@@ -116,7 +116,7 @@ func progress(context context.Context, instance *iter8v1alpha1.Experiment) bool 
 }
 
 func detectTargets(context context.Context, instance *iter8v1alpha1.Experiment) bool {
-	if util.ExperimentAbstract(context).Terminate() {
+	if util.ExperimentAbstract(context) != nil && util.ExperimentAbstract(context).Terminate() {
 		return false
 	}
 

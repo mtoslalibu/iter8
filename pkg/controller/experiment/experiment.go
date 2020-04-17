@@ -51,13 +51,14 @@ func (r *ReconcileExperiment) checkExperimentCompleted(context context.Context, 
 }
 
 func (r *ReconcileExperiment) cleanUp(context context.Context, instance *iter8v1alpha1.Experiment) error {
+	r.iter8Cache.RemoveExperiment(instance)
+
 	r.targets.Cleanup(context, instance, r.Client)
 
 	if err := r.rules.Cleanup(context, instance, r.istioClient); err != nil {
 		return err
 	}
 
-	r.iter8Cache.RemoveExperiment(instance)
 	r.setExperimentEndStatus(context, instance, "")
 	log.Info("Cleanup of experiment is done.")
 	return nil
@@ -228,7 +229,7 @@ func (r *ReconcileExperiment) setExperimentEndStatus(context context.Context, in
 
 func completeStatusMessage(context context.Context, instance *iter8v1alpha1.Experiment) string {
 	out := ""
-	if util.ExperimentAbstract(context).Terminate() {
+	if util.ExperimentAbstract(context) != nil && util.ExperimentAbstract(context).Terminate() {
 		out = util.ExperimentAbstract(context).GetTerminateStatus()
 	} else if instance.Action.TerminateExperiment() {
 		out = "Abort"

@@ -20,6 +20,7 @@ import (
 
 	appsv1 "k8s.io/api/apps/v1"
 	corev1 "k8s.io/api/core/v1"
+	"k8s.io/apimachinery/pkg/api/errors"
 	"sigs.k8s.io/controller-runtime/pkg/client"
 
 	iter8v1alpha1 "github.com/iter8-tools/iter8-controller/pkg/apis/iter8/v1alpha1"
@@ -44,14 +45,14 @@ func (t *Targets) Cleanup(context context.Context, instance *iter8v1alpha1.Exper
 	if instance.Spec.CleanUp == iter8v1alpha1.CleanUpDelete {
 		switch util.GetStableTarget(context, instance) {
 		case "baseline":
-			if err := client.Delete(context, t.Candidate); err != nil {
-				util.Logger(context).Error(err, "Delete Candidate", "")
+			if err := client.Delete(context, t.Candidate); err != nil && errors.IsNotFound(err) {
+				util.Logger(context).Error(err, "Delete Candidate")
 			}
 			instance.Status.TrafficSplit.Baseline = 100
 			instance.Status.TrafficSplit.Candidate = 0
 		case "candidate":
-			if err := client.Delete(context, t.Baseline); err != nil {
-				util.Logger(context).Error(err, "Delete Baseline", "")
+			if err := client.Delete(context, t.Baseline); err != nil && errors.IsNotFound(err) {
+				util.Logger(context).Error(err, "Delete Baseline")
 			}
 			instance.Status.TrafficSplit.Baseline = 0
 			instance.Status.TrafficSplit.Candidate = 100

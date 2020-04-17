@@ -17,7 +17,6 @@ package experiment
 
 import (
 	"context"
-	"reflect"
 
 	istioclient "istio.io/client-go/pkg/clientset/versioned"
 	appsv1 "k8s.io/api/apps/v1"
@@ -235,15 +234,6 @@ func add(mgr manager.Manager, r *ReconcileExperiment) error {
 					return false
 				}
 
-				if !reflect.DeepEqual(e.ObjectOld, e.ObjectNew) {
-					log.Info("ObjectChanged", "oldObject", e.ObjectOld, "newObjet", e.ObjectNew)
-				}
-
-				if !reflect.DeepEqual(e.MetaOld, e.MetaNew) {
-					log.Info("MetaChanged", "oldMeta", e.MetaOld, "newMeta", e.MetaNew)
-				}
-
-				log.Info("UpdateRequestDetected", "Unknown", "pass")
 				return true
 			},
 		})
@@ -297,11 +287,19 @@ func (r *ReconcileExperiment) Reconcile(request reconcile.Request) (reconcile.Re
 		return reconcile.Result{}, err
 	}
 
-	ctx = r.iter8Cache.RegisterExperiment(ctx, instance)
+	// Init metadata of experiment instance
+	if instance.Status.CreateTimestamp == 0 {
+		instance.Status.Init()
+		if err := r.Status().Update(ctx, instance); err != nil && !util.ValidUpdateErr(err) {
+			log.Info("Fail to update status: %v", err)
+			return reconcile.Result{}, nil
+		}
+	}
 
 	log := log.WithValues("namespace", instance.Namespace, "name", instance.Name)
 	ctx = context.WithValue(ctx, util.LoggerKey, log)
 	log.Info("reconciling")
+
 	// Add finalizer to the experiment object
 	if err = addFinalizerIfAbsent(ctx, r, instance, Finalizer); err != nil && !util.ValidUpdateErr(err) {
 		return reconcile.Result{}, err
@@ -317,14 +315,7 @@ func (r *ReconcileExperiment) Reconcile(request reconcile.Request) (reconcile.Re
 		return reconcile.Result{}, nil
 	}
 
-	// Init metadata of experiment instance
-	if instance.Status.CreateTimestamp == 0 {
-		instance.Status.Init()
-		if err := r.Status().Update(ctx, instance); err != nil && !util.ValidUpdateErr(err) {
-			log.Info("Fail to update status: %v", err)
-			return reconcile.Result{}, nil
-		}
-	}
+	ctx = r.iter8Cache.RegisterExperiment(ctx, instance)
 
 	if err := r.syncMetrics(ctx, instance); err != nil {
 		return reconcile.Result{}, nil

@@ -103,7 +103,6 @@ func (c *Impl) RegisterExperiment(ctx context.Context, instance *iter8v1alpha1.E
 	}
 
 	ctx = context.WithValue(ctx, util.AbstractKey, ea.GetSnapshot())
-	c.logger.Info("ExperimentAbstract", eakey, ea)
 	return ctx
 }
 

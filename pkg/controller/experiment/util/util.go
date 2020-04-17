@@ -37,6 +37,9 @@ const (
 )
 
 func ExperimentAbstract(ctx context.Context) abstract.Snapshot {
+	if ctx.Value(AbstractKey) == nil {
+		return nil
+	}
 	return ctx.Value(AbstractKey).(abstract.Snapshot)
 }
 
