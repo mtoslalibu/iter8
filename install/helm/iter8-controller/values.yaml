@@ -8,3 +8,6 @@ image:
   pullPolicy: Always
 
 namespace: iter8
+
+# Version of Istio telemetry
+istioTelemetry: v1
