@@ -233,7 +233,8 @@ func completeStatusMessage(context context.Context, instance *iter8v1alpha1.Expe
 		out = util.ExperimentAbstract(context).GetTerminateStatus()
 	} else if instance.Action.TerminateExperiment() {
 		out = "Abort"
-	} else if len(instance.Status.AssessmentSummary.SuccessCriteriaStatus) > 0 {
+	} else if instance.GetStrategy() != "increment_without_check" {
+		// TODO: remove this hardcoded stategy and revise the statement
 		if instance.Status.AssessmentSummary.AllSuccessCriteriaMet {
 			out = "All Success Criteria Were Met"
 		} else {
