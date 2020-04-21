@@ -51,6 +51,8 @@ spec:
       version: v1
   template:
     metadata:
+      annotations:
+        sidecar.istio.io/inject: "true"
       labels:
         app: details
         version: v1
@@ -58,7 +60,7 @@ spec:
       serviceAccountName: bookinfo-details
       containers:
       - name: details
-        image: istio/examples-bookinfo-details-v1:1.8.0
+        image: istio/examples-bookinfo-details-v1:1.15.0
         imagePullPolicy: IfNotPresent
         ports:
         - containerPort: 9080
@@ -102,6 +104,8 @@ spec:
       version: v1
   template:
     metadata:
+      annotations:
+        sidecar.istio.io/inject: "true"
       labels:
         app: ratings
         version: v1
@@ -109,7 +113,7 @@ spec:
       serviceAccountName: bookinfo-ratings
       containers:
       - name: ratings
-        image: istio/examples-bookinfo-ratings-v1:1.8.0
+        image: istio/examples-bookinfo-ratings-v1:1.15.0
         imagePullPolicy: IfNotPresent
         ports:
         - containerPort: 9080
@@ -153,6 +157,8 @@ spec:
       version: v2
   template:
     metadata:
+      annotations:
+        sidecar.istio.io/inject: "true"
       labels:
         app: reviews
         version: v2
@@ -204,6 +210,8 @@ spec:
       version: v1
   template:
     metadata:
+      annotations:
+        sidecar.istio.io/inject: "true"
       labels:
         app: productpage
         version: v1
@@ -211,7 +219,7 @@ spec:
       serviceAccountName: bookinfo-productpage
       containers:
       - name: productpage
-        image: iter8/productpage:pp_30-rvv3_5
+        image: iter8/examples-bookinfo-productpage:iter8-v1
         imagePullPolicy: IfNotPresent
         ports:
         - containerPort: 9080

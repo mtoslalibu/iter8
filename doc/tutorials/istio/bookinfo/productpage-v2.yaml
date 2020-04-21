@@ -10,6 +10,8 @@ spec:
       version: v2
   template:
     metadata:
+      annotations:
+        sidecar.istio.io/inject: "true"
       labels:
         app: productpage
         version: v2
@@ -17,7 +19,11 @@ spec:
       serviceAccountName: bookinfo-productpage
       containers:
       - name: productpage
-        image: iter8/productpage:istio-v2
-        imagePullPolicy: Always 
+        image: iter8/examples-bookinfo-productpage:iter8-v2
+        imagePullPolicy: IfNotPresent 
         ports:
         - containerPort: 9080
+        env:
+        - name: SERVICE_VERSION
+          value: "v2"
+

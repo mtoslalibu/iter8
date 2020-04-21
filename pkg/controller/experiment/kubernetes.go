@@ -55,7 +55,6 @@ func (r *ReconcileExperiment) syncKubernetes(context context.Context, instance *
 		}
 	}
 
-	// progress experiment
 	if r.toProgress(context, instance) {
 		err := r.progressExperiment(context, instance)
 		if r.needStatusUpdate() {
