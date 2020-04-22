@@ -46,232 +46,272 @@ func TestKubernetesExperiment(t *testing.T) {
 	service := test.StartAnalytics()
 	defer service.Close()
 	testCases := map[string]testCase{
-		"rollforward": testCase{
-			mocks: map[string]analtyicsapi.Response{
-				"rollforward": test.GetSuccessMockResponse(),
-			},
-			initObjects: []runtime.Object{
-				getReviewsService(),
-				getRatingsService(),
-				getReviewsDeployment("v1"),
-				getReviewsDeployment("v2"),
-				getRatingsDeployment(),
-			},
-			object: getFastKubernetesExperiment("rollforward", "reviews", "reviews-v1", "reviews-v2", service.GetURL()),
-			wantState: test.WantAllStates(
-				test.CheckExperimentFinished,
-				test.CheckExperimentSuccess,
-			),
-			wantResults: []runtime.Object{
-				getStableDestinationRule("reviews", "rollforward", getReviewsDeployment("v2")),
-				getStableVirtualService("reviews", "rollforward"),
-			},
-		},
-		"rollbackward": testCase{
-			mocks: map[string]analtyicsapi.Response{
-				"rollbackward": test.GetFailureMockResponse(),
-			},
-			initObjects: []runtime.Object{
-				getReviewsService(),
-				getRatingsService(),
-				getReviewsDeployment("v1"),
-				getReviewsDeployment("v2"),
-				getRatingsDeployment(),
-			},
-			object: getFastKubernetesExperiment("rollbackward", "reviews", "reviews-v1", "reviews-v2", service.GetURL()),
-			wantState: test.WantAllStates(
-				test.CheckExperimentFinished,
-				test.CheckExperimentFailure,
-			),
-			wantResults: []runtime.Object{
-				getStableDestinationRule("reviews", "rollbackward", getReviewsDeployment("v1")),
-				getStableVirtualService("reviews", "rollbackward"),
-			},
-		},
-		"ongoingdelete": testCase{
-			mocks: map[string]analtyicsapi.Response{
-				"ongoingdelete": test.GetSuccessMockResponse(),
-			},
-			initObjects: []runtime.Object{
-				getReviewsService(),
-				getRatingsService(),
-				getReviewsDeployment("v1"),
-				getReviewsDeployment("v2"),
-				getRatingsDeployment(),
-			},
-			object:    getSlowKubernetesExperiment("ongoingdelete", "reviews", "reviews-v1", "reviews-v2", service.GetURL()),
-			wantState: test.CheckServiceFound,
-			wantResults: []runtime.Object{
-				// rollback to baseline
-				getStableDestinationRule("reviews", "ongoingdelete", getReviewsDeployment("v1")),
-				getStableVirtualService("reviews", "ongoingdelete"),
-			},
-			postHook: test.DeleteExperiment("ongoingdelete", Flags.Namespace),
-		},
-		"completedelete": testCase{
-			mocks: map[string]analtyicsapi.Response{
-				"completedelete": test.GetSuccessMockResponse(),
-			},
-			initObjects: []runtime.Object{
-				getReviewsService(),
-				getRatingsService(),
-				getReviewsDeployment("v1"),
-				getReviewsDeployment("v2"),
-				getRatingsDeployment(),
-			},
-			object:    getFastKubernetesExperiment("completedelete", "reviews", "reviews-v1", "reviews-v2", service.GetURL()),
-			wantState: test.CheckExperimentFinished,
-			frozenObjects: []runtime.Object{
-				// desired end-of-experiment status
-				getStableDestinationRule("reviews", "completedelete", getReviewsDeployment("v2")),
-				getStableVirtualService("reviews", "completedelete"),
-			},
-			postHook: test.DeleteExperiment("completedelete", Flags.Namespace),
-		},
-		"abortexperiment": testCase{
-			mocks: map[string]analtyicsapi.Response{
-				"abortexperiment": test.GetAbortExperimentResponse(),
-			},
-			initObjects: []runtime.Object{
-				getReviewsService(),
-				getRatingsService(),
-				getReviewsDeployment("v1"),
-				getReviewsDeployment("v2"),
-				getRatingsDeployment(),
-			},
-			object: getSlowKubernetesExperiment("abortexperiment", "reviews", "reviews-v1", "reviews-v2", service.GetURL()),
-			wantState: test.WantAllStates(
-				test.CheckExperimentFinished,
-				test.CheckExperimentFailure,
-			),
-			wantResults: []runtime.Object{
-				// rollback to baseline
-				getStableDestinationRule("reviews", "abortexperiment", getReviewsDeployment("v1")),
-				getStableVirtualService("reviews", "abortexperiment"),
-			},
-		},
-		"emptycriterion": testCase{
-			initObjects: []runtime.Object{
-				getReviewsService(),
-				getRatingsService(),
-				getReviewsDeployment("v1"),
-				getReviewsDeployment("v2"),
-				getRatingsDeployment(),
-			},
-			object: getDefaultKubernetesExperiment("emptycriterion", "reviews", "reviews-v1", "reviews-v2"),
-			wantState: test.WantAllStates(
-				test.CheckExperimentFinished,
-				test.CheckExperimentSuccess,
-			),
-			wantResults: []runtime.Object{
-				// rollforward
-				getStableDestinationRule("reviews", "emptycriterion", getReviewsDeployment("v2")),
-				getStableVirtualService("reviews", "emptycriterion"),
-			},
-		},
-		"externalreference": testCase{
-			initObjects: []runtime.Object{
-				getReviewsService(),
-				getRatingsService(),
-				getReviewsDeployment("v1"),
-				getReviewsDeployment("v2"),
-				getRatingsDeployment(),
-				getSampleEdgeVirtualService(),
-			},
-			preHook: []test.Hook{
-				test.DeleteObjectIfExists(getStableDestinationRule("reviews", "", getReviewsDeployment("v2"))),
-				test.DeleteObjectIfExists(getStableVirtualService("reviews", "")),
-			},
-			object:    getExperimentWithExternalReference("externalreference", "reviews", "reviews-v1", "reviews-v2"),
-			wantState: test.CheckExperimentFinished,
-			wantResults: []runtime.Object{
-				// rollforward
-				getStableDestinationRule("reviews", "externalreference", getReviewsDeployment("v2")),
-				getSampleStableEdgeVirtualService(),
-			},
-			finalizers: []test.Hook{
-				test.DeleteObject(getStableDestinationRule("reviews", "externalreference", getReviewsDeployment("v2"))),
-				test.DeleteObject(getSampleStableEdgeVirtualService()),
-			},
-		},
-		"cleanupdelete": testCase{
-			initObjects: []runtime.Object{
-				getReviewsService(),
-				getRatingsService(),
-				getReviewsDeployment("v1"),
-				getReviewsDeployment("v2"),
-				getRatingsDeployment(),
-			},
-			object: getCleanUpDeleteExperiment("cleanupdelete", "reviews", "reviews-v1", "reviews-v2"),
-			wantState: test.WantAllStates(
-				test.CheckExperimentFinished,
-				test.CheckExperimentSuccess,
-			),
-			postHook: test.CheckObjectDeleted(getReviewsDeployment("v1")),
-		},
-		"greedy-rollforward": testCase{
-			mocks: map[string]analtyicsapi.Response{
-				"greedy-rollforward": test.GetSuccessMockResponse(),
-			},
-			initObjects: []runtime.Object{
-				getReviewsService(),
-				getRatingsService(),
-				getReviewsDeployment("v1"),
-				getReviewsDeployment("v2"),
-				getRatingsDeployment(),
-			},
-			object: getGreedyFastKubernetesExperiment("greedy-rollforward", "reviews", "reviews-v1", "reviews-v2", service.GetURL()),
-			wantState: test.WantAllStates(
-				test.CheckExperimentFinished,
-				test.CheckExperimentSuccess,
-			),
-			wantResults: []runtime.Object{
-				getStableDestinationRule("reviews", "greedy-rollforward", getReviewsDeployment("v2")),
-				getStableVirtualService("reviews", "greedy-rollforward"),
-			},
-		},
-		"greedy-rollbackward": testCase{
-			mocks: map[string]analtyicsapi.Response{
-				"greedy-rollbackward": test.GetFailureMockResponse(),
-			},
-			initObjects: []runtime.Object{
-				getReviewsService(),
-				getRatingsService(),
-				getReviewsDeployment("v1"),
-				getReviewsDeployment("v2"),
-				getRatingsDeployment(),
-			},
-			object: getGreedyFastKubernetesExperiment("greedy-rollbackward", "reviews", "reviews-v1", "reviews-v2", service.GetURL()),
-			wantState: test.WantAllStates(
-				test.CheckExperimentFinished,
-				test.CheckExperimentFailure,
-			),
-			wantResults: []runtime.Object{
-				getStableDestinationRule("reviews", "greedy-rollbackward", getReviewsDeployment("v1")),
-				getStableVirtualService("reviews", "greedy-rollbackward"),
-			},
-		},
-		"reward-rollforward": testCase{
-			mocks: map[string]analtyicsapi.Response{
-				"reward-rollforward": test.GetSuccessMockResponse(),
-			},
-			initObjects: []runtime.Object{
-				getReviewsService(),
-				getRatingsService(),
-				getReviewsDeployment("v1"),
-				getReviewsDeployment("v2"),
-				getRatingsDeployment(),
-			},
-			object: getRewardFastKubernetesExperiment("reward-rollforward", "reviews", "reviews-v1", "reviews-v2", service.GetURL()),
-			wantState: test.WantAllStates(
-				test.CheckExperimentFinished,
-				test.CheckExperimentSuccess,
-			),
-			wantResults: []runtime.Object{
-				getStableDestinationRule("reviews", "reward-rollforward", getReviewsDeployment("v2")),
-				getStableVirtualService("reviews", "reward-rollforward"),
-			},
-		},
+		"rollforward": func(name string) testCase {
+			return testCase{
+				mocks: map[string]analtyicsapi.Response{
+					name: test.GetSuccessMockResponse(),
+				},
+				initObjects: []runtime.Object{
+					getReviewsService(),
+					getReviewsDeployment("v1"),
+					getReviewsDeployment("v2"),
+				},
+				object: getFastKubernetesExperiment(name, "reviews", "reviews-v1", "reviews-v2", service.GetURL()),
+				wantState: test.WantAllStates(
+					test.CheckExperimentFinished,
+					test.CheckExperimentSuccess,
+				),
+				wantResults: []runtime.Object{
+					getStableDestinationRule("reviews", name, getReviewsDeployment("v2")),
+					getStableVirtualService("reviews", name),
+				},
+			}
+		}("rollforward"),
+		"rollbackward": func(name string) testCase {
+			return testCase{
+				mocks: map[string]analtyicsapi.Response{
+					name: test.GetFailureMockResponse(),
+				},
+				initObjects: []runtime.Object{
+					getReviewsService(),
+					getReviewsDeployment("v1"),
+					getReviewsDeployment("v2"),
+				},
+				object: getFastKubernetesExperiment(name, "reviews", "reviews-v1", "reviews-v2", service.GetURL()),
+				wantState: test.WantAllStates(
+					test.CheckExperimentFinished,
+					test.CheckExperimentFailure,
+				),
+				wantResults: []runtime.Object{
+					getStableDestinationRule("reviews", name, getReviewsDeployment("v1")),
+					getStableVirtualService("reviews", name),
+				},
+			}
+		}("rollbackward"),
+		"ongoingdelete": func(name string) testCase {
+			return testCase{
+				mocks: map[string]analtyicsapi.Response{
+					name: test.GetSuccessMockResponse(),
+				},
+				initObjects: []runtime.Object{
+					getReviewsService(),
+					getReviewsDeployment("v1"),
+					getReviewsDeployment("v2"),
+				},
+				object:    getSlowKubernetesExperiment(name, "reviews", "reviews-v1", "reviews-v2", service.GetURL()),
+				wantState: test.CheckServiceFound,
+				wantResults: []runtime.Object{
+					// rollback to baseline
+					getStableDestinationRule("reviews", name, getReviewsDeployment("v1")),
+					getStableVirtualService("reviews", name),
+				},
+				postHook: test.DeleteExperiment(name, Flags.Namespace),
+			}
+		}("ongoingdelete"),
+		"completedelete": func(name string) testCase {
+			return testCase{
+				mocks: map[string]analtyicsapi.Response{
+					name: test.GetSuccessMockResponse(),
+				},
+				initObjects: []runtime.Object{
+					getReviewsService(),
+					getReviewsDeployment("v1"),
+					getReviewsDeployment("v2"),
+				},
+				object:    getFastKubernetesExperiment(name, "reviews", "reviews-v1", "reviews-v2", service.GetURL()),
+				wantState: test.CheckExperimentFinished,
+				frozenObjects: []runtime.Object{
+					// desired end-of-experiment status
+					getStableDestinationRule("reviews", name, getReviewsDeployment("v2")),
+					getStableVirtualService("reviews", name),
+				},
+				postHook: test.DeleteExperiment(name, Flags.Namespace),
+			}
+		}("completedelete"),
+		"abortexperiment": func(name string) testCase {
+			return testCase{
+				mocks: map[string]analtyicsapi.Response{
+					name: test.GetAbortExperimentResponse(),
+				},
+				initObjects: []runtime.Object{
+					getReviewsService(),
+					getReviewsDeployment("v1"),
+					getReviewsDeployment("v2"),
+				},
+				object: getSlowKubernetesExperiment(name, "reviews", "reviews-v1", "reviews-v2", service.GetURL()),
+				wantState: test.WantAllStates(
+					test.CheckExperimentFinished,
+					test.CheckExperimentFailure,
+				),
+				wantResults: []runtime.Object{
+					// rollback to baseline
+					getStableDestinationRule("reviews", name, getReviewsDeployment("v1")),
+					getStableVirtualService("reviews", name),
+				},
+			}
+		}("abortexperiment"),
+		"emptycriterion": func(name string) testCase {
+			return testCase{
+				initObjects: []runtime.Object{
+					getReviewsService(),
+					getReviewsDeployment("v1"),
+					getReviewsDeployment("v2"),
+				},
+				object: getDefaultKubernetesExperiment(name, "reviews", "reviews-v1", "reviews-v2"),
+				wantState: test.WantAllStates(
+					test.CheckExperimentFinished,
+					test.CheckExperimentSuccess,
+				),
+				wantResults: []runtime.Object{
+					// rollforward
+					getStableDestinationRule("reviews", name, getReviewsDeployment("v2")),
+					getStableVirtualService("reviews", name),
+				},
+			}
+		}("emptycriterion"),
+		"externalreference": func(name string) testCase {
+			return testCase{
+				initObjects: []runtime.Object{
+					getReviewsService(),
+					getReviewsDeployment("v1"),
+					getReviewsDeployment("v2"),
+					getSampleEdgeVirtualService(),
+				},
+				preHook: []test.Hook{
+					test.DeleteObjectIfExists(getStableDestinationRule("reviews", "", getReviewsDeployment("v2"))),
+					test.DeleteObjectIfExists(getStableVirtualService("reviews", "")),
+				},
+				object:    getExperimentWithExternalReference(name, "reviews", "reviews-v1", "reviews-v2"),
+				wantState: test.CheckExperimentFinished,
+				wantResults: []runtime.Object{
+					// rollforward
+					getStableDestinationRule("reviews", name, getReviewsDeployment("v2")),
+					getSampleStableEdgeVirtualService(),
+				},
+				finalizers: []test.Hook{
+					test.DeleteObject(getStableDestinationRule("reviews", name, getReviewsDeployment("v2"))),
+					test.DeleteObject(getSampleStableEdgeVirtualService()),
+				},
+			}
+		}("externalreference"),
+		"cleanupdelete": func(name string) testCase {
+			return testCase{
+				initObjects: []runtime.Object{
+					getReviewsService(),
+					getReviewsDeployment("v1"),
+					getReviewsDeployment("v2"),
+				},
+				object: getCleanUpDeleteExperiment(name, "reviews", "reviews-v1", "reviews-v2"),
+				wantState: test.WantAllStates(
+					test.CheckExperimentFinished,
+					test.CheckExperimentSuccess,
+				),
+				postHook: test.CheckObjectDeleted(getReviewsDeployment("v1")),
+			}
+		}("cleanupdelete"),
+		"greedy-rollforward": func(name string) testCase {
+			return testCase{
+				mocks: map[string]analtyicsapi.Response{
+					name: test.GetSuccessMockResponse(),
+				},
+				initObjects: []runtime.Object{
+					getReviewsService(),
+					getReviewsDeployment("v1"),
+					getReviewsDeployment("v2"),
+				},
+				object: getGreedyFastKubernetesExperiment(name, "reviews", "reviews-v1", "reviews-v2", service.GetURL()),
+				wantState: test.WantAllStates(
+					test.CheckExperimentFinished,
+					test.CheckExperimentSuccess,
+				),
+				wantResults: []runtime.Object{
+					getStableDestinationRule("reviews", name, getReviewsDeployment("v2")),
+					getStableVirtualService("reviews", name),
+				},
+			}
+		}("greedy-rollforward"),
+		"greedy-rollbackward": func(name string) testCase {
+			return testCase{
+				mocks: map[string]analtyicsapi.Response{
+					name: test.GetFailureMockResponse(),
+				},
+				initObjects: []runtime.Object{
+					getReviewsService(),
+					getReviewsDeployment("v1"),
+					getReviewsDeployment("v2"),
+				},
+				object: getGreedyFastKubernetesExperiment(name, "reviews", "reviews-v1", "reviews-v2", service.GetURL()),
+				wantState: test.WantAllStates(
+					test.CheckExperimentFinished,
+					test.CheckExperimentFailure,
+				),
+				wantResults: []runtime.Object{
+					getStableDestinationRule("reviews", name, getReviewsDeployment("v1")),
+					getStableVirtualService("reviews", name),
+				},
+			}
+		}("greedy-rollbackward"),
+		"reward-rollforward": func(name string) testCase {
+			return testCase{
+				mocks: map[string]analtyicsapi.Response{
+					name: test.GetSuccessMockResponse(),
+				},
+				initObjects: []runtime.Object{
+					getReviewsService(),
+					getReviewsDeployment("v1"),
+					getReviewsDeployment("v2"),
+				},
+				object: getRewardFastKubernetesExperiment(name, "reviews", "reviews-v1", "reviews-v2", service.GetURL()),
+				wantState: test.WantAllStates(
+					test.CheckExperimentFinished,
+					test.CheckExperimentSuccess,
+				),
+				wantResults: []runtime.Object{
+					getStableDestinationRule("reviews", name, getReviewsDeployment("v2")),
+					getStableVirtualService("reviews", name),
+				},
+			}
+		}("reward-rollforward"),
+		"pauseresume": func(name string) testCase {
+			return testCase{
+				mocks: map[string]analtyicsapi.Response{
+					name: test.GetSuccessMockResponse(),
+				},
+				initObjects: []runtime.Object{
+					getReviewsService(),
+					getReviewsDeployment("v1"),
+					getReviewsDeployment("v2"),
+				},
+				object: getPauseExperiment(name, "reviews", "reviews-v1", "reviews-v2", service.GetURL()),
+				wantState: test.WantAllStates(
+					test.CheckExperimentPause,
+				),
+				postHook: test.ResumeExperiment(getPauseExperiment(name, "reviews", "reviews-v1", "reviews-v2", service.GetURL())),
+				wantResults: []runtime.Object{
+					getStableDestinationRule("reviews", name, getReviewsDeployment("v2")),
+					getStableVirtualService("reviews", name),
+				},
+			}
+		}("pauseresume"),
+		"deletebaseline": func(name string) testCase {
+			return testCase{
+				mocks: map[string]analtyicsapi.Response{
+					name: test.GetSuccessMockResponse(),
+				},
+				initObjects: []runtime.Object{
+					getReviewsService(),
+					getReviewsDeployment("v1"),
+					getReviewsDeployment("v2"),
+				},
+				object:    getSlowKubernetesExperiment(name, "reviews", "reviews-v1", "reviews-v2", service.GetURL()),
+				wantState: test.CheckServiceFound,
+				postHook:  test.DeleteObject(getReviewsDeployment("v1")),
+				wantResults: []runtime.Object{
+					getStableDestinationRule("reviews", name, getReviewsDeployment("v2")),
+					getStableVirtualService("reviews", name),
+				},
+			}
+		}("deletebaseline"),
 	}
 
 	runTestCases(t, service, testCases)
@@ -316,16 +356,10 @@ func getReviewsDeployment(version string) runtime.Object {
 		Build()
 }
 
-func getRatingsDeployment() runtime.Object {
-	labels := map[string]string{
-		"app":     "ratings",
-		"version": "v1",
-	}
-
-	return test.NewKubernetesDeployment("ratings-v1", Flags.Namespace).
-		WithLabels(labels).
-		WithContainer("ratings", RatingsImage, RatingsPort).
-		Build()
+func getPauseExperiment(name, serviceName, baseline, candidate, analyticsHost string) *iter8v1alpha1.Experiment {
+	exp := getFastKubernetesExperiment(name, serviceName, baseline, candidate, analyticsHost)
+	exp.Action = iter8v1alpha1.ActionPause
+	return exp
 }
 
 func getCleanUpDeleteExperiment(name, serviceName, baseline, candidate string) *iter8v1alpha1.Experiment {

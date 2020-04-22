@@ -292,6 +292,7 @@ func (r *ReconcileExperiment) Reconcile(request reconcile.Request) (reconcile.Re
 	ctx = context.WithValue(ctx, util.LoggerKey, log)
 	log.Info("reconciling")
 
+	log.Info("phase", "enter", instance.Status.Phase)
 	// Init metadata of experiment instance
 	if instance.Status.CreateTimestamp == 0 {
 		instance.Status.Init()
@@ -328,6 +329,7 @@ func (r *ReconcileExperiment) Reconcile(request reconcile.Request) (reconcile.Re
 		return reconcile.Result{}, nil
 	}
 
+	log.Info("Beforechecking", "instance", instance)
 	switch instance.Spec.TargetService.APIVersion {
 	case KubernetesV1:
 		return r.syncKubernetes(ctx, instance)
@@ -409,10 +411,12 @@ func (r *ReconcileExperiment) finalize(context context.Context, instance *iter8v
 func (r *ReconcileExperiment) syncExperiment(context context.Context, instance *iter8v1alpha1.Experiment) {
 	eas := experimentAbstract(context)
 	// Abort Experiment by setting action flag
+	util.Logger(context).Info("phase", "before", instance.Status.Phase)
 	if eas.Terminate() {
 		if eas.GetDeletedRole() != "" {
 			onDeletedTarget(instance, eas.GetDeletedRole())
 			r.MarkTargetsError(context, instance, "%s", eas.GetTerminateStatus())
+			util.Logger(context).Info("phase", "after", instance.Status.Phase)
 		}
 	} else if eas.Resume() {
 		instance.Status.Phase = iter8v1alpha1.PhaseProgressing
@@ -436,6 +440,10 @@ func (r *ReconcileExperiment) proceed(context context.Context, instance *iter8v1
 	}
 
 	if instance.Status.Phase == iter8v1alpha1.PhasePause {
+		// termination request overrides pause phase
+		if instance.Action.TerminateExperiment() {
+			return
+		}
 		if instance.Action == iter8v1alpha1.ActionResume {
 			// revert action field
 			instance.Action = ""
