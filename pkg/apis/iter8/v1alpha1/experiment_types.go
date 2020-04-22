@@ -703,13 +703,15 @@ func (e *Experiment) GetStrategy() string {
 
 // Succeeded determines whether experiment is a success or not
 func (e *Experiment) Succeeded() bool {
-	if e.GetStrategy() == "increment_without_check" {
-		return e.Action == ActionOverrideSuccess ||
-			e.Action == ""
+	if e.Action.TerminateExperiment() {
+		return e.Action == ActionOverrideSuccess
 	}
 
-	return e.Action == ActionOverrideSuccess ||
-		e.Status.AssessmentSummary.AllSuccessCriteriaMet && e.Action != ActionOverrideFailure
+	if e.GetStrategy() == "increment_without_check" {
+		return true
+	} else {
+		return e.Status.AssessmentSummary.AllSuccessCriteriaMet
+	}
 }
 
 func init() {

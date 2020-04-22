@@ -18,7 +18,6 @@ package experiment
 import (
 	"context"
 	"fmt"
-	"reflect"
 
 	istioclient "istio.io/client-go/pkg/clientset/versioned"
 	appsv1 "k8s.io/api/apps/v1"
@@ -235,15 +234,6 @@ func add(mgr manager.Manager, r *ReconcileExperiment) error {
 					return false
 				}
 
-				if !reflect.DeepEqual(e.ObjectOld, e.ObjectNew) {
-					log.Info("ObjectChanged", "oldObject", e.ObjectOld, "newObjet", e.ObjectNew)
-				}
-
-				if !reflect.DeepEqual(e.MetaOld, e.MetaNew) {
-					log.Info("MetaChanged", "oldMeta", e.MetaOld, "newMeta", e.MetaNew)
-				}
-
-				log.Info("UpdateRequestDetected", "Unknown", "pass")
 				return true
 			},
 		})

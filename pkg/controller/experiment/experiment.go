@@ -432,7 +432,7 @@ func (r *ReconcileExperiment) progressExperiment(context context.Context, instan
 		rolloutPercent += int(traffic.GetStepSize())
 	} else {
 		// Get latest analysis
-		payload, err := analytics.MakeRequest(instance, r.targets.Baseline, r.targets.Candidate, algorithm)
+		payload, err := analytics.MakeRequest(instance, algorithm)
 		if err != nil {
 			r.MarkAnalyticsServiceError(context, instance, "%s", err.Error())
 			return err
