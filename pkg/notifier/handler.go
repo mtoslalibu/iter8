@@ -123,7 +123,7 @@ func removeNotifiers(nc *NotificationCenter) func(obj interface{}) {
 
 func iter8Namespace() string {
 	retVal := defaultNamespace
-	if namespace := os.Getenv("SERVICE_NAMESPACE"); namespace != "" {
+	if namespace := os.Getenv("POD_NAMESPACE"); namespace != "" {
 		retVal = namespace
 	}
 	return retVal

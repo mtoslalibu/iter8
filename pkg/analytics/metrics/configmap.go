@@ -101,7 +101,7 @@ func Read(context context.Context, c client.Client, instance *iter8v1alpha1.Expe
 
 func iter8Namespace() string {
 	retVal := defaultNamespace
-	if namespace := os.Getenv("SERVICE_NAMESPACE"); namespace != "" {
+	if namespace := os.Getenv("POD_NAMESPACE"); namespace != "" {
 		retVal = namespace
 	}
 	return retVal

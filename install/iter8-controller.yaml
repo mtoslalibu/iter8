@@ -740,7 +740,6 @@ metadata:
 spec:
   selector:
     control-plane: controller-manager
-  type: ClusterIP
   ports:
   - port: 443
 ---
@@ -768,12 +767,10 @@ spec:
         imagePullPolicy: Always
         name: manager
         env:
-          - name: SERVICE_NAMESPACE
+          - name: POD_NAMESPACE
             valueFrom:
               fieldRef:
                 fieldPath: metadata.namespace
-          - name: WEBHOOK_PORT
-            value: value 443
         resources:
           limits:
             cpu: 100m
