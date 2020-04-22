@@ -20,31 +20,68 @@ import (
 )
 
 type ExperimentInterface interface {
-	AbortExperiment() bool
+	MarkTargetFound(name string, found bool)
+	MarkServiceFound(found bool)
 }
+
+type Snapshot interface {
+	Terminate() bool
+	GetTerminateStatus() string
+	GetDeletedRole() string
+}
+
+var _ ExperimentInterface = &Experiment{}
+var _ Snapshot = &Experiment{}
 
 // Experiment includes abstract info for one Experiment
 type Experiment struct {
-	namespace       string
+	Namespace       string
 	TargetsAbstract *Targets
+
+	terminate       bool
+	terminateStatus string
+	deletedRole     string
 }
 
 func NewExperiment(instance *iter8v1alpha1.Experiment, targetNamespace string) *Experiment {
 	return &Experiment{
-		namespace:       instance.Namespace,
+		Namespace:       instance.Namespace,
 		TargetsAbstract: NewTargets(instance, targetNamespace),
 	}
 }
 
-func (e *Experiment) AbortExperiment() bool {
-	ta := e.TargetsAbstract
-	if ta.serviceCondition == ConditionDeleted {
-		return true
+func (e *Experiment) Terminate() bool {
+	return e.terminate
+}
+
+func (e *Experiment) GetTerminateStatus() string {
+	return e.terminateStatus
+}
+
+func (e *Experiment) GetDeletedRole() string {
+	return e.deletedRole
+}
+
+func (e *Experiment) MarkTargetFound(name string, found bool) {
+	e.TargetsAbstract.markTargetFound(name, found)
+	if found == false {
+		e.terminate = true
+		e.terminateStatus = e.TargetsAbstract.targetToString(name)
+		e.deletedRole = e.TargetsAbstract.targetRole(name)
 	}
-	for _, status := range ta.Status {
-		if status.condition == ConditionDeleted {
-			return true
-		}
+}
+
+func (e *Experiment) MarkServiceFound(found bool) {
+	e.TargetsAbstract.markServiceFound(found)
+	if found == false {
+		e.terminate = true
+		e.terminateStatus = e.TargetsAbstract.serviceToString()
+		e.deletedRole = string(RoleService)
 	}
-	return false
+}
+
+func (e *Experiment) GetSnapshot() Snapshot {
+	out := &Experiment{}
+	*out = *e
+	return out
 }
