@@ -90,8 +90,19 @@ func (c *Impl) RegisterExperiment(ctx context.Context, instance *iter8v1alpha1.E
 		c.deployment2Experiment[targetKey(candidate, targetNamespace)] = eakey
 	}
 
-	ctx = context.WithValue(ctx, util.AbstractKey, c.experimentAbstractStore[eakey])
+	ea := c.experimentAbstractStore[eakey]
 
+	// Abort Experiment by setting action flag
+	if ea.Terminate() {
+		switch ea.GetDeletedRole() {
+		case "baseline":
+			instance.Action = iter8v1alpha1.ActionOverrideSuccess
+		case "candidate", "service":
+			instance.Action = iter8v1alpha1.ActionOverrideFailure
+		}
+	}
+
+	ctx = context.WithValue(ctx, util.AbstractKey, ea.GetSnapshot())
 	return ctx
 }
 
@@ -119,7 +130,7 @@ func (c *Impl) MarkTargetDeploymentFound(targetName, targetNamespace string) boo
 		return false
 	}
 
-	c.experimentAbstractStore[eaKey].TargetsAbstract.MarkTargetFound(targetName, true)
+	c.experimentAbstractStore[eaKey].MarkTargetFound(targetName, true)
 
 	return true
 }
@@ -134,7 +145,7 @@ func (c *Impl) MarkTargetDeploymentMissing(targetName, targetNamespace string) b
 		return false
 	}
 
-	c.experimentAbstractStore[eaKey].TargetsAbstract.MarkTargetFound(targetName, false)
+	c.experimentAbstractStore[eaKey].MarkTargetFound(targetName, false)
 
 	return true
 }
@@ -164,7 +175,7 @@ func (c *Impl) MarkTargetServiceFound(targetName, targetNamespace string) bool {
 		return false
 	}
 
-	c.experimentAbstractStore[eaKey].TargetsAbstract.MarkServiceFound(true)
+	c.experimentAbstractStore[eaKey].MarkServiceFound(true)
 
 	return true
 }
@@ -179,7 +190,7 @@ func (c *Impl) MarkTargetServiceMissing(targetName, targetNamespace string) bool
 		return false
 	}
 
-	c.experimentAbstractStore[eaKey].TargetsAbstract.MarkServiceFound(false)
+	c.experimentAbstractStore[eaKey].MarkServiceFound(false)
 
 	return true
 }

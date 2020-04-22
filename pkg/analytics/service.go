@@ -23,16 +23,19 @@ import (
 
 	"github.com/go-logr/logr"
 
-	appsv1 "k8s.io/api/apps/v1"
-	corev1 "k8s.io/api/core/v1"
-
 	"github.com/iter8-tools/iter8-controller/pkg/analytics/algorithm"
 	"github.com/iter8-tools/iter8-controller/pkg/analytics/api"
 	iter8v1alpha1 "github.com/iter8-tools/iter8-controller/pkg/apis/iter8/v1alpha1"
+	"github.com/iter8-tools/iter8-controller/pkg/controller/experiment/util"
+)
+
+const (
+	destinationKey = "destination_workload"
+	namespaceKey   = "destination_service_namespace"
 )
 
 // MakeRequest generates request payload to analytics
-func MakeRequest(instance *iter8v1alpha1.Experiment, baseline, experiment interface{}, impl algorithm.Interface) (*api.Request, error) {
+func MakeRequest(instance *iter8v1alpha1.Experiment, impl algorithm.Interface) (*api.Request, error) {
 	spec := instance.Spec
 
 	criteria := make([]api.SuccessCriterion, len(spec.Analysis.SuccessCriteria))
@@ -61,25 +64,6 @@ func MakeRequest(instance *iter8v1alpha1.Experiment, baseline, experiment interf
 	}
 
 	now := time.Now().Format(time.RFC3339)
-	destinationKey, namespaceKey, baseVal, experimentVal, baseNsVal, experimentNsVal := "", "", "", "", "", ""
-	switch instance.Spec.TargetService.APIVersion {
-	case "v1":
-		destinationKey = "destination_workload"
-		namespaceKey = "destination_service_namespace"
-		baseVal = baseline.(*appsv1.Deployment).GetName()
-		experimentVal = experiment.(*appsv1.Deployment).GetName()
-		baseNsVal = baseline.(*appsv1.Deployment).GetNamespace()
-		experimentNsVal = experiment.(*appsv1.Deployment).GetNamespace()
-	case "serving.knative.dev/v1alpha1":
-		destinationKey = "destination_service_name"
-		namespaceKey = "destination_service_namespace"
-		baseVal = baseline.(*corev1.Service).GetName()
-		experimentVal = experiment.(*corev1.Service).GetName()
-		baseNsVal = baseline.(*corev1.Service).GetNamespace()
-		experimentNsVal = experiment.(*corev1.Service).GetNamespace()
-	default:
-		return nil, fmt.Errorf("Unsupported API Version %s", instance.Spec.TargetService.APIVersion)
-	}
 
 	tc := api.TrafficControl{
 		api.TCKeyMaxTrafficPercent: instance.Spec.TrafficControl.GetMaxTrafficPercentage(),
@@ -109,22 +93,23 @@ func MakeRequest(instance *iter8v1alpha1.Experiment, baseline, experiment interf
 		tc[api.TCKeyReward] = reward
 	}
 
+	serviceNamespace := util.GetServiceNamespace(instance)
 	return &api.Request{
 		Name: instance.Name,
 		Baseline: api.Window{
 			StartTime: time.Unix(0, instance.Status.StartTimestamp).Format(time.RFC3339),
 			EndTime:   now,
 			Tags: map[string]string{
-				destinationKey: baseVal,
-				namespaceKey:   baseNsVal,
+				destinationKey: instance.Spec.TargetService.Baseline,
+				namespaceKey:   serviceNamespace,
 			},
 		},
 		Candidate: api.Window{
 			StartTime: time.Unix(0, instance.Status.StartTimestamp).Format(time.RFC3339),
 			EndTime:   now,
 			Tags: map[string]string{
-				destinationKey: experimentVal,
-				namespaceKey:   experimentNsVal,
+				destinationKey: instance.Spec.TargetService.Candidate,
+				namespaceKey:   serviceNamespace,
 			},
 		},
 		LastState:      instance.Status.AnalysisState,

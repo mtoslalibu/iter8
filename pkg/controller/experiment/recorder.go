@@ -22,13 +22,14 @@ import (
 	corev1 "k8s.io/api/core/v1"
 
 	iter8v1alpha1 "github.com/iter8-tools/iter8-controller/pkg/apis/iter8/v1alpha1"
+	"github.com/iter8-tools/iter8-controller/pkg/controller/experiment/util"
 )
 
 // MarkTargetsError records the condition that the target components are missing
 func (r *ReconcileExperiment) MarkTargetsError(context context.Context, instance *iter8v1alpha1.Experiment,
 	messageFormat string, messageA ...interface{}) {
 	reason := iter8v1alpha1.ReasonTargetsNotFound
-	Logger(context).Info(reason + ", " + fmt.Sprintf(messageFormat, messageA...))
+	util.Logger(context).Info(reason + ", " + fmt.Sprintf(messageFormat, messageA...))
 	if instance.Status.MarkTargetsError(reason, messageFormat, messageA...) {
 		r.eventRecorder.Eventf(instance, corev1.EventTypeWarning, reason, messageFormat, messageA...)
 		r.notificationCenter.Notify(instance, reason, messageFormat, messageA...)
@@ -42,14 +43,14 @@ func (r *ReconcileExperiment) MarkTargetsFound(context context.Context, instance
 		r.recordNormalEvent(true, instance, reason, "")
 		r.notificationCenter.Notify(instance, reason, "")
 	}
-	Logger(context).Info("All targets are found.")
+	util.Logger(context).Info("All targets are found.")
 	return value
 }
 
 func (r *ReconcileExperiment) MarkAnalyticsServiceError(context context.Context, instance *iter8v1alpha1.Experiment,
 	messageFormat string, messageA ...interface{}) {
 	reason := iter8v1alpha1.ReasonAnalyticsServiceError
-	Logger(context).Info(reason + ", " + fmt.Sprintf(messageFormat, messageA...))
+	util.Logger(context).Info(reason + ", " + fmt.Sprintf(messageFormat, messageA...))
 	if instance.Status.MarkAnalyticsServiceError(reason, messageFormat, messageA...) {
 		r.eventRecorder.Eventf(instance, corev1.EventTypeWarning, reason, messageFormat, messageA...)
 		r.notificationCenter.Notify(instance, reason, messageFormat, messageA...)
@@ -58,7 +59,7 @@ func (r *ReconcileExperiment) MarkAnalyticsServiceError(context context.Context,
 
 func (r *ReconcileExperiment) MarkAnalyticsServiceRunning(context context.Context, instance *iter8v1alpha1.Experiment) {
 	reason := iter8v1alpha1.ReasonAnalyticsServiceRunning
-	Logger(context).Info(reason)
+	util.Logger(context).Info(reason)
 	if instance.Status.MarkAnalyticsServiceRunning() {
 		r.recordNormalEvent(true, instance, reason, "")
 		r.notificationCenter.Notify(instance, reason, "")
@@ -68,7 +69,7 @@ func (r *ReconcileExperiment) MarkAnalyticsServiceRunning(context context.Contex
 func (r *ReconcileExperiment) MarkExperimentProgress(context context.Context, instance *iter8v1alpha1.Experiment,
 	broadcast bool, reason, messageFormat string, messageA ...interface{}) {
 	instance.Status.MarkExperimentNotCompleted(reason, messageFormat, messageA...)
-	Logger(context).Info(reason + ", " + fmt.Sprintf(messageFormat, messageA...))
+	util.Logger(context).Info(reason + ", " + fmt.Sprintf(messageFormat, messageA...))
 	r.recordNormalEvent(broadcast, instance, reason, messageFormat, messageA...)
 	r.notificationCenter.Notify(instance, reason, messageFormat, messageA...)
 }
@@ -77,8 +78,7 @@ func (r *ReconcileExperiment) MarkExperimentSucceeded(context context.Context, i
 	messageFormat string, messageA ...interface{}) {
 	reason := iter8v1alpha1.ReasonExperimentSucceeded
 	instance.Status.MarkExperimentSucceeded(reason, messageFormat, messageA...)
-	markExperimentCompleted(instance)
-	Logger(context).Info(reason + ", " + fmt.Sprintf(messageFormat, messageA...))
+	util.Logger(context).Info(reason + ", " + fmt.Sprintf(messageFormat, messageA...))
 	r.recordNormalEvent(true, instance, reason, messageFormat, messageA...)
 	r.notificationCenter.Notify(instance, reason, messageFormat, messageA...)
 }
@@ -87,8 +87,7 @@ func (r *ReconcileExperiment) MarkExperimentFailed(context context.Context, inst
 	messageFormat string, messageA ...interface{}) {
 	reason := iter8v1alpha1.ReasonExperimentFailed
 	instance.Status.MarkExperimentFailed(reason, messageFormat, messageA...)
-	markExperimentCompleted(instance)
-	Logger(context).Info(reason + ", " + fmt.Sprintf(messageFormat, messageA...))
+	util.Logger(context).Info(reason + ", " + fmt.Sprintf(messageFormat, messageA...))
 	r.eventRecorder.Eventf(instance, corev1.EventTypeWarning, reason, messageFormat, messageA...)
 	r.notificationCenter.Notify(instance, reason, messageFormat, messageA...)
 }
@@ -96,7 +95,7 @@ func (r *ReconcileExperiment) MarkExperimentFailed(context context.Context, inst
 func (r *ReconcileExperiment) MarkSyncMetricsError(context context.Context, instance *iter8v1alpha1.Experiment,
 	messageFormat string, messageA ...interface{}) {
 	reason := iter8v1alpha1.ReasonSyncMetricsError
-	Logger(context).Info(reason + ", " + fmt.Sprintf(messageFormat, messageA...))
+	util.Logger(context).Info(reason + ", " + fmt.Sprintf(messageFormat, messageA...))
 	if instance.Status.MarkMetricsSyncedError(reason, messageFormat, messageA...) {
 		r.eventRecorder.Eventf(instance, corev1.EventTypeWarning, reason, messageFormat, messageA...)
 		r.notificationCenter.Notify(instance, reason, messageFormat, messageA...)
@@ -105,7 +104,7 @@ func (r *ReconcileExperiment) MarkSyncMetricsError(context context.Context, inst
 
 func (r *ReconcileExperiment) MarkSyncMetrics(context context.Context, instance *iter8v1alpha1.Experiment) {
 	reason := iter8v1alpha1.ReasonSyncMetricsSucceeded
-	Logger(context).Info(reason)
+	util.Logger(context).Info(reason)
 	if instance.Status.MarkMetricsSynced() {
 		r.recordNormalEvent(true, instance, reason, "")
 		r.notificationCenter.Notify(instance, reason, "")
@@ -115,7 +114,7 @@ func (r *ReconcileExperiment) MarkSyncMetrics(context context.Context, instance 
 func (r *ReconcileExperiment) MarkRoutingRulesError(context context.Context, instance *iter8v1alpha1.Experiment,
 	messageFormat string, messageA ...interface{}) {
 	reason := iter8v1alpha1.ReasonRoutingRulesError
-	Logger(context).Info(reason + ", " + fmt.Sprintf(messageFormat, messageA...))
+	util.Logger(context).Info(reason + ", " + fmt.Sprintf(messageFormat, messageA...))
 	if instance.Status.MarkRoutingRulesError(reason, messageFormat, messageA...) {
 		r.eventRecorder.Eventf(instance, corev1.EventTypeWarning, reason, messageFormat, messageA...)
 		r.notificationCenter.Notify(instance, reason, messageFormat, messageA...)
@@ -125,7 +124,7 @@ func (r *ReconcileExperiment) MarkRoutingRulesError(context context.Context, ins
 func (r *ReconcileExperiment) MarkRoutingRulesReady(context context.Context, instance *iter8v1alpha1.Experiment,
 	messageFormat string, messageA ...interface{}) {
 	reason := iter8v1alpha1.ReasonRoutingRulesReady
-	Logger(context).Info(reason + ", " + fmt.Sprintf(messageFormat, messageA...))
+	util.Logger(context).Info(reason + ", " + fmt.Sprintf(messageFormat, messageA...))
 	if instance.Status.MarkRoutingRulesReady() {
 		r.recordNormalEvent(true, instance, reason, messageFormat, messageA...)
 		r.notificationCenter.Notify(instance, reason, messageFormat, messageA...)

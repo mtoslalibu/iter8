@@ -9,6 +9,5 @@ image:
 
 namespace: iter8
 
-service:
-  type: ClusterIP
-  port: 443
+# Version of Istio telemetry
+istioTelemetry: v1
