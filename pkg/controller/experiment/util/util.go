@@ -16,20 +16,31 @@ package util
 
 import (
 	"context"
+	"strings"
 
-	runtime "k8s.io/apimachinery/pkg/runtime"
-	"sigs.k8s.io/controller-runtime/pkg/client"
+	"github.com/go-logr/logr"
 
 	iter8v1alpha1 "github.com/iter8-tools/iter8-controller/pkg/apis/iter8/v1alpha1"
 	"github.com/iter8-tools/iter8-controller/pkg/controller/experiment/cache/abstract"
 )
 
+type loggerKeyType string
+
+// Logger gets the logger from the context.
+func Logger(ctx context.Context) logr.Logger {
+	return ctx.Value(LoggerKey).(logr.Logger)
+}
+
 const (
 	AbstractKey = "experimentAbstract"
+	LoggerKey   = loggerKeyType("logger")
 )
 
-func ExperimentAbstract(ctx context.Context) abstract.ExperimentInterface {
-	return ctx.Value(AbstractKey).(abstract.ExperimentInterface)
+func ExperimentAbstract(ctx context.Context) abstract.Snapshot {
+	if ctx.Value(AbstractKey) == nil {
+		return nil
+	}
+	return ctx.Value(AbstractKey).(abstract.Snapshot)
 }
 
 func GetServiceNamespace(instance *iter8v1alpha1.Experiment) string {
@@ -40,13 +51,16 @@ func GetServiceNamespace(instance *iter8v1alpha1.Experiment) string {
 	return serviceNamespace
 }
 
-func DeleteObjects(context context.Context, client client.Client, objs ...runtime.Object) error {
-	for _, obj := range objs {
-		if err := client.Delete(context, obj); err != nil {
-			return err
-		}
+func GetStableTarget(context context.Context, instance *iter8v1alpha1.Experiment) string {
+	out := ""
+
+	if instance.Succeeded() {
+		out = instance.Spec.TrafficControl.GetOnSuccess()
+	} else {
+		out = "baseline"
 	}
-	return nil
+
+	return out
 }
 
 func EqualHost(host1, ns1, host2, ns2 string) bool {
@@ -56,4 +70,9 @@ func EqualHost(host1, ns1, host2, ns2 string) bool {
 		return true
 	}
 	return false
+}
+
+func ValidUpdateErr(err error) bool {
+	benignMsg := "the object has been modified"
+	return strings.Contains(err.Error(), benignMsg)
 }
