@@ -17,6 +17,7 @@ package metrics
 import (
 	"context"
 	"fmt"
+	"os"
 
 	"gopkg.in/yaml.v2"
 	corev1 "k8s.io/api/core/v1"
@@ -27,8 +28,8 @@ import (
 )
 
 const (
-	MetricsConfigMap = "iter8config-metrics"
-	Iter8Namespace   = "iter8"
+	metricsConfigMap = "iter8config-metrics"
+	defaultNamespace = "iter8"
 )
 
 // Metrics list of Metric
@@ -45,9 +46,9 @@ type Metric struct {
 // Read reads content in the configmap into the experiment instance
 func Read(context context.Context, c client.Client, instance *iter8v1alpha1.Experiment) error {
 	cm := &corev1.ConfigMap{}
-	err := c.Get(context, types.NamespacedName{Name: MetricsConfigMap, Namespace: Iter8Namespace}, cm)
+	err := c.Get(context, types.NamespacedName{Name: metricsConfigMap, Namespace: iter8Namespace()}, cm)
 	if err != nil {
-		if err = c.Get(context, types.NamespacedName{Name: MetricsConfigMap, Namespace: instance.GetNamespace()}, cm); err != nil {
+		if err = c.Get(context, types.NamespacedName{Name: metricsConfigMap, Namespace: instance.GetNamespace()}, cm); err != nil {
 			return fmt.Errorf("MetricsConfigMapNotFound: %s", err)
 		}
 	}
@@ -96,4 +97,12 @@ func Read(context context.Context, c client.Client, instance *iter8v1alpha1.Expe
 	}
 
 	return c.Update(context, instance)
+}
+
+func iter8Namespace() string {
+	retVal := defaultNamespace
+	if namespace := os.Getenv("POD_NAMESPACE"); namespace != "" {
+		retVal = namespace
+	}
+	return retVal
 }
