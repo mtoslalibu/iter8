@@ -14,7 +14,11 @@ run: generate fmt vet load
 # Generate iter8 crds and rbac manifests
 manifests:
 	go run vendor/sigs.k8s.io/controller-tools/cmd/controller-gen/main.go crd \
-	  paths=./pkg/apis/... output:crd:dir=./install/helm/iter8-controller/templates/crds
+	  paths=./pkg/apis/iter8/v1alpha1 output:crd:dir=./install/helm/iter8-controller/templates/crds/v1alpha1/
+	./hack/crd_fix.sh
+
+	go run vendor/sigs.k8s.io/controller-tools/cmd/controller-gen/main.go crd \
+	  paths=./pkg/apis/iter8/v1alpha2 output:crd:dir=./install/helm/iter8-controller/templates/crds/v1alpha2/
 	./hack/crd_fix.sh
 
 # Prepare Kubernetes cluster for iter8 (running in cluster or locally):

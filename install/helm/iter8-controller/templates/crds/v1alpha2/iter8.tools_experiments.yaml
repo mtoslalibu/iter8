@@ -1,0 +1,565 @@
+
+---
+apiVersion: apiextensions.k8s.io/v1beta1
+kind: CustomResourceDefinition
+metadata:
+  annotations:
+    controller-gen.kubebuilder.io/version: (unknown)
+  creationTimestamp: null
+  name: experiments.iter8.tools
+spec:
+  group: iter8.tools
+  names:
+    kind: Experiment
+    listKind: ExperimentList
+    plural: experiments
+    singular: experiment
+  scope: Namespaced
+  subresources:
+    status: {}
+  validation:
+    openAPIV3Schema:
+      properties:
+        action:
+          description: ExperimentAction defines actions that the user can perform
+            to an experiment
+          properties:
+            do:
+              description: Action to perform
+              enum:
+              - pause
+              - resume
+              - terminate
+              type: string
+            to:
+              additionalProperties:
+                type: string
+              description: Options for the action
+              type: object
+          required:
+          - do
+          type: object
+        apiVersion:
+          description: 'APIVersion defines the versioned schema of this representation
+            of an object. Servers should convert recognized schemas to the latest
+            internal value, and may reject unrecognized values. More info: https://git.k8s.io/community/contributors/devel/sig-architecture/api-conventions.md#resources'
+          type: string
+        kind:
+          description: 'Kind is a string value representing the REST resource this
+            object represents. Servers may infer this from the endpoint the client
+            submits requests to. Cannot be updated. In CamelCase. More info: https://git.k8s.io/community/contributors/devel/sig-architecture/api-conventions.md#types-kinds'
+          type: string
+        metadata:
+          type: object
+        metrics:
+          description: ExperimentMetrics contains definitions for metrics used in
+            the experiment
+          properties:
+            counter_metrics:
+              items:
+                description: CounterMetric is the definition of Counter Metric
+                properties:
+                  query_template:
+                    type: string
+                required:
+                - query_template
+                type: object
+              type: array
+            ratio_metrics:
+              items:
+                description: RatioMetric is the definiton of Ratio Metric
+                properties:
+                  denominator:
+                    description: Counter metric used in denominator
+                    type: string
+                  numerator:
+                    description: Counter metric used in numerator
+                    type: string
+                  zero_to_one:
+                    description: Boolean flag indicating if the value of this metric
+                      is always in the range 0 to 1
+                    type: string
+                required:
+                - denominator
+                - numerator
+                type: object
+              type: array
+          type: object
+        spec:
+          description: ExperimentSpec defines the desired state of Experiment
+          properties:
+            analyticsEndpoint:
+              description: Endpoint of reaching analytics service default is http://iter8-analytics.iter8
+              type: string
+            cleanup:
+              description: Cleanup indicates whether routing rules and deployment
+                receiving no traffic should be deleted at the end of experiment
+              type: boolean
+            criteria:
+              description: Criteria contains a list of Criterion for assessing the
+                target service Noted that at most one reward metric is allowed If
+                more than one reward criterion is included, the first would be used
+                while others would be omitted
+              items:
+                description: Criterion defines the criterion for assessing a target
+                properties:
+                  cutoffTrafficOnViolation:
+                    description: Once a target violates this criterion, traffic to
+                      it will be cutoff or not
+                    type: boolean
+                  isReward:
+                    description: IsReward indicates whether the metric is a reward
+                      metric or not
+                    type: boolean
+                  metric:
+                    description: Name of metric used in the assessment
+                    type: string
+                  threshold:
+                    description: Threshold specifies the numerical value for a success
+                      criterion Metric value above threhsold violates the criterion
+                    properties:
+                      type:
+                        description: 'Type of threshold relative: value of threshold
+                          specifies the relative amount of changes absolute: value
+                          of threshold indicates an absolute value'
+                        enum:
+                        - relative
+                        - absolute
+                        type: string
+                      value:
+                        description: Value of threshold
+                        format: float64
+                        type: number
+                    required:
+                    - type
+                    - value
+                    type: object
+                required:
+                - metric
+                type: object
+              type: array
+            duration:
+              description: Duration specifies how often/many times the expriment should
+                re-evaluate the assessment
+              properties:
+                interval:
+                  description: Interval specifies duration between iterations default
+                    is 30s
+                  type: string
+                iterations:
+                  description: Iterations indicates the amount of iteration default
+                    is 100
+                  format: int32
+                  type: integer
+              type: object
+            routingReference:
+              description: RoutingReference provides references to routing rules set
+                by users
+              properties:
+                apiVersion:
+                  description: API version of the referent.
+                  type: string
+                fieldPath:
+                  description: 'If referring to a piece of an object instead of an
+                    entire object, this string should contain a valid JSON/Go field
+                    access statement, such as desiredState.manifest.containers[2].
+                    For example, if the object reference is to a container within
+                    a pod, this would take on a value like: "spec.containers{name}"
+                    (where "name" refers to the name of the container that triggered
+                    the event) or if no container name is specified "spec.containers[2]"
+                    (container with index 2 in this pod). This syntax is chosen only
+                    to have some well-defined way of referencing a part of an object.
+                    TODO: this design is not final and this field is subject to change
+                    in the future.'
+                  type: string
+                kind:
+                  description: 'Kind of the referent. More info: https://git.k8s.io/community/contributors/devel/sig-architecture/api-conventions.md#types-kinds'
+                  type: string
+                name:
+                  description: 'Name of the referent. More info: https://kubernetes.io/docs/concepts/overview/working-with-objects/names/#names'
+                  type: string
+                namespace:
+                  description: 'Namespace of the referent. More info: https://kubernetes.io/docs/concepts/overview/working-with-objects/namespaces/'
+                  type: string
+                resourceVersion:
+                  description: 'Specific resourceVersion to which this reference is
+                    made, if any. More info: https://git.k8s.io/community/contributors/devel/sig-architecture/api-conventions.md#concurrency-control-and-consistency'
+                  type: string
+                uid:
+                  description: 'UID of the referent. More info: https://kubernetes.io/docs/concepts/overview/working-with-objects/names/#uids'
+                  type: string
+              type: object
+            service:
+              description: Service is a reference to the service that this experiment
+                is targeting at
+              properties:
+                apiVersion:
+                  description: API version of the referent.
+                  type: string
+                baseline:
+                  description: Name of the baseline deployment
+                  type: string
+                candidates:
+                  description: List of names of candidate deployments
+                  items:
+                    type: string
+                  type: array
+                fieldPath:
+                  description: 'If referring to a piece of an object instead of an
+                    entire object, this string should contain a valid JSON/Go field
+                    access statement, such as desiredState.manifest.containers[2].
+                    For example, if the object reference is to a container within
+                    a pod, this would take on a value like: "spec.containers{name}"
+                    (where "name" refers to the name of the container that triggered
+                    the event) or if no container name is specified "spec.containers[2]"
+                    (container with index 2 in this pod). This syntax is chosen only
+                    to have some well-defined way of referencing a part of an object.
+                    TODO: this design is not final and this field is subject to change
+                    in the future.'
+                  type: string
+                kind:
+                  description: 'Kind of the referent. More info: https://git.k8s.io/community/contributors/devel/sig-architecture/api-conventions.md#types-kinds'
+                  type: string
+                name:
+                  description: 'Name of the referent. More info: https://kubernetes.io/docs/concepts/overview/working-with-objects/names/#names'
+                  type: string
+                namespace:
+                  description: 'Namespace of the referent. More info: https://kubernetes.io/docs/concepts/overview/working-with-objects/namespaces/'
+                  type: string
+                resourceVersion:
+                  description: 'Specific resourceVersion to which this reference is
+                    made, if any. More info: https://git.k8s.io/community/contributors/devel/sig-architecture/api-conventions.md#concurrency-control-and-consistency'
+                  type: string
+                uid:
+                  description: 'UID of the referent. More info: https://kubernetes.io/docs/concepts/overview/working-with-objects/names/#uids'
+                  type: string
+              required:
+              - baseline
+              - candidates
+              type: object
+          required:
+          - service
+          type: object
+        status:
+          description: ExperimentStatus defines the observed state of Experiment
+          properties:
+            analysisState:
+              description: AnalysisState is the last recorded analysis state
+              type: object
+            assessment:
+              description: Assessment returned by the last analyis
+              properties:
+                baseline:
+                  description: Assessment for baseline
+                  properties:
+                    criterion_assessments:
+                      items:
+                        description: CriterionAssessment contains assessment for a
+                          version
+                        properties:
+                          id:
+                            description: Id of version
+                            type: string
+                          metric_id:
+                            description: ID of metric
+                            type: string
+                          statistics:
+                            description: Statistics for this metric
+                            properties:
+                              ratio_statitics:
+                                description: RatioStatistics is statistics for a ratio
+                                  metric
+                                properties:
+                                  credible_interval:
+                                    description: Interval for probability
+                                    properties:
+                                      lower:
+                                        format: float64
+                                        type: number
+                                      upper:
+                                        format: float64
+                                        type: number
+                                    required:
+                                    - lower
+                                    - upper
+                                    type: object
+                                  improvement_over_baseline:
+                                    description: Interval for probability
+                                    properties:
+                                      lower:
+                                        format: float64
+                                        type: number
+                                      upper:
+                                        format: float64
+                                        type: number
+                                    required:
+                                    - lower
+                                    - upper
+                                    type: object
+                                  probability_of_beating_baseline:
+                                    format: float64
+                                    type: number
+                                  probability_of_being_best_version:
+                                    format: float64
+                                    type: number
+                                required:
+                                - credible_interval
+                                - improvement_over_baseline
+                                - probability_of_beating_baseline
+                                - probability_of_being_best_version
+                                type: object
+                              value:
+                                format: float64
+                                type: number
+                            required:
+                            - ratio_statitics
+                            - value
+                            type: object
+                          threshold_assessment:
+                            description: Assessment of how well this metric is doing
+                              with respect to threshold. Defined only for metrics
+                              with a threshold
+                            properties:
+                              probability_of_satisfying_threshold:
+                                description: Probability of satisfying the threshold.
+                                  Defined only for ratio metrics. This is currently
+                                  computed based on Bayesian estimation
+                                format: float64
+                                type: number
+                              threshold_breached:
+                                description: A flag indicating whether threshold is
+                                  breached
+                                type: boolean
+                            required:
+                            - probability_of_satisfying_threshold
+                            - threshold_breached
+                            type: object
+                        required:
+                        - id
+                        - metric_id
+                        - statistics
+                        type: object
+                      type: array
+                    request_count:
+                      format: int32
+                      type: integer
+                    win_probability:
+                      format: float64
+                      type: number
+                  required:
+                  - criterion_assessments
+                  - request_count
+                  - win_probability
+                  type: object
+                candidates:
+                  additionalProperties:
+                    description: CandidateAssessment contains assessment for a candidate
+                    properties:
+                      criterion_assessments:
+                        items:
+                          description: CriterionAssessment contains assessment for
+                            a version
+                          properties:
+                            id:
+                              description: Id of version
+                              type: string
+                            metric_id:
+                              description: ID of metric
+                              type: string
+                            statistics:
+                              description: Statistics for this metric
+                              properties:
+                                ratio_statitics:
+                                  description: RatioStatistics is statistics for a
+                                    ratio metric
+                                  properties:
+                                    credible_interval:
+                                      description: Interval for probability
+                                      properties:
+                                        lower:
+                                          format: float64
+                                          type: number
+                                        upper:
+                                          format: float64
+                                          type: number
+                                      required:
+                                      - lower
+                                      - upper
+                                      type: object
+                                    improvement_over_baseline:
+                                      description: Interval for probability
+                                      properties:
+                                        lower:
+                                          format: float64
+                                          type: number
+                                        upper:
+                                          format: float64
+                                          type: number
+                                      required:
+                                      - lower
+                                      - upper
+                                      type: object
+                                    probability_of_beating_baseline:
+                                      format: float64
+                                      type: number
+                                    probability_of_being_best_version:
+                                      format: float64
+                                      type: number
+                                  required:
+                                  - credible_interval
+                                  - improvement_over_baseline
+                                  - probability_of_beating_baseline
+                                  - probability_of_being_best_version
+                                  type: object
+                                value:
+                                  format: float64
+                                  type: number
+                              required:
+                              - ratio_statitics
+                              - value
+                              type: object
+                            threshold_assessment:
+                              description: Assessment of how well this metric is doing
+                                with respect to threshold. Defined only for metrics
+                                with a threshold
+                              properties:
+                                probability_of_satisfying_threshold:
+                                  description: Probability of satisfying the threshold.
+                                    Defined only for ratio metrics. This is currently
+                                    computed based on Bayesian estimation
+                                  format: float64
+                                  type: number
+                                threshold_breached:
+                                  description: A flag indicating whether threshold
+                                    is breached
+                                  type: boolean
+                              required:
+                              - probability_of_satisfying_threshold
+                              - threshold_breached
+                              type: object
+                          required:
+                          - id
+                          - metric_id
+                          - statistics
+                          type: object
+                        type: array
+                      request_count:
+                        format: int32
+                        type: integer
+                      rollback:
+                        description: A flag indicates whether traffic to this candidate
+                          should be cutoff
+                        type: boolean
+                      win_probability:
+                        format: float64
+                        type: number
+                    required:
+                    - criterion_assessments
+                    - request_count
+                    - rollback
+                    - win_probability
+                    type: object
+                  description: Assessment for candidates are stored as key-value pairs
+                    as {name_of_candiate:assessment_details}
+                  type: object
+                winner:
+                  description: Assessment for winner target if exists
+                  properties:
+                    current_winner:
+                      description: ID of the current winner with the maximum probability
+                        of winning. This is currently computed based on Bayesian estimation
+                      type: string
+                    winning_probability:
+                      description: Posterior probability of the version declared as
+                        the current winner. This is None if winner is None. This is
+                        currently computed based on Bayesian estimation
+                      format: float64
+                      type: number
+                    winning_version_found:
+                      description: Indicates whether or not a clear winner has emerged
+                        This is currently computed based on Bayesian estimation and
+                        uses posterior_probability_for_winner from the iteration parameters
+                      type: boolean
+                  required:
+                  - winning_version_found
+                  type: object
+              required:
+              - baseline
+              - candidates
+              type: object
+            conditions:
+              description: Conditions is a list of Conditions
+              items:
+                description: Condition specifies
+                properties:
+                  lastUpdateTime:
+                    description: The time when this condition is last updated
+                    format: date-time
+                    type: string
+                  message:
+                    description: Detailed explanation on the update
+                    type: string
+                  name:
+                    description: Name of the condition
+                    type: string
+                  reason:
+                    description: Reason for the last update
+                    type: string
+                  status:
+                    description: Status of the condition
+                    type: string
+                required:
+                - lastUpdateTime
+                - name
+                - status
+                type: object
+              type: array
+            createTimestamp:
+              description: CreateTimestamp is the timestamp when the experiment is
+                created
+              format: int64
+              type: integer
+            currentIteration:
+              description: CurrentIteration is the current iteration number
+              type: integer
+            endTimestamp:
+              description: EndTimestamp is the timestamp when experiment completes
+              format: int64
+              type: integer
+            grafanaURL:
+              description: GrafanaURL is the url to the Grafana Dashboard
+              type: string
+            lastIncrementTime:
+              description: LastIncrementTime is the last time the traffic has been
+                incremented
+              format: date-time
+              type: string
+            message:
+              description: Message specifies message to show in the kubectl printer
+              type: string
+            phase:
+              description: Phase marks the Phase the experiment is at
+              type: string
+            startTimestamp:
+              description: StartTimestamp is the timestamp when the experiment starts
+              format: int64
+              type: integer
+            trafficSplit:
+              additionalProperties:
+                format: int32
+                type: integer
+              description: TrafficSplit tells the current traffic spliting among targets
+              type: object
+          type: object
+      type: object
+  version: v1alpha2
+  versions:
+  - name: v1alpha2
+    served: true
+    storage: true
+status:
+  acceptedNames:
+    kind: ""
+    plural: ""
+  conditions: []
+  storedVersions: []
