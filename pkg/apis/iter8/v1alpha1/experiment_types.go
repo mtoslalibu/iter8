@@ -415,11 +415,11 @@ func (t *TrafficControl) GetConfidence() float64 {
 	return *confidence
 }
 
-// GetServiceEndpoint returns the analytcis endpoint; Default is "http://iter8-analytics.iter8".
+// GetServiceEndpoint returns the analytcis endpoint; Default is "http://iter8-analytics.iter8:8080".
 func (a *Analysis) GetServiceEndpoint() string {
 	endpoint := a.AnalyticsService
 	if len(endpoint) == 0 {
-		return "http://iter8-analytics.iter8"
+		return "http://iter8-analytics.iter8:8080"
 	}
 
 	return endpoint
