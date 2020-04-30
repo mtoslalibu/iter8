@@ -404,7 +404,7 @@ spec:
                         type: string
                     required:
                     - inner
-                    type: object
+                    type: string
                   message:
                     description: A human readable message indicating details about
                       the transition.

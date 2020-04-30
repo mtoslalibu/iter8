@@ -1,5 +1,6 @@
 # Image URL to use all building/pushing image targets
 IMG ?= iter8-controller:latest
+CRD_VERSION ?= v1alpha1
 
 all: manager
 
@@ -14,12 +15,8 @@ run: generate fmt vet load
 # Generate iter8 crds and rbac manifests
 manifests:
 	go run vendor/sigs.k8s.io/controller-tools/cmd/controller-gen/main.go crd \
-	  paths=./pkg/apis/iter8/v1alpha1 output:crd:dir=./install/helm/iter8-controller/templates/crds/v1alpha1/
-	./hack/crd_fix.sh
-
-	go run vendor/sigs.k8s.io/controller-tools/cmd/controller-gen/main.go crd \
-	  paths=./pkg/apis/iter8/v1alpha2 output:crd:dir=./install/helm/iter8-controller/templates/crds/v1alpha2/
-	./hack/crd_fix.sh
+	  paths=./pkg/apis/iter8/${CRD_VERSION} output:crd:dir=./install/helm/iter8-controller/templates/crds/${CRD_VERSION}/
+	./hack/crd_fix.sh ${CRD_VERSION}
 
 # Prepare Kubernetes cluster for iter8 (running in cluster or locally):
 #   install CRDs
@@ -28,7 +25,7 @@ load: manifests
 	helm template install/helm/iter8-controller \
 	  --name iter8-controller \
 	  -x templates/default/namespace.yaml \
-	  -x templates/crds/iter8.tools_experiments.yaml \
+	  -x templates/crds/${CRD_VERSION}/iter8.tools_experiments.yaml \
 	  -x templates/metrics/iter8_metrics.yaml \
 	  -x templates/notifier/iter8_notifiers.yaml\
 	| kubectl apply -f -
@@ -39,6 +36,10 @@ deploy: manifests
 	  --name iter8-controller \
 	  --set image.repository=`echo ${IMG} | cut -f1 -d':'` \
 	  --set image.tag=`echo ${IMG} | cut -f2 -d':'` \
+	  -x templates/default/namespace.yaml \
+	  -x templates/crds/${CRD_VERSION}/iter8.tools_experiments.yaml \
+	  -x templates/metrics/iter8_metrics.yaml \
+	  -x templates/notifier/iter8_notifiers.yaml\
 	| kubectl apply -f -
 
 # Run go fmt against code
