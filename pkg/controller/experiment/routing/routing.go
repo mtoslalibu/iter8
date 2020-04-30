@@ -24,7 +24,6 @@ import (
 
 	iter8v1alpha1 "github.com/iter8-tools/iter8-controller/pkg/apis/iter8/v1alpha1"
 	"github.com/iter8-tools/iter8-controller/pkg/controller/experiment/targets"
-	"github.com/iter8-tools/iter8-controller/pkg/controller/experiment/util"
 )
 
 type IstioRoutingRules struct {
@@ -67,7 +66,7 @@ func (r *IstioRoutingRules) StableToProgressing(instance *iter8v1alpha1.Experime
 	}
 
 	r.VirtualService = NewVirtualServiceBuilder(r.VirtualService).
-		WithStableToProgressing(targets.Service.GetName(), util.GetServiceNamespace(instance)).
+		WithStableToProgressing(targets.Service.GetName(), instance.ServiceNamespace()).
 		WithExperimentRegisterd(instance.Name).
 		Build()
 	if vs, err := ic.NetworkingV1alpha3().
@@ -101,10 +100,22 @@ func (r *IstioRoutingRules) Cleanup(context context.Context, instance *iter8v1al
 		err = r.DeleteAll(ic)
 	} else {
 		serviceName := instance.Spec.TargetService.Name
-		serviceNs := util.GetServiceNamespace(instance)
+		serviceNs := instance.ServiceNamespace()
 
-		switch util.GetStableTarget(context, instance) {
-		case "baseline":
+		var stableTarget targets.Role
+		if instance.Succeeded() {
+			switch instance.Spec.TrafficControl.GetOnSuccess() {
+			case "baseline":
+				stableTarget = targets.RoleBaseline
+			case "candidate":
+				stableTarget = targets.RoleCandidate
+			}
+		} else {
+			stableTarget = targets.RoleBaseline
+		}
+
+		switch stableTarget {
+		case targets.RoleBaseline:
 			r.ToStable(Baseline, serviceName, serviceNs)
 			err = r.UpdateRemoveRules(ic)
 			if err != nil {
@@ -112,7 +123,7 @@ func (r *IstioRoutingRules) Cleanup(context context.Context, instance *iter8v1al
 			}
 			instance.Status.TrafficSplit.Baseline = 100
 			instance.Status.TrafficSplit.Candidate = 0
-		case "candidate":
+		case targets.RoleCandidate:
 			r.ToStable(Candidate, serviceName, serviceNs)
 			err = r.UpdateRemoveRules(ic)
 			if err != nil {
@@ -120,7 +131,7 @@ func (r *IstioRoutingRules) Cleanup(context context.Context, instance *iter8v1al
 			}
 			instance.Status.TrafficSplit.Baseline = 0
 			instance.Status.TrafficSplit.Candidate = 100
-		case "both":
+		default:
 			r.SetStableLabels()
 			err = r.UpdateRemoveRules(ic)
 		}
@@ -171,7 +182,7 @@ func (r *IstioRoutingRules) GetWeight(subset string) int32 {
 
 func (r *IstioRoutingRules) UpdateRolloutPercent(instance *iter8v1alpha1.Experiment, rolloutPercent int, ic istioclient.Interface) error {
 	vs := NewVirtualServiceBuilder(r.VirtualService).
-		WithRolloutPercent(instance.Spec.TargetService.Name, util.GetServiceNamespace(instance), int32(rolloutPercent)).
+		WithRolloutPercent(instance.Spec.TargetService.Name, instance.ServiceNamespace(), int32(rolloutPercent)).
 		Build()
 
 	if vs, err := ic.NetworkingV1alpha3().VirtualServices(vs.Namespace).Update(vs); err != nil {

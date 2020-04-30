@@ -93,10 +93,24 @@ func (b *ExperimentBuilder) WithSuccessCriterion(sc v1alpha1.SuccessCriterion) *
 	return b
 }
 
+func (b *ExperimentBuilder) WithResumeAction() *ExperimentBuilder {
+	b.Action = v1alpha1.ActionResume
+	return b
+}
+
+func CheckExperimentPause(obj runtime.Object) (bool, error) {
+	exp, ok := obj.(*v1alpha1.Experiment)
+	if !ok {
+		return false, fmt.Errorf("Expected an experiment instance (got: %v)", obj)
+	}
+
+	return exp.Status.Phase == v1alpha1.PhasePause, nil
+}
+
 func CheckExperimentFinished(obj runtime.Object) (bool, error) {
 	exp, ok := obj.(*v1alpha1.Experiment)
 	if !ok {
-		return false, fmt.Errorf("Expected an experiment service (got: %v)", obj)
+		return false, fmt.Errorf("Expected an experiment instance (got: %v)", obj)
 	}
 
 	return exp.Status.GetCondition(v1alpha1.ExperimentConditionExperimentCompleted).IsTrue(), nil
@@ -105,7 +119,7 @@ func CheckExperimentFinished(obj runtime.Object) (bool, error) {
 func CheckExperimentSuccess(obj runtime.Object) (bool, error) {
 	exp, ok := obj.(*v1alpha1.Experiment)
 	if !ok {
-		return false, fmt.Errorf("Expected an experiment service (got: %v)", obj)
+		return false, fmt.Errorf("Expected an experiment instance (got: %v)", obj)
 	}
 
 	return exp.Status.GetCondition(v1alpha1.ExperimentConditionExperimentSucceeded).IsTrue(), nil
@@ -143,4 +157,11 @@ func CheckServiceNotFound(reason string) func(obj runtime.Object) (bool, error) 
 
 func DeleteExperiment(name string, namespace string) Hook {
 	return DeleteObject(NewExperiment(name, namespace).Build())
+}
+
+func ResumeExperiment(exp *v1alpha1.Experiment) Hook {
+	exp = (*ExperimentBuilder)(exp).
+		WithResumeAction().
+		Build()
+	return UpdateObject(exp)
 }

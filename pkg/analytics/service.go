@@ -26,7 +26,6 @@ import (
 	"github.com/iter8-tools/iter8-controller/pkg/analytics/algorithm"
 	"github.com/iter8-tools/iter8-controller/pkg/analytics/api"
 	iter8v1alpha1 "github.com/iter8-tools/iter8-controller/pkg/apis/iter8/v1alpha1"
-	"github.com/iter8-tools/iter8-controller/pkg/controller/experiment/util"
 )
 
 const (
@@ -93,7 +92,7 @@ func MakeRequest(instance *iter8v1alpha1.Experiment, impl algorithm.Interface) (
 		tc[api.TCKeyReward] = reward
 	}
 
-	serviceNamespace := util.GetServiceNamespace(instance)
+	serviceNamespace := instance.ServiceNamespace()
 	return &api.Request{
 		Name: instance.Name,
 		Baseline: api.Window{
