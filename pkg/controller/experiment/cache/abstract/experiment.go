@@ -17,6 +17,17 @@ package abstract
 
 import (
 	iter8v1alpha1 "github.com/iter8-tools/iter8-controller/pkg/apis/iter8/v1alpha1"
+	"github.com/iter8-tools/iter8-controller/pkg/controller/experiment/targets"
+)
+
+type snapshotKeyType string
+type action string
+
+const (
+	SnapshotKey = snapshotKeyType("experimentAbstract")
+
+	actionTerminate action = "terminate"
+	actionResume    action = "resume"
 )
 
 type ExperimentInterface interface {
@@ -26,8 +37,9 @@ type ExperimentInterface interface {
 
 type Snapshot interface {
 	Terminate() bool
+	Resume() bool
 	GetTerminateStatus() string
-	GetDeletedRole() string
+	GetDeletedRole() targets.Role
 }
 
 var _ ExperimentInterface = &Experiment{}
@@ -38,9 +50,9 @@ type Experiment struct {
 	Namespace       string
 	TargetsAbstract *Targets
 
-	terminate       bool
+	action          action
 	terminateStatus string
-	deletedRole     string
+	deletedRole     targets.Role
 }
 
 func NewExperiment(instance *iter8v1alpha1.Experiment, targetNamespace string) *Experiment {
@@ -51,37 +63,52 @@ func NewExperiment(instance *iter8v1alpha1.Experiment, targetNamespace string) *
 }
 
 func (e *Experiment) Terminate() bool {
-	return e.terminate
+	return e.action == actionTerminate
+}
+
+func (e *Experiment) Resume() bool {
+	return e.action == actionResume
+}
+
+func (e *Experiment) clear() {
+	e.action = ""
+	e.terminateStatus = ""
+	e.deletedRole = ""
 }
 
 func (e *Experiment) GetTerminateStatus() string {
 	return e.terminateStatus
 }
 
-func (e *Experiment) GetDeletedRole() string {
+func (e *Experiment) GetDeletedRole() targets.Role {
 	return e.deletedRole
 }
 
 func (e *Experiment) MarkTargetFound(name string, found bool) {
 	e.TargetsAbstract.markTargetFound(name, found)
 	if found == false {
-		e.terminate = true
+		e.action = actionTerminate
 		e.terminateStatus = e.TargetsAbstract.targetToString(name)
 		e.deletedRole = e.TargetsAbstract.targetRole(name)
+	} else {
+		e.action = actionResume
 	}
 }
 
 func (e *Experiment) MarkServiceFound(found bool) {
 	e.TargetsAbstract.markServiceFound(found)
 	if found == false {
-		e.terminate = true
+		e.action = actionTerminate
 		e.terminateStatus = e.TargetsAbstract.serviceToString()
-		e.deletedRole = string(RoleService)
+		e.deletedRole = targets.RoleService
+	} else {
+		e.action = actionResume
 	}
 }
 
 func (e *Experiment) GetSnapshot() Snapshot {
 	out := &Experiment{}
 	*out = *e
+	e.clear()
 	return out
 }

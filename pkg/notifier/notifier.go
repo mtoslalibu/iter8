@@ -215,7 +215,8 @@ func reasonSeverity(r string) int {
 	case iter8v1alpha1.ReasonTargetsNotFound,
 		iter8v1alpha1.ReasonSyncMetricsError,
 		iter8v1alpha1.ReasonRoutingRulesError,
-		iter8v1alpha1.ReasonAnalyticsServiceError:
+		iter8v1alpha1.ReasonAnalyticsServiceError,
+		iter8v1alpha1.ReasonActionPause:
 		return 4
 	case iter8v1alpha1.ReasonIterationFailed:
 		return 3
