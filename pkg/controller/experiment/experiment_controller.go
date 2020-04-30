@@ -329,7 +329,6 @@ func (r *ReconcileExperiment) Reconcile(request reconcile.Request) (reconcile.Re
 		return reconcile.Result{}, nil
 	}
 
-	log.Info("Beforechecking", "instance", instance)
 	switch instance.Spec.TargetService.APIVersion {
 	case KubernetesV1:
 		return r.syncKubernetes(ctx, instance)
