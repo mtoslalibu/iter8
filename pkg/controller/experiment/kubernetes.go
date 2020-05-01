@@ -19,10 +19,11 @@ import (
 	"context"
 	"time"
 
-	iter8v1alpha1 "github.com/iter8-tools/iter8-controller/pkg/apis/iter8/v1alpha1"
+	corev1 "k8s.io/api/core/v1"
 	"sigs.k8s.io/controller-runtime/pkg/reconcile"
 
-	corev1 "k8s.io/api/core/v1"
+	iter8v1alpha1 "github.com/iter8-tools/iter8-controller/pkg/apis/iter8/v1alpha1"
+	"github.com/iter8-tools/iter8-controller/pkg/controller/experiment/util"
 )
 
 func (r *ReconcileExperiment) syncKubernetes(context context.Context, instance *iter8v1alpha1.Experiment) (reconcile.Result, error) {
@@ -31,27 +32,38 @@ func (r *ReconcileExperiment) syncKubernetes(context context.Context, instance *
 		if updateStatus {
 			if err := r.Status().Update(context, instance); err != nil && !validUpdateErr(err) {
 				log.Info("Fail to update status: %v", err)
-				// End experiment
 				return reconcile.Result{}, nil
 			}
 		}
-		// retry in 5 secs
-		log.Info("retry in 5 secs")
-		return reconcile.Result{RequeueAfter: 5 * time.Second}, nil
+		return reconcile.Result{}, nil
 	}
 
-	updateStatus, err = r.detectTargets(context, instance)
-	if err != nil {
-		if updateStatus {
-			if err := r.Status().Update(context, instance); err != nil && !validUpdateErr(err) {
-				log.Info("Fail to update status: %v", err)
-				// End experiment
-				return reconcile.Result{}, nil
+	if detectTargets(context, instance) {
+		updateStatus, err = r.detectTargets(context, instance)
+		if err != nil {
+			if updateStatus {
+				if err := r.Status().Update(context, instance); err != nil && !validUpdateErr(err) {
+					log.Info("Fail to update status: %v", err)
+					return reconcile.Result{}, nil
+				}
 			}
+			return reconcile.Result{}, nil
 		}
-		// retry in 5 secs
-		log.Info("retry in 5 secs")
-		return reconcile.Result{RequeueAfter: 5 * time.Second}, nil
+	}
+
+	hasProgressed := false
+	if progress(context, instance) {
+		err := r.progressExperiment(context, instance)
+		if err := r.Status().Update(context, instance); err != nil && !validUpdateErr(err) {
+			log.Info("Fail to update status: %v", err)
+			return reconcile.Result{}, nil
+		}
+
+		if err != nil {
+			return reconcile.Result{}, nil
+		}
+
+		hasProgressed = true
 	}
 
 	if completed, err := r.checkExperimentCompleted(context, instance); completed {
@@ -64,47 +76,47 @@ func (r *ReconcileExperiment) syncKubernetes(context context.Context, instance *
 		return reconcile.Result{}, err
 	}
 
-	now := time.Now()
-	traffic := instance.Spec.TrafficControl
-	// TODO: check err in getting the time value
-	interval, _ := traffic.GetIntervalDuration()
-
-	if now.After(instance.Status.LastIncrementTime.Add(interval)) {
-		err := r.progressExperiment(context, instance)
-		if err := r.Status().Update(context, instance); err != nil && !validUpdateErr(err) {
-			log.Info("Fail to update status: %v", err)
-			// End experiment
-			return reconcile.Result{}, nil
-		}
-
-		if err != nil {
-			// TODO: may need a better handling method
-			// retry in 5 sec
-			log.Info("retry in 5 secs", "err", err)
-			return reconcile.Result{RequeueAfter: 5 * time.Second}, nil
-		}
-
-		if instance.Spec.TrafficControl.GetMaxIterations() < instance.Status.CurrentIteration {
-			log.Info("Experiment Succeeded, requeue")
-			return reconcile.Result{Requeue: true}, nil
-		}
-
+	if hasProgressed {
+		traffic := instance.Spec.TrafficControl
+		interval, _ := traffic.GetIntervalDuration()
 		// Next iteration
 		log.Info("Requeue for next iteration")
 		return reconcile.Result{RequeueAfter: interval}, nil
 	}
 
+	log.Info("Request not processed")
 	return reconcile.Result{}, nil
 }
 
 func (r *ReconcileExperiment) finalizeIstio(context context.Context, instance *iter8v1alpha1.Experiment) (reconcile.Result, error) {
 	completed := instance.Status.GetCondition(iter8v1alpha1.ExperimentConditionExperimentCompleted)
 	if completed != nil && completed.Status != corev1.ConditionTrue {
-		instance.Spec.Assessment = iter8v1alpha1.AssessmentOverrideFailure
+		instance.Action = iter8v1alpha1.ActionOverrideFailure
 		if _, err := r.syncKubernetes(context, instance); err != nil {
 			log.Error(err, "Fail to execute finalize sync process")
 		}
 	}
 
 	return reconcile.Result{}, removeFinalizer(context, r, instance, Finalizer)
+}
+
+func progress(context context.Context, instance *iter8v1alpha1.Experiment) bool {
+	if util.ExperimentAbstract(context).AbortExperiment() {
+		return false
+	}
+
+	now := time.Now()
+	traffic := instance.Spec.TrafficControl
+	interval, _ := traffic.GetIntervalDuration()
+
+	return now.After(instance.Status.LastIncrementTime.Add(interval))
+}
+
+func detectTargets(context context.Context, instance *iter8v1alpha1.Experiment) bool {
+	if util.ExperimentAbstract(context).AbortExperiment() {
+		return false
+	}
+
+	cond := instance.Status.GetCondition(iter8v1alpha1.ExperimentConditionTargetsProvided)
+	return cond.Status != corev1.ConditionTrue
 }

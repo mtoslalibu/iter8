@@ -13,15 +13,15 @@ See the License for the specific language governing permissions and
 limitations under the License.
 */
 
-package experiment
+package routing
 
 import (
 	iter8v1alpha1 "github.com/iter8-tools/iter8-controller/pkg/apis/iter8/v1alpha1"
+	"github.com/iter8-tools/iter8-controller/pkg/controller/experiment/targets"
 
 	"istio.io/client-go/pkg/apis/networking/v1alpha3"
 	istioclient "istio.io/client-go/pkg/clientset/versioned"
 
-	appsv1 "k8s.io/api/apps/v1"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 )
 
@@ -31,26 +31,26 @@ type IstioRoutingRules struct {
 }
 
 func (r *IstioRoutingRules) SetStableLabels() {
-	r.DestinationRule.ObjectMeta.SetLabels(map[string]string{experimentRole: Stable})
-	r.VirtualService.ObjectMeta.SetLabels(map[string]string{experimentRole: Stable})
+	r.DestinationRule.ObjectMeta.SetLabels(map[string]string{ExperimentRole: Stable})
+	r.VirtualService.ObjectMeta.SetLabels(map[string]string{ExperimentRole: Stable})
 	removeExperimentLabel(r.DestinationRule, r.VirtualService)
 }
 
 func (r *IstioRoutingRules) IsStable() bool {
-	drRole, drok := r.DestinationRule.GetLabels()[experimentRole]
-	vsRole, vsok := r.VirtualService.GetLabels()[experimentRole]
+	drRole, drok := r.DestinationRule.GetLabels()[ExperimentRole]
+	vsRole, vsok := r.VirtualService.GetLabels()[ExperimentRole]
 
 	return drok && vsok && drRole == Stable && vsRole == Stable
 }
 
 func (rules *IstioRoutingRules) IsInit() bool {
-	_, drok := rules.DestinationRule.GetLabels()[experimentInit]
-	_, vsok := rules.VirtualService.GetLabels()[experimentInit]
+	_, drok := rules.DestinationRule.GetLabels()[ExperimentInit]
+	_, vsok := rules.VirtualService.GetLabels()[ExperimentInit]
 
 	return drok && vsok
 }
 
-func (r *IstioRoutingRules) StableToProgressing(targets *Targets, expName, serviceNamespace string, ic istioclient.Interface) error {
+func (r *IstioRoutingRules) StableToProgressing(targets *targets.Targets, expName, serviceNamespace string, ic istioclient.Interface) error {
 	r.DestinationRule = NewDestinationRuleBuilder(r.DestinationRule).
 		WithStableToProgressing(targets.Baseline).
 		WithExperimentRegisterd(expName).
@@ -92,7 +92,7 @@ func (r *IstioRoutingRules) DeleteAll(ic istioclient.Interface) (err error) {
 	return
 }
 
-func (r *IstioRoutingRules) Cleanup(instance *iter8v1alpha1.Experiment, targets *Targets, ic istioclient.Interface) (err error) {
+func (r *IstioRoutingRules) Cleanup(instance *iter8v1alpha1.Experiment, targets *targets.Targets, ic istioclient.Interface) (err error) {
 	if instance.Spec.CleanUp == iter8v1alpha1.CleanUpDelete && r.IsInit() {
 		err = r.DeleteAll(ic)
 	} else {
@@ -101,15 +101,15 @@ func (r *IstioRoutingRules) Cleanup(instance *iter8v1alpha1.Experiment, targets 
 			// experiment is successful
 			switch instance.Spec.TrafficControl.GetOnSuccess() {
 			case "baseline":
-				r.ToStable(targets.Baseline, Baseline, serviceName, serviceName)
+				r.ToStable(Baseline, serviceName, serviceName)
 			case "candidate":
-				r.ToStable(targets.Candidate, Candidate, serviceName, serviceName)
+				r.ToStable(Candidate, serviceName, serviceName)
 			case "both":
 				r.SetStableLabels()
 			}
 
 		} else {
-			r.ToStable(targets.Baseline, Baseline, serviceName, serviceName)
+			r.ToStable(Baseline, serviceName, serviceName)
 		}
 
 		err = r.UpdateRemoveRules(ic)
@@ -117,9 +117,9 @@ func (r *IstioRoutingRules) Cleanup(instance *iter8v1alpha1.Experiment, targets 
 	return
 }
 
-func (r *IstioRoutingRules) ToStable(stableDep *appsv1.Deployment, stableName, serviceName, serviceNamespace string) {
+func (r *IstioRoutingRules) ToStable(stableName, serviceName, serviceNamespace string) {
 	r.DestinationRule = NewDestinationRuleBuilder(r.DestinationRule).
-		WithProgressingToStable(stableDep).
+		WithProgressingToStable(stableName).
 		RemoveExperimentLabel().
 		Build()
 	r.VirtualService = NewVirtualServiceBuilder(r.VirtualService).

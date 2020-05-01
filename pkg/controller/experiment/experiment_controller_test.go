@@ -50,8 +50,8 @@ func TestReconcile(t *testing.T) {
 
 	r, err := newReconciler(mgr)
 	g.Expect(err).NotTo(gomega.HaveOccurred())
-	recFn, requests := SetupTestReconcile(r)
-	g.Expect(add(mgr, recFn)).NotTo(gomega.HaveOccurred())
+	_, requests := SetupTestReconcile(r)
+	g.Expect(add(mgr, r)).NotTo(gomega.HaveOccurred())
 
 	stopMgr, mgrStopped := StartTestManager(mgr, g)
 
