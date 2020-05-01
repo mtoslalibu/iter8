@@ -142,3 +142,32 @@ func CheckObjectDeleted(objects ...runtime.Object) Hook {
 		return nil
 	}
 }
+
+func UpdateObject(obj runtime.Object) Hook {
+	return func(ctx context.Context, cl client.Client) error {
+		accessor, err := meta.Accessor(obj)
+		if err != nil {
+			return err
+		}
+
+		oldObj := obj.DeepCopyObject()
+		key := client.ObjectKey{Namespace: accessor.GetNamespace(), Name: accessor.GetName()}
+		if err := cl.Get(ctx, key, oldObj); err != nil {
+			return nil
+		}
+
+		oldAccessor, err := meta.Accessor(oldObj)
+		if err != nil {
+			return err
+		}
+
+		rv := oldAccessor.GetResourceVersion()
+		accessor.SetResourceVersion(rv)
+
+		if err := cl.Update(ctx, obj); err != nil {
+			return err
+		}
+
+		return nil
+	}
+}

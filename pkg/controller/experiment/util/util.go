@@ -17,36 +17,18 @@ package util
 import (
 	"context"
 
-	runtime "k8s.io/apimachinery/pkg/runtime"
-	"sigs.k8s.io/controller-runtime/pkg/client"
-
-	iter8v1alpha1 "github.com/iter8-tools/iter8-controller/pkg/apis/iter8/v1alpha1"
-	"github.com/iter8-tools/iter8-controller/pkg/controller/experiment/cache/abstract"
+	"github.com/go-logr/logr"
 )
+
+type loggerKeyType string
 
 const (
-	AbstractKey = "experimentAbstract"
+	LoggerKey = loggerKeyType("logger")
 )
 
-func ExperimentAbstract(ctx context.Context) abstract.ExperimentInterface {
-	return ctx.Value(AbstractKey).(abstract.ExperimentInterface)
-}
-
-func GetServiceNamespace(instance *iter8v1alpha1.Experiment) string {
-	serviceNamespace := instance.Spec.TargetService.Namespace
-	if serviceNamespace == "" {
-		serviceNamespace = instance.Namespace
-	}
-	return serviceNamespace
-}
-
-func DeleteObjects(context context.Context, client client.Client, objs ...runtime.Object) error {
-	for _, obj := range objs {
-		if err := client.Delete(context, obj); err != nil {
-			return err
-		}
-	}
-	return nil
+// Logger gets the logger from the context.
+func Logger(ctx context.Context) logr.Logger {
+	return ctx.Value(LoggerKey).(logr.Logger)
 }
 
 func EqualHost(host1, ns1, host2, ns2 string) bool {

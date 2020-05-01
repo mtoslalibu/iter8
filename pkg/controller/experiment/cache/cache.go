@@ -23,7 +23,6 @@ import (
 
 	iter8v1alpha1 "github.com/iter8-tools/iter8-controller/pkg/apis/iter8/v1alpha1"
 	"github.com/iter8-tools/iter8-controller/pkg/controller/experiment/cache/abstract"
-	"github.com/iter8-tools/iter8-controller/pkg/controller/experiment/util"
 )
 
 // Interface defines the interface for iter8cache
@@ -78,7 +77,7 @@ func (c *Impl) RegisterExperiment(ctx context.Context, instance *iter8v1alpha1.E
 
 	eakey := experimentKey(instance)
 	if _, ok := c.experimentAbstractStore[eakey]; !ok {
-		targetNamespace := util.GetServiceNamespace(instance)
+		targetNamespace := instance.ServiceNamespace()
 		ea := abstract.NewExperiment(instance, targetNamespace)
 		c.experimentAbstractStore[eakey] = ea
 		service := instance.Spec.TargetService.Name
@@ -90,8 +89,10 @@ func (c *Impl) RegisterExperiment(ctx context.Context, instance *iter8v1alpha1.E
 		c.deployment2Experiment[targetKey(candidate, targetNamespace)] = eakey
 	}
 
-	ctx = context.WithValue(ctx, util.AbstractKey, c.experimentAbstractStore[eakey])
-
+	ea := c.experimentAbstractStore[eakey]
+	eas := ea.GetSnapshot()
+	ctx = context.WithValue(ctx, abstract.SnapshotKey, eas)
+	c.logger.Info("ExperimentAbstract", eakey, eas)
 	return ctx
 }
 
@@ -119,7 +120,7 @@ func (c *Impl) MarkTargetDeploymentFound(targetName, targetNamespace string) boo
 		return false
 	}
 
-	c.experimentAbstractStore[eaKey].TargetsAbstract.MarkTargetFound(targetName, true)
+	c.experimentAbstractStore[eaKey].MarkTargetFound(targetName, true)
 
 	return true
 }
@@ -134,7 +135,7 @@ func (c *Impl) MarkTargetDeploymentMissing(targetName, targetNamespace string) b
 		return false
 	}
 
-	c.experimentAbstractStore[eaKey].TargetsAbstract.MarkTargetFound(targetName, false)
+	c.experimentAbstractStore[eaKey].MarkTargetFound(targetName, false)
 
 	return true
 }
@@ -164,7 +165,7 @@ func (c *Impl) MarkTargetServiceFound(targetName, targetNamespace string) bool {
 		return false
 	}
 
-	c.experimentAbstractStore[eaKey].TargetsAbstract.MarkServiceFound(true)
+	c.experimentAbstractStore[eaKey].MarkServiceFound(true)
 
 	return true
 }
@@ -179,7 +180,7 @@ func (c *Impl) MarkTargetServiceMissing(targetName, targetNamespace string) bool
 		return false
 	}
 
-	c.experimentAbstractStore[eaKey].TargetsAbstract.MarkServiceFound(false)
+	c.experimentAbstractStore[eaKey].MarkServiceFound(false)
 
 	return true
 }

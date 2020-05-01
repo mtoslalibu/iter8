@@ -19,6 +19,7 @@ import (
 	"context"
 	"encoding/json"
 	"fmt"
+	"strconv"
 	"time"
 
 	networkingv1alpha3 "istio.io/api/networking/v1alpha3"
@@ -36,128 +37,68 @@ import (
 	"istio.io/client-go/pkg/apis/networking/v1alpha3"
 )
 
-func (r *ReconcileExperiment) checkExperimentCompleted(context context.Context, instance *iter8v1alpha1.Experiment) (bool, error) {
-	// check experiment is finished
-	if instance.Spec.TrafficControl.GetMaxIterations() < instance.Status.CurrentIteration ||
-		instance.Action.TerminateExperiment() {
-		if err := r.cleanUp(context, instance); err != nil {
-			return true, err
-		}
-		return true, nil
+func (r *ReconcileExperiment) completeExperiment(context context.Context, instance *iter8v1alpha1.Experiment) error {
+	if err := r.cleanUp(context, instance); err != nil {
+		return err
 	}
 
-	return false, nil
+	markExperimentCompleted(instance)
+
+	msg := completeStatusMessage(context, instance)
+	if instance.Succeeded() {
+		r.MarkExperimentSucceeded(context, instance, "%s", msg)
+	} else {
+		r.MarkExperimentFailed(context, instance, "%s", msg)
+	}
+	return nil
 }
 
+// cleanUp cleans up the resources related to experiment to an end status
 func (r *ReconcileExperiment) cleanUp(context context.Context, instance *iter8v1alpha1.Experiment) error {
-	if err := r.targets.Cleanup(context, instance, r.Client); err != nil {
-		return err
-	}
-	if err := r.rules.Cleanup(instance, r.targets, r.istioClient); err != nil {
-		return err
-	}
-
 	r.iter8Cache.RemoveExperiment(instance)
-	log.Info("Cleanup of experiment is done.")
+	r.targets.Cleanup(context, instance, r.Client)
+	if err := r.rules.Cleanup(context, instance, r.istioClient); err != nil {
+		return err
+	}
 
-	r.setExperimentEndStatus(context, instance)
+	util.Logger(context).Info("Cleanup of experiment is done.")
 	return nil
 }
 
-func (r *ReconcileExperiment) getRoutingLists(namespace string, m map[string]string) (*v1alpha3.DestinationRuleList, *v1alpha3.VirtualServiceList, error) {
-	if drl, err := r.istioClient.NetworkingV1alpha3().DestinationRules(namespace).
-		List(metav1.ListOptions{LabelSelector: labels.Set(m).String()}); err != nil {
-
-		return nil, nil, err
-	} else {
-		if vsl, err := r.istioClient.NetworkingV1alpha3().VirtualServices(namespace).
-			List(metav1.ListOptions{LabelSelector: labels.Set(m).String()}); err == nil {
-			return drl, vsl, nil
-
+// returns hard-coded termination message
+func completeStatusMessage(context context.Context, instance *iter8v1alpha1.Experiment) string {
+	out := ""
+	if experimentAbstract(context) != nil && experimentAbstract(context).Terminate() {
+		out = experimentAbstract(context).GetTerminateStatus()
+	} else if instance.Action.TerminateExperiment() {
+		out = "Abort"
+	} else if len(instance.Status.AssessmentSummary.SuccessCriteriaStatus) > 0 {
+		if instance.Status.AssessmentSummary.AllSuccessCriteriaMet {
+			out = "All Success Criteria Were Met"
+		} else {
+			out = "Not All Success Criteria Were Met"
 		}
-		return nil, nil, err
+	} else if instance.Spec.TrafficControl.GetMaxIterations() < instance.Status.CurrentIteration {
+		out = "Last Iteration Was Completed"
+	} else {
+		out = "Unknown"
 	}
+	return out
 }
 
-func (r *ReconcileExperiment) checkOrInitRules(context context.Context, instance *iter8v1alpha1.Experiment) (bool, error) {
+func markExperimentCompleted(instance *iter8v1alpha1.Experiment) {
+	// Clear analysis state
+	instance.Status.AnalysisState.Raw = []byte("{}")
 
-	serviceNs := util.GetServiceNamespace(instance)
-	drl, vsl, err := r.getRoutingLists(serviceNs,
-		map[string]string{routing.ExperimentHost: instance.Spec.TargetService.Name})
-	updateStatus := true
+	// Update grafana url
+	instance.Status.EndTimestamp = metav1.Now().UTC().UnixNano()
+	updateGrafanaURL(instance)
 
-	if err != nil || len(drl.Items) == 0 && len(vsl.Items) == 0 {
-		Logger(context).Info("NoRulesDetected")
-		// Initialize routing rules
-		if err = r.initializeRoutingRules(instance); err != nil {
-			r.MarkRoutingRulesError(context, instance, "Error in Initializing routing rules: %s, Experiment Ended.", err.Error())
-			r.MarkExperimentFailed(context, instance, "Error in Initializing routing rules: %s, Experiment Ended.", err.Error())
-		} else {
-			r.MarkRoutingRulesReady(context, instance,
-				"Init Routing Rules Suceeded, DR: %s, VS: %s",
-				r.rules.DestinationRule.GetName(), r.rules.VirtualService.GetName())
-		}
-	} else {
-		if r.rules, err = validateDetectedRules(drl, vsl, instance); err == nil {
-			r.MarkRoutingRulesReady(context, instance,
-				"RoutingRules detected, DR: %s, VS: %s",
-				r.rules.DestinationRule.GetName(), r.rules.VirtualService.GetName())
-			updateStatus = false
-		} else {
-			r.MarkRoutingRulesError(context, instance,
-				"UnexpectedCondition: %s , Experiment Ended", err.Error())
-			r.MarkExperimentFailed(context, instance, "UnexpectedCondition: %s , Experiment Ended", err.Error())
-		}
-	}
-
-	return updateStatus, err
-}
-
-func (r *ReconcileExperiment) initializeRoutingRules(instance *iter8v1alpha1.Experiment) (err error) {
-	serviceName := instance.Spec.TargetService.Name
-	serviceNamespace := util.GetServiceNamespace(instance)
-
-	r.rules = &routing.IstioRoutingRules{}
-
-	if instance.Spec.RoutingReference != nil {
-		if err = r.detectRoutingReferences(instance); err != nil {
-			return err
-		}
-	} else {
-		// Create Dummy Stable rules
-		dr := routing.NewDestinationRule(serviceName, instance.GetName(), serviceNamespace).
-			WithStableLabel().
-			WithInitLabel().
-			Build()
-		dr, err = r.istioClient.NetworkingV1alpha3().DestinationRules(serviceNamespace).Create(dr)
-		if err != nil {
-			return err
-		}
-
-		log.Info("NewRuleCreated", "dr", dr.GetName())
-
-		vs := routing.NewVirtualService(serviceName, instance.GetName(), serviceNamespace).
-			WithNewStableSet(serviceName).
-			WithInitLabel().
-			Build()
-		vs, err = r.istioClient.NetworkingV1alpha3().VirtualServices(serviceNamespace).Create(vs)
-		if err != nil {
-			return err
-		}
-
-		log.Info("NewRuleCreated", "vs", vs.GetName())
-
-		r.rules.DestinationRule = dr
-		r.rules.VirtualService = vs
-
-	}
-
-	return nil
+	instance.Status.MarkExperimentCompleted()
 }
 
 func (r *ReconcileExperiment) detectRoutingReferences(instance *iter8v1alpha1.Experiment) error {
 	if instance.Spec.RoutingReference == nil {
-		log.Info("NoExternalReference")
 		return nil
 	}
 	// Only support single vs for edge service now
@@ -208,85 +149,92 @@ func (r *ReconcileExperiment) detectRoutingReferences(instance *iter8v1alpha1.Ex
 	return fmt.Errorf("Referenced rule not supported")
 }
 
-func (r *ReconcileExperiment) setExperimentEndStatus(context context.Context, instance *iter8v1alpha1.Experiment) (err error) {
-	if instance.Succeeded() {
-		// experiment is successful
+func (r *ReconcileExperiment) getRoutingLists(namespace string, m map[string]string) (*v1alpha3.DestinationRuleList, *v1alpha3.VirtualServiceList, error) {
+	if drl, err := r.istioClient.NetworkingV1alpha3().DestinationRules(namespace).
+		List(metav1.ListOptions{LabelSelector: labels.Set(m).String()}); err != nil {
 
-		switch instance.Spec.TrafficControl.GetOnSuccess() {
-		case "baseline":
-			instance.Status.TrafficSplit.Baseline = 100
-			instance.Status.TrafficSplit.Candidate = 0
-		case "candidate":
-			instance.Status.TrafficSplit.Baseline = 0
-			instance.Status.TrafficSplit.Candidate = 100
-		case "both":
-		}
-
-		r.MarkExperimentSucceeded(context, instance, "%s", successMsg(instance))
+		return nil, nil, err
 	} else {
-		instance.Status.TrafficSplit.Baseline = 100
-		instance.Status.TrafficSplit.Candidate = 0
-		r.MarkExperimentFailed(context, instance, "%s", failureMsg(instance))
-	}
+		if vsl, err := r.istioClient.NetworkingV1alpha3().VirtualServices(namespace).
+			List(metav1.ListOptions{LabelSelector: labels.Set(m).String()}); err == nil {
+			return drl, vsl, nil
 
-	return
+		}
+		return nil, nil, err
+	}
 }
 
-func (r *ReconcileExperiment) detectTargets(context context.Context, instance *iter8v1alpha1.Experiment) (bool, error) {
+func (r *ReconcileExperiment) checkOrInitRules(context context.Context, instance *iter8v1alpha1.Experiment) error {
+	log := util.Logger(context)
+	serviceNs := instance.ServiceNamespace()
+	drl, vsl, err := r.getRoutingLists(serviceNs,
+		map[string]string{routing.ExperimentHost: instance.Spec.TargetService.Name})
+
+	if err != nil || len(drl.Items) == 0 && len(vsl.Items) == 0 {
+		log.Info("NoRulesDetected")
+		// Initialize routing rules
+		if err = r.initializeRoutingRules(instance); err != nil {
+			markExperimentCompleted(instance)
+			r.MarkRoutingRulesError(context, instance, "Error in Initializing routing rules: %s, Experiment Ended.", err.Error())
+			r.MarkExperimentFailed(context, instance, "Error in Initializing routing rules: %s, Experiment Ended.", err.Error())
+			r.iter8Cache.RemoveExperiment(instance)
+		} else {
+			r.MarkRoutingRulesReady(context, instance,
+				"Init Routing Rules Suceeded, DR: %s, VS: %s",
+				r.rules.DestinationRule.GetName(), r.rules.VirtualService.GetName())
+		}
+	} else {
+		if r.rules, err = validateDetectedRules(drl, vsl, instance); err == nil {
+			r.MarkRoutingRulesReady(context, instance,
+				"RoutingRules detected, DR: %s, VS: %s",
+				r.rules.DestinationRule.GetName(), r.rules.VirtualService.GetName())
+		} else {
+			markExperimentCompleted(instance)
+			r.MarkRoutingRulesError(context, instance,
+				"UnexpectedCondition: %s , Experiment Ended", err.Error())
+			r.MarkExperimentFailed(context, instance, "UnexpectedCondition: %s , Experiment Ended", err.Error())
+			r.iter8Cache.RemoveExperiment(instance)
+		}
+	}
+
+	return err
+}
+
+func (r *ReconcileExperiment) initializeRoutingRules(instance *iter8v1alpha1.Experiment) (err error) {
 	serviceName := instance.Spec.TargetService.Name
-	serviceNamespace := util.GetServiceNamespace(instance)
+	serviceNamespace := instance.ServiceNamespace()
 
-	if r.targets == nil {
-		r.targets = targets.InitTargets()
-	}
-	// Get k8s service
-	err := r.Get(context, types.NamespacedName{Name: serviceName, Namespace: serviceNamespace}, r.targets.Service)
-	if err != nil {
-		r.MarkTargetsError(context, instance, "Missing Service")
-		return true, fmt.Errorf("Missing service %s", serviceName)
-	}
+	r.rules = &routing.IstioRoutingRules{}
 
-	baselineName, candidateName := instance.Spec.TargetService.Baseline, instance.Spec.TargetService.Candidate
-	// Get baseline deployment and candidate deployment
-	if err = r.Get(context, types.NamespacedName{Name: baselineName, Namespace: serviceNamespace}, r.targets.Baseline); err == nil {
-		//	Convert state from stable to progressing
-		if r.rules.IsStable() {
-			// Need to pass baseline into the builder
-			if err := r.rules.StableToProgressing(r.targets, instance.Name, serviceNamespace, r.istioClient); err != nil {
-				r.MarkTargetsError(context, instance, "%s", err.Error())
-				return true, err
-			}
-			instance.Status.TrafficSplit.Baseline = 100
+	if instance.Spec.RoutingReference != nil {
+		if err = r.detectRoutingReferences(instance); err != nil {
+			return err
 		}
 	} else {
-
-		r.MarkTargetsError(context, instance, "Missing Baseline")
-		return true, fmt.Errorf("Missing Baseline %s", baselineName)
-	}
-
-	if err = r.Get(context, types.NamespacedName{Name: candidateName, Namespace: serviceNamespace}, r.targets.Candidate); err == nil {
-		if updateSubset(r.rules.DestinationRule, r.targets.Candidate, routing.Candidate) {
-			uddr, err := r.istioClient.NetworkingV1alpha3().
-				DestinationRules(r.rules.DestinationRule.GetNamespace()).
-				Update(r.rules.DestinationRule)
-			if err != nil {
-				return false, err
-			}
-			r.rules.DestinationRule = uddr
+		// Create Dummy Stable rules
+		dr := routing.NewDestinationRule(serviceName, instance.GetName(), serviceNamespace).
+			WithStableLabel().
+			WithInitLabel().
+			Build()
+		dr, err = r.istioClient.NetworkingV1alpha3().DestinationRules(serviceNamespace).Create(dr)
+		if err != nil {
+			return err
 		}
-	} else {
-		r.MarkTargetsError(context, instance, "Missing Candidate")
-		return true, fmt.Errorf("Missing Candidate %s", candidateName)
+
+		vs := routing.NewVirtualService(serviceName, instance.GetName(), serviceNamespace).
+			WithNewStableSet(serviceName).
+			WithInitLabel().
+			Build()
+		vs, err = r.istioClient.NetworkingV1alpha3().VirtualServices(serviceNamespace).Create(vs)
+		if err != nil {
+			return err
+		}
+
+		r.rules.DestinationRule = dr
+		r.rules.VirtualService = vs
 	}
 
-	if r.MarkTargetsFound(context, instance) {
-		// Update start timestamp and GrafanaURL
-		instance.Status.StartTimestamp = metav1.Now().UTC().UnixNano()
-		updateGrafanaURL(instance, util.GetServiceNamespace(instance))
-		return true, nil
-	}
-
-	return false, nil
+	return nil
 }
 
 // To validate whether the detected rules can be handled by the experiment
@@ -365,10 +313,113 @@ func validateVirtualService(instance *iter8v1alpha1.Experiment, vs *v1alpha3.Vir
 	return nil
 }
 
+// return true if instance status should be updated
+// returns non-nil error if current reconcile request should be terminated right after this function
+func (r *ReconcileExperiment) detectTargets(context context.Context, instance *iter8v1alpha1.Experiment) error {
+	serviceName := instance.Spec.TargetService.Name
+	serviceNamespace := instance.ServiceNamespace()
+
+	if r.targets == nil {
+		r.targets = targets.InitTargets()
+	}
+	// Get k8s service
+	err := r.Get(context, types.NamespacedName{Name: serviceName, Namespace: serviceNamespace}, r.targets.Service)
+	if err != nil {
+		if instance.Status.TargetsFound() {
+			r.MarkTargetsError(context, instance, "Service Deleted")
+			onDeletedTarget(instance, targets.RoleService)
+			return nil
+		} else {
+			r.MarkTargetsError(context, instance, "Missing Service")
+			return err
+		}
+	}
+
+	baselineName, candidateName := instance.Spec.TargetService.Baseline, instance.Spec.TargetService.Candidate
+	// Get baseline deployment and candidate deployment
+	if err = r.Get(context, types.NamespacedName{Name: baselineName, Namespace: serviceNamespace}, r.targets.Baseline); err == nil {
+		//	Convert state from stable to progressing
+		if r.rules.IsStable() {
+			// Need to pass baseline into the builder
+			if err := r.rules.StableToProgressing(instance, r.targets, r.istioClient); err != nil {
+				r.MarkTargetsError(context, instance, "%s", err.Error())
+				return err
+			}
+		}
+	} else {
+		if instance.Status.TargetsFound() {
+			r.MarkTargetsError(context, instance, "Baseline Deleted")
+			onDeletedTarget(instance, targets.RoleBaseline)
+			return nil
+		} else {
+			r.MarkTargetsError(context, instance, "Missing Baseline")
+			return err
+		}
+	}
+
+	if err = r.Get(context, types.NamespacedName{Name: candidateName, Namespace: serviceNamespace}, r.targets.Candidate); err == nil {
+		if updateSubset(r.rules.DestinationRule, r.targets.Candidate, routing.Candidate) {
+			uddr, err := r.istioClient.NetworkingV1alpha3().
+				DestinationRules(r.rules.DestinationRule.GetNamespace()).
+				Update(r.rules.DestinationRule)
+			if err != nil {
+				return err
+			}
+			r.rules.DestinationRule = uddr
+		}
+	} else {
+		if instance.Status.TargetsFound() {
+			r.MarkTargetsError(context, instance, "Candidate Deleted")
+			onDeletedTarget(instance, targets.RoleCandidate)
+			return nil
+		} else {
+			r.MarkTargetsError(context, instance, "Missing Candidate")
+			return err
+		}
+	}
+
+	r.MarkTargetsFound(context, instance)
+
+	return nil
+}
+
+func updateSubset(dr *v1alpha3.DestinationRule, d *appsv1.Deployment, name string) bool {
+	update, found := true, false
+	for idx, subset := range dr.Spec.Subsets {
+		if subset.Name == routing.Stable && name == routing.Baseline {
+			dr.Spec.Subsets[idx].Name = name
+			dr.Spec.Subsets[idx].Labels = d.Spec.Template.Labels
+			found = true
+			break
+		}
+		if subset.Name == name {
+			found = true
+			update = false
+			break
+		}
+	}
+
+	if !found {
+		dr.Spec.Subsets = append(dr.Spec.Subsets, &networkingv1alpha3.Subset{
+			Name:   name,
+			Labels: d.Spec.Template.Labels,
+		})
+	}
+	return update
+}
+
+// returns non-nil error if reconcile process should be terminated right after this function
 func (r *ReconcileExperiment) progressExperiment(context context.Context, instance *iter8v1alpha1.Experiment) error {
-	// Progressing on Experiment
+	log := util.Logger(context)
+	// mark experiment begin
+	if instance.Status.StartTimestamp == 0 {
+		instance.Status.StartTimestamp = metav1.Now().UTC().UnixNano()
+		updateGrafanaURL(instance)
+		r.markStatusUpdate()
+	}
+
 	traffic := instance.Spec.TrafficControl
-	rolloutPercent := r.rules.GetWeight(routing.Candidate)
+	rolloutPercent := instance.Status.TrafficSplit.Candidate
 	strategy := instance.GetStrategy()
 	algorithm := analytics.GetAlgorithm(strategy)
 	if algorithm == nil {
@@ -378,10 +429,10 @@ func (r *ReconcileExperiment) progressExperiment(context context.Context, instan
 	}
 
 	if algorithm.GetPath() == "" {
-		rolloutPercent += int32(traffic.GetStepSize())
+		rolloutPercent += int(traffic.GetStepSize())
 	} else {
 		// Get latest analysis
-		payload, err := analytics.MakeRequest(instance, r.targets.Baseline, r.targets.Candidate, algorithm)
+		payload, err := analytics.MakeRequest(instance, algorithm)
 		if err != nil {
 			r.MarkAnalyticsServiceError(context, instance, "%s", err.Error())
 			return err
@@ -410,11 +461,12 @@ func (r *ReconcileExperiment) progressExperiment(context context.Context, instan
 
 		// abort experiment
 		if response.Assessment.Summary.AbortExperiment {
-			return r.abortExperiment(context, instance)
+			instance.Action = iter8v1alpha1.ActionOverrideFailure
+			return nil
 		}
 
 		// read latest rollout percent
-		rolloutPercent = int32(response.Candidate.TrafficPercentage)
+		rolloutPercent = int(response.Candidate.TrafficPercentage)
 		r.MarkAnalyticsServiceRunning(context, instance)
 	}
 
@@ -423,17 +475,15 @@ func (r *ReconcileExperiment) progressExperiment(context context.Context, instan
 	if instance.Status.CurrentIteration > 0 && !instance.Succeeded() {
 		r.MarkExperimentProgress(context, instance, true, iter8v1alpha1.ReasonIterationFailed,
 			"")
-	} else if rolloutPercent <= int32(traffic.GetMaxTrafficPercentage()) &&
-		r.rules.GetWeight(routing.Candidate) != rolloutPercent {
+	} else if rolloutPercent <= int(traffic.GetMaxTrafficPercentage()) &&
+		instance.Status.TrafficSplit.Candidate != rolloutPercent {
 		log.Info("NewTrafficUpdate")
 		// Increase the traffic upto max traffic amount
 		// Update Traffic splitting rule
-		if err := r.rules.UpdateRolloutPercent(instance.Spec.TargetService.Name, util.GetServiceNamespace(instance), rolloutPercent, r.istioClient); err != nil {
+		if err := r.rules.UpdateRolloutPercent(instance, rolloutPercent, r.istioClient); err != nil {
 			r.MarkRoutingRulesError(context, instance, "%s", err.Error())
 			return err
 		}
-		instance.Status.TrafficSplit.Baseline = 100 - int(rolloutPercent)
-		instance.Status.TrafficSplit.Candidate = int(rolloutPercent)
 
 		r.MarkExperimentProgress(context, instance, true, iter8v1alpha1.ReasonIterationSucceeded,
 			"New Traffic, baseline: %d, candidate: %d",
@@ -448,50 +498,28 @@ func (r *ReconcileExperiment) progressExperiment(context context.Context, instan
 	return nil
 }
 
-func (r *ReconcileExperiment) abortExperiment(context context.Context, instance *iter8v1alpha1.Experiment) (err error) {
-	// rollback to baseline and mark experiment as complete
-	if err = r.targets.Cleanup(context, instance, r.Client); err != nil {
-		return
+func onDeletedTarget(instance *iter8v1alpha1.Experiment, role targets.Role) {
+	switch role {
+	case targets.RoleBaseline:
+		instance.Action = iter8v1alpha1.ActionOverrideSuccess
+		onsuccess := "candidate"
+		instance.Spec.TrafficControl.OnSuccess = &onsuccess
+	case targets.RoleCandidate, targets.RoleService:
+		instance.Action = iter8v1alpha1.ActionOverrideFailure
 	}
-	if err = r.rules.Cleanup(instance, r.targets, r.istioClient); err != nil {
-		return
-	}
-
-	instance.Status.TrafficSplit.Baseline = 100
-	instance.Status.TrafficSplit.Candidate = 0
-
-	r.MarkExperimentFailed(context, instance, "%s", "Aborted")
-	return
 }
 
-func (r *ReconcileExperiment) startNextIteration(context context.Context, instance *iter8v1alpha1.Experiment) {
-	instance.Status.LastIncrementTime = metav1.NewTime(time.Now())
-	instance.Status.CurrentIteration++
-	r.MarkExperimentProgress(context, instance, false, iter8v1alpha1.ReasonIterationUpdate,
-		"Iteration %d Started", instance.Status.CurrentIteration)
-}
-
-func updateSubset(dr *v1alpha3.DestinationRule, d *appsv1.Deployment, name string) bool {
-	update, found := true, false
-	for idx, subset := range dr.Spec.Subsets {
-		if subset.Name == routing.Stable && name == routing.Baseline {
-			dr.Spec.Subsets[idx].Name = name
-			dr.Spec.Subsets[idx].Labels = d.Spec.Template.Labels
-			found = true
-			break
-		}
-		if subset.Name == name {
-			found = true
-			update = false
-			break
-		}
+func updateGrafanaURL(instance *iter8v1alpha1.Experiment) {
+	endTsStr := "now"
+	if instance.Status.EndTimestamp > 0 {
+		endTsStr = strconv.FormatInt(instance.Status.EndTimestamp/int64(time.Millisecond), 10)
 	}
-
-	if !found {
-		dr.Spec.Subsets = append(dr.Spec.Subsets, &networkingv1alpha3.Subset{
-			Name:   name,
-			Labels: d.Spec.Template.Labels,
-		})
-	}
-	return update
+	instance.Status.GrafanaURL = instance.Spec.Analysis.GetGrafanaEndpoint() +
+		"/d/eXPEaNnZz/iter8-application-metrics?" +
+		"var-namespace=" + instance.ServiceNamespace() +
+		"&var-service=" + instance.Spec.TargetService.Name +
+		"&var-baseline=" + instance.Spec.TargetService.Baseline +
+		"&var-candidate=" + instance.Spec.TargetService.Candidate +
+		"&from=" + strconv.FormatInt(instance.Status.StartTimestamp/int64(time.Millisecond), 10) +
+		"&to=" + endTsStr
 }

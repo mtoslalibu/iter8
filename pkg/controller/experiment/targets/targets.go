@@ -20,10 +20,19 @@ import (
 
 	appsv1 "k8s.io/api/apps/v1"
 	corev1 "k8s.io/api/core/v1"
+	"k8s.io/apimachinery/pkg/api/errors"
 	"sigs.k8s.io/controller-runtime/pkg/client"
 
 	iter8v1alpha1 "github.com/iter8-tools/iter8-controller/pkg/apis/iter8/v1alpha1"
 	"github.com/iter8-tools/iter8-controller/pkg/controller/experiment/util"
+)
+
+type Role string
+
+const (
+	RoleService   Role = "service"
+	RoleBaseline  Role = "baseline"
+	RoleCandidate Role = "candidate"
 )
 
 type Targets struct {
@@ -40,31 +49,33 @@ func InitTargets() *Targets {
 	}
 }
 
-func (t *Targets) Cleanup(context context.Context, instance *iter8v1alpha1.Experiment, client client.Client) error {
-	if !util.ExperimentAbstract(context).AbortExperiment() &&
-		instance.Spec.CleanUp == iter8v1alpha1.CleanUpDelete {
+func (t *Targets) Cleanup(context context.Context, instance *iter8v1alpha1.Experiment, client client.Client) {
+	if instance.Spec.CleanUp == iter8v1alpha1.CleanUpDelete {
+		var stableTarget Role
 		if instance.Succeeded() {
-			// experiment is successful
 			switch instance.Spec.TrafficControl.GetOnSuccess() {
-			case "candidate":
-				// delete baseline deployment
-				if err := util.DeleteObjects(context, client, t.Baseline); err != nil {
-					return err
-				}
-			case "both":
-				//no-op
 			case "baseline":
-				// delete candidate deployment
-				if err := util.DeleteObjects(context, client, t.Candidate); err != nil {
-					return err
-				}
+				stableTarget = RoleBaseline
+			case "candidate":
+				stableTarget = RoleCandidate
 			}
 		} else {
-			if err := util.DeleteObjects(context, client, t.Candidate); err != nil {
-				return err
+			stableTarget = RoleBaseline
+		}
+
+		switch stableTarget {
+		case RoleBaseline:
+			if err := client.Delete(context, t.Candidate); err != nil && errors.IsNotFound(err) {
+				util.Logger(context).Error(err, "Delete Candidate", "")
 			}
+			instance.Status.TrafficSplit.Baseline = 100
+			instance.Status.TrafficSplit.Candidate = 0
+		case RoleCandidate:
+			if err := client.Delete(context, t.Baseline); err != nil && errors.IsNotFound(err) {
+				util.Logger(context).Error(err, "Delete Baseline", "")
+			}
+			instance.Status.TrafficSplit.Baseline = 0
+			instance.Status.TrafficSplit.Candidate = 100
 		}
 	}
-
-	return nil
 }

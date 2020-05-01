@@ -308,6 +308,15 @@ type Summary struct {
 	SuccessCriteriaStatus []SuccessCriterionStatus `json:"success_criteria,omitempty"`
 }
 
+// ServiceNamespace gets the namespace for targets
+func (e *Experiment) ServiceNamespace() string {
+	serviceNamespace := e.Spec.TargetService.Namespace
+	if serviceNamespace == "" {
+		serviceNamespace = e.Namespace
+	}
+	return serviceNamespace
+}
+
 // Assessment2String prints formatted output of assessment summary
 func (s *Summary) Assessment2String() string {
 	if len(s.Conclusions) == 0 {
@@ -406,11 +415,11 @@ func (t *TrafficControl) GetConfidence() float64 {
 	return *confidence
 }
 
-// GetServiceEndpoint returns the analytcis endpoint; Default is "http://iter8-analytics.iter8".
+// GetServiceEndpoint returns the analytcis endpoint; Default is "http://iter8-analytics.iter8:8080".
 func (a *Analysis) GetServiceEndpoint() string {
 	endpoint := a.AnalyticsService
 	if len(endpoint) == 0 {
-		return "http://iter8-analytics.iter8"
+		return "http://iter8-analytics.iter8:8080"
 	}
 
 	return endpoint
@@ -493,6 +502,8 @@ const (
 	ReasonSyncMetricsSucceeded    = "SyncMetricsSucceeded"
 	ReasonRoutingRulesError       = "RoutingRulesError"
 	ReasonRoutingRulesReady       = "RoutingRulesReady"
+	ReasonActionPause             = "ActionPause"
+	ReasonActionResume            = "ActionResume"
 )
 
 // Init initialize status values
@@ -530,6 +541,10 @@ func (s *ExperimentStatus) MarkMetricsSyncedError(reason, messageFormat string, 
 	s.Phase = PhasePause
 	s.Message = composeMessage(reason, messageFormat, messageA...)
 	return prevStat != corev1.ConditionFalse
+}
+
+func (s *ExperimentStatus) TargetsFound() bool {
+	return s.GetCondition(ExperimentConditionTargetsProvided).Status == corev1.ConditionTrue
 }
 
 // MarkTargetsFound sets the condition that the all target have been found
@@ -614,6 +629,24 @@ func (s *ExperimentStatus) MarkExperimentFailed(reason, messageFormat string, me
 	s.Message = composeMessage(reason, messageFormat, messageA...)
 }
 
+// MarkActionPause sets the phase and status that experiment is paused by action
+// returns true if this is a newly-set operation
+func (s *ExperimentStatus) MarkActionPause() bool {
+	prevPhase, prevMsg := s.Phase, s.Message
+	s.Phase = PhasePause
+	s.Message = ReasonActionPause
+	return prevPhase != s.Phase || s.Message != prevMsg
+}
+
+// MarkActionResume sets the phase and status that experiment is resmued by action
+// returns true if this is a newly-set operation
+func (s *ExperimentStatus) MarkActionResume() bool {
+	prevPhase, prevMsg := s.Phase, s.Message
+	s.Phase = PhaseProgressing
+	s.Message = ReasonActionResume
+	return prevPhase != s.Phase || s.Message != prevMsg
+}
+
 func composeMessage(reason, messageFormat string, messageA ...interface{}) string {
 	out := reason
 	if len(fmt.Sprintf(messageFormat, messageA...)) > 0 {
@@ -670,12 +703,15 @@ func (e *Experiment) GetStrategy() string {
 
 // Succeeded determines whether experiment is a success or not
 func (e *Experiment) Succeeded() bool {
-	if e.GetStrategy() == "increment_without_check" {
-		return e.Action == ActionOverrideSuccess ||
-			e.Action == ""
+	if e.Action.TerminateExperiment() {
+		return e.Action == ActionOverrideSuccess
 	}
-	return e.Action == ActionOverrideSuccess ||
-		e.Status.AssessmentSummary.AllSuccessCriteriaMet && e.Action != ActionOverrideFailure
+
+	if e.GetStrategy() == "increment_without_check" {
+		return true
+	} else {
+		return e.Status.AssessmentSummary.AllSuccessCriteriaMet
+	}
 }
 
 func init() {

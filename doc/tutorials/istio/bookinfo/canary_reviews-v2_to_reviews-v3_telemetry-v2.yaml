@@ -11,13 +11,13 @@ spec:
   trafficControl:
     strategy: check_and_increment
     interval: 30s
-    trafficStepSize: 25
-    maxIterations: 4
+    trafficStepSize: 20
+    maxIterations: 8
     maxTrafficPercentage: 80
   analysis:
     analyticsService: "http://iter8-analytics.iter8:8080"
     successCriteria:
       - metricName: iter8_latency
         toleranceType: threshold
-        tolerance: 0.2
+        tolerance: 200
         sampleSize: 5

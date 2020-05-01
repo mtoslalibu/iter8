@@ -16,13 +16,14 @@ limitations under the License.
 package routing
 
 import (
-	iter8v1alpha1 "github.com/iter8-tools/iter8-controller/pkg/apis/iter8/v1alpha1"
-	"github.com/iter8-tools/iter8-controller/pkg/controller/experiment/targets"
+	"context"
 
 	"istio.io/client-go/pkg/apis/networking/v1alpha3"
 	istioclient "istio.io/client-go/pkg/clientset/versioned"
-
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
+
+	iter8v1alpha1 "github.com/iter8-tools/iter8-controller/pkg/apis/iter8/v1alpha1"
+	"github.com/iter8-tools/iter8-controller/pkg/controller/experiment/targets"
 )
 
 type IstioRoutingRules struct {
@@ -50,10 +51,10 @@ func (rules *IstioRoutingRules) IsInit() bool {
 	return drok && vsok
 }
 
-func (r *IstioRoutingRules) StableToProgressing(targets *targets.Targets, expName, serviceNamespace string, ic istioclient.Interface) error {
+func (r *IstioRoutingRules) StableToProgressing(instance *iter8v1alpha1.Experiment, targets *targets.Targets, ic istioclient.Interface) error {
 	r.DestinationRule = NewDestinationRuleBuilder(r.DestinationRule).
 		WithStableToProgressing(targets.Baseline).
-		WithExperimentRegisterd(expName).
+		WithExperimentRegisterd(instance.Name).
 		Build()
 
 	if dr, err := ic.NetworkingV1alpha3().
@@ -65,8 +66,8 @@ func (r *IstioRoutingRules) StableToProgressing(targets *targets.Targets, expNam
 	}
 
 	r.VirtualService = NewVirtualServiceBuilder(r.VirtualService).
-		WithStableToProgressing(targets.Service.GetName(), serviceNamespace).
-		WithExperimentRegisterd(expName).
+		WithStableToProgressing(targets.Service.GetName(), instance.ServiceNamespace()).
+		WithExperimentRegisterd(instance.Name).
 		Build()
 	if vs, err := ic.NetworkingV1alpha3().
 		VirtualServices(r.VirtualService.GetNamespace()).
@@ -76,6 +77,8 @@ func (r *IstioRoutingRules) StableToProgressing(targets *targets.Targets, expNam
 		r.VirtualService = vs
 	}
 
+	instance.Status.TrafficSplit.Baseline = 100
+	instance.Status.TrafficSplit.Candidate = 0
 	return nil
 }
 
@@ -92,27 +95,47 @@ func (r *IstioRoutingRules) DeleteAll(ic istioclient.Interface) (err error) {
 	return
 }
 
-func (r *IstioRoutingRules) Cleanup(instance *iter8v1alpha1.Experiment, targets *targets.Targets, ic istioclient.Interface) (err error) {
+func (r *IstioRoutingRules) Cleanup(context context.Context, instance *iter8v1alpha1.Experiment, ic istioclient.Interface) (err error) {
 	if instance.Spec.CleanUp == iter8v1alpha1.CleanUpDelete && r.IsInit() {
 		err = r.DeleteAll(ic)
 	} else {
 		serviceName := instance.Spec.TargetService.Name
+		serviceNs := instance.ServiceNamespace()
+
+		var stableTarget targets.Role
 		if instance.Succeeded() {
-			// experiment is successful
 			switch instance.Spec.TrafficControl.GetOnSuccess() {
 			case "baseline":
-				r.ToStable(Baseline, serviceName, serviceName)
+				stableTarget = targets.RoleBaseline
 			case "candidate":
-				r.ToStable(Candidate, serviceName, serviceName)
-			case "both":
-				r.SetStableLabels()
+				stableTarget = targets.RoleCandidate
 			}
-
 		} else {
-			r.ToStable(Baseline, serviceName, serviceName)
+			stableTarget = targets.RoleBaseline
 		}
 
-		err = r.UpdateRemoveRules(ic)
+		switch stableTarget {
+		case targets.RoleBaseline:
+			r.ToStable(Baseline, serviceName, serviceNs)
+			err = r.UpdateRemoveRules(ic)
+			if err != nil {
+				return
+			}
+			instance.Status.TrafficSplit.Baseline = 100
+			instance.Status.TrafficSplit.Candidate = 0
+		case targets.RoleCandidate:
+			r.ToStable(Candidate, serviceName, serviceNs)
+			err = r.UpdateRemoveRules(ic)
+			if err != nil {
+				return
+			}
+			instance.Status.TrafficSplit.Baseline = 0
+			instance.Status.TrafficSplit.Candidate = 100
+		default:
+			r.SetStableLabels()
+			err = r.UpdateRemoveRules(ic)
+		}
+
 	}
 	return
 }
@@ -157,9 +180,9 @@ func (r *IstioRoutingRules) GetWeight(subset string) int32 {
 	return 0
 }
 
-func (r *IstioRoutingRules) UpdateRolloutPercent(serviceName, serviceNamespace string, w int32, ic istioclient.Interface) error {
+func (r *IstioRoutingRules) UpdateRolloutPercent(instance *iter8v1alpha1.Experiment, rolloutPercent int, ic istioclient.Interface) error {
 	vs := NewVirtualServiceBuilder(r.VirtualService).
-		WithRolloutPercent(serviceName, serviceNamespace, w).
+		WithRolloutPercent(instance.Spec.TargetService.Name, instance.ServiceNamespace(), int32(rolloutPercent)).
 		Build()
 
 	if vs, err := ic.NetworkingV1alpha3().VirtualServices(vs.Namespace).Update(vs); err != nil {
@@ -168,5 +191,7 @@ func (r *IstioRoutingRules) UpdateRolloutPercent(serviceName, serviceNamespace s
 		r.VirtualService = vs
 	}
 
+	instance.Status.TrafficSplit.Baseline = 100 - rolloutPercent
+	instance.Status.TrafficSplit.Candidate = rolloutPercent
 	return nil
 }

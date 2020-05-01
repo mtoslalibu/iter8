@@ -1,23 +1,27 @@
 apiVersion: iter8.tools/v1alpha1
 kind: Experiment
 metadata:
-  name: reviews-v3-rollout
+  name: productpage-v2-rollout
 spec:
+  routingReference:
+    apiVersion: networking.istio.io/v1alpha3
+    kind: VirtualService
+    name: bookinfo
   targetService:
-    name: reviews
+    name: productpage
     apiVersion: v1
-    baseline: reviews-v2
-    candidate: reviews-v3
+    baseline: productpage-v1
+    candidate: productpage-v2
   trafficControl:
     strategy: check_and_increment
     interval: 30s
-    trafficStepSize: 25
-    maxIterations: 4
+    trafficStepSize: 20
+    maxIterations: 6
     maxTrafficPercentage: 80
   analysis:
     analyticsService: "http://iter8-analytics.iter8:8080"
     successCriteria:
       - metricName: iter8_latency
         toleranceType: threshold
-        tolerance: 0.2
+        tolerance: 3000
         sampleSize: 5

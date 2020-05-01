@@ -51,10 +51,6 @@ func main() {
 	log.Info("setting up manager")
 	options := manager.Options{MetricsBindAddress: metricsAddr}
 
-	if namespace := os.Getenv("NAMESPACE"); namespace != "" {
-		options.Namespace = namespace
-	}
-
 	mgr, err := manager.New(cfg, options)
 	if err != nil {
 		log.Error(err, "unable to set up overall controller manager")
