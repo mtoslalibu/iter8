@@ -292,7 +292,6 @@ func (r *ReconcileExperiment) Reconcile(request reconcile.Request) (reconcile.Re
 	ctx = context.WithValue(ctx, util.LoggerKey, log)
 	log.Info("reconciling")
 
-	log.Info("phase", "enter", instance.Status.Phase)
 	// Init metadata of experiment instance
 	if instance.Status.CreateTimestamp == 0 {
 		instance.Status.Init()

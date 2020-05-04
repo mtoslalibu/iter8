@@ -99,6 +99,7 @@ type Criterion struct {
 
 	// Threshold specifies the numerical value for a success criterion
 	// Metric value above threhsold violates the criterion
+	// +optional
 	Threshold Threshold `json:"threshold,omitempty"`
 
 	// Once a target violates this criterion, traffic to it will be cutoff or not
@@ -119,7 +120,7 @@ type Threshold struct {
 	Type string `json:"type"`
 
 	// Value of threshold
-	Value float64 `json:"value"`
+	Value float32 `json:"value"`
 }
 
 // Duration specifies how often/many times the expriment should re-evaluate the assessment
