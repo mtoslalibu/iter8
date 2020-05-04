@@ -17,6 +17,7 @@ package experiment
 
 import (
 	"context"
+	"fmt"
 
 	istioclient "istio.io/client-go/pkg/clientset/versioned"
 	appsv1 "k8s.io/api/apps/v1"
@@ -48,8 +49,7 @@ import (
 var log = logf.Log.WithName("experiment-controller")
 
 const (
-	KubernetesService      = "v1"
-	KnativeServiceV1Alpha1 = "serving.knative.dev/v1alpha1"
+	KubernetesV1 = "v1"
 
 	Iter8Controller = "iter8-controller"
 	Finalizer       = "finalizer.iter8-tools"
@@ -117,7 +117,7 @@ func add(mgr manager.Manager, r *ReconcileExperiment) error {
 				return false
 			}
 
-			log.Info("TargetDetected", "", name+"."+namespace)
+			log.Info("DeploymentDetected", "", name+"."+namespace)
 
 			return true
 		},
@@ -257,6 +257,7 @@ type ReconcileExperiment struct {
 
 	targets *targets.Targets
 	rules   *routing.IstioRoutingRules
+	interState
 }
 
 // Reconcile reads that state of the cluster for a Experiment object and makes changes based on the state read
@@ -287,21 +288,22 @@ func (r *ReconcileExperiment) Reconcile(request reconcile.Request) (reconcile.Re
 		return reconcile.Result{}, err
 	}
 
+	log := log.WithValues("namespace", instance.Namespace, "name", instance.Name)
+	ctx = context.WithValue(ctx, util.LoggerKey, log)
+	log.Info("reconciling")
+
+	log.Info("phase", "enter", instance.Status.Phase)
 	// Init metadata of experiment instance
 	if instance.Status.CreateTimestamp == 0 {
 		instance.Status.Init()
-		if err := r.Status().Update(ctx, instance); err != nil && !util.ValidUpdateErr(err) {
+		if err := r.Status().Update(ctx, instance); err != nil && !validUpdateErr(err) {
 			log.Info("Fail to update status: %v", err)
 			return reconcile.Result{}, nil
 		}
 	}
 
-	log := log.WithValues("namespace", instance.Namespace, "name", instance.Name)
-	ctx = context.WithValue(ctx, util.LoggerKey, log)
-	log.Info("reconciling")
-
 	// Add finalizer to the experiment object
-	if err = addFinalizerIfAbsent(ctx, r, instance, Finalizer); err != nil && !util.ValidUpdateErr(err) {
+	if err = addFinalizerIfAbsent(ctx, r, instance, Finalizer); err != nil && !validUpdateErr(err) {
 		return reconcile.Result{}, err
 	}
 
@@ -310,26 +312,28 @@ func (r *ReconcileExperiment) Reconcile(request reconcile.Request) (reconcile.Re
 		return r.finalize(ctx, instance)
 	}
 
-	if !r.proceed(ctx, instance) {
+	if instance.Status.Phase == iter8v1alpha1.PhaseCompleted {
 		log.Info("NotToProceed", "phase", instance.Status.Phase)
 		return reconcile.Result{}, nil
 	}
 
 	ctx = r.iter8Cache.RegisterExperiment(ctx, instance)
+	r.syncExperiment(ctx, instance)
+
+	if err := r.proceed(ctx, instance); err != nil {
+		log.Info("NotToProceed", "status", err.Error())
+		return reconcile.Result{}, nil
+	}
 
 	if err := r.syncMetrics(ctx, instance); err != nil {
 		return reconcile.Result{}, nil
 	}
 
-	apiVersion := instance.Spec.TargetService.APIVersion
-
-	switch apiVersion {
-	case KubernetesService:
+	switch instance.Spec.TargetService.APIVersion {
+	case KubernetesV1:
 		return r.syncKubernetes(ctx, instance)
-	case KnativeServiceV1Alpha1:
-		return r.syncKnative(ctx, instance)
 	default:
-		instance.Status.MarkTargetsError("UnsupportedAPIVersion", "%s", apiVersion)
+		instance.Status.MarkTargetsError("UnsupportedAPIVersion", "")
 		r.Status().Update(ctx, instance)
 		return reconcile.Result{}, nil
 	}
@@ -342,10 +346,10 @@ func (r *ReconcileExperiment) syncMetrics(ctx context.Context, instance *iter8v1
 	// Sync metric definitions from the config map
 	metricsSycned := instance.Status.GetCondition(iter8v1alpha1.ExperimentConditionMetricsSynced)
 	if metricsSycned == nil || metricsSycned.Status != corev1.ConditionTrue {
-		if err := metrics.Read(ctx, r, instance); err != nil && !util.ValidUpdateErr(err) {
+		if err := metrics.Read(ctx, r, instance); err != nil && !validUpdateErr(err) {
 			r.MarkSyncMetricsError(ctx, instance, "Fail to read metrics: %v", err)
 
-			if err := r.Status().Update(ctx, instance); err != nil && !util.ValidUpdateErr(err) {
+			if err := r.Status().Update(ctx, instance); err != nil && !validUpdateErr(err) {
 				log.Info("Fail to update status: %v", err)
 				// TODO: need a better way of handling this error
 				return err
@@ -396,19 +400,62 @@ func (r *ReconcileExperiment) finalize(context context.Context, instance *iter8v
 
 	apiVersion := instance.Spec.TargetService.APIVersion
 	switch apiVersion {
-	case KubernetesService:
+	case KubernetesV1:
 		return r.finalizeIstio(context, instance)
-	case KnativeServiceV1Alpha1:
-		return r.finalizeKnative(context, instance)
 	}
 
 	return reconcile.Result{}, removeFinalizer(context, r, instance, Finalizer)
 }
 
-func (r *ReconcileExperiment) proceed(context context.Context, instance *iter8v1alpha1.Experiment) bool {
-	if instance.Status.Phase == iter8v1alpha1.PhaseCompleted {
-		return false
+func (r *ReconcileExperiment) syncExperiment(context context.Context, instance *iter8v1alpha1.Experiment) {
+	eas := experimentAbstract(context)
+	// Abort Experiment by setting action flag
+	util.Logger(context).Info("phase", "before", instance.Status.Phase)
+	if eas.Terminate() {
+		if eas.GetDeletedRole() != "" {
+			onDeletedTarget(instance, eas.GetDeletedRole())
+			r.MarkTargetsError(context, instance, "%s", eas.GetTerminateStatus())
+			util.Logger(context).Info("phase", "after", instance.Status.Phase)
+		}
+	} else if eas.Resume() {
+		instance.Status.Phase = iter8v1alpha1.PhaseProgressing
 	}
 
-	return true
+	r.initState()
+}
+
+func (r *ReconcileExperiment) proceed(context context.Context, instance *iter8v1alpha1.Experiment) (err error) {
+	// Pause action rejects all other resume mechanisms except resume action
+	if instance.Action == iter8v1alpha1.ActionPause {
+		r.MarkActionPause(context, instance)
+		if r.needStatusUpdate() {
+			if err := r.Status().Update(context, instance); err != nil && !validUpdateErr(err) {
+				log.Error(err, "Fail to update status")
+				return err
+			}
+		}
+		err = fmt.Errorf("phase: %s, action: %s", instance.Status.Phase, instance.Action)
+		return
+	}
+
+	if instance.Status.Phase == iter8v1alpha1.PhasePause {
+		// termination request overrides pause phase
+		if instance.Action.TerminateExperiment() {
+			return
+		}
+		if instance.Action == iter8v1alpha1.ActionResume {
+			// revert action field
+			instance.Action = ""
+			if err := r.Update(context, instance); err != nil && !validUpdateErr(err) {
+				log.Error(err, "Fail to update instance")
+				return err
+			}
+
+			r.MarkActionResume(context, instance)
+		} else {
+			err = fmt.Errorf("phase: %s, action: %s", instance.Status.Phase, instance.Action)
+		}
+	}
+
+	return
 }

@@ -85,9 +85,6 @@ func (s *AnalyticsService) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 	response, ok := s.Mock[name]
 	if !ok {
 		w.Write([]byte("missing response for test " + name))
-		for key := range s.Mock {
-			w.Write([]byte(", " + key))
-		}
 		w.WriteHeader(400)
 		return
 	}

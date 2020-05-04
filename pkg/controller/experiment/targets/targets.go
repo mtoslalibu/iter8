@@ -27,6 +27,14 @@ import (
 	"github.com/iter8-tools/iter8-controller/pkg/controller/experiment/util"
 )
 
+type Role string
+
+const (
+	RoleService   Role = "service"
+	RoleBaseline  Role = "baseline"
+	RoleCandidate Role = "candidate"
+)
+
 type Targets struct {
 	Service   *corev1.Service
 	Baseline  *appsv1.Deployment
@@ -43,16 +51,28 @@ func InitTargets() *Targets {
 
 func (t *Targets) Cleanup(context context.Context, instance *iter8v1alpha1.Experiment, client client.Client) {
 	if instance.Spec.CleanUp == iter8v1alpha1.CleanUpDelete {
-		switch util.GetStableTarget(context, instance) {
-		case "baseline":
+		var stableTarget Role
+		if instance.Succeeded() {
+			switch instance.Spec.TrafficControl.GetOnSuccess() {
+			case "baseline":
+				stableTarget = RoleBaseline
+			case "candidate":
+				stableTarget = RoleCandidate
+			}
+		} else {
+			stableTarget = RoleBaseline
+		}
+
+		switch stableTarget {
+		case RoleBaseline:
 			if err := client.Delete(context, t.Candidate); err != nil && errors.IsNotFound(err) {
-				util.Logger(context).Error(err, "Delete Candidate")
+				util.Logger(context).Error(err, "Delete Candidate", "")
 			}
 			instance.Status.TrafficSplit.Baseline = 100
 			instance.Status.TrafficSplit.Candidate = 0
-		case "candidate":
+		case RoleCandidate:
 			if err := client.Delete(context, t.Baseline); err != nil && errors.IsNotFound(err) {
-				util.Logger(context).Error(err, "Delete Baseline")
+				util.Logger(context).Error(err, "Delete Baseline", "")
 			}
 			instance.Status.TrafficSplit.Baseline = 0
 			instance.Status.TrafficSplit.Candidate = 100
