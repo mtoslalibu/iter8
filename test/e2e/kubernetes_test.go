@@ -272,6 +272,44 @@ func TestKubernetesExperiment(t *testing.T) {
 				getStableVirtualService("reviews", "reward-rollforward"),
 			},
 		},
+		"pauseresume": testCase{
+			mocks: map[string]analtyicsapi.Response{
+				"pauseresume": test.GetSuccessMockResponse(),
+			},
+			initObjects: []runtime.Object{
+				getReviewsService(),
+				getReviewsDeployment("v1"),
+				getReviewsDeployment("v2"),
+			},
+			object: getPauseExperiment("pauseresume", "reviews", "reviews-v1", "reviews-v2", service.GetURL()),
+			wantState: test.WantAllStates(
+				test.CheckExperimentPause,
+			),
+			postHook: test.ResumeExperiment(getPauseExperiment("pauseresume", "reviews", "reviews-v1", "reviews-v2", service.GetURL())),
+			wantResults: []runtime.Object{
+				getStableDestinationRule("reviews", "pauseresume", getReviewsDeployment("v2")),
+				getStableVirtualService("reviews", "pauseresume"),
+			},
+		},
+		"deletebaseline": func(name string) testCase {
+			return testCase{
+				mocks: map[string]analtyicsapi.Response{
+					name: test.GetSuccessMockResponse(),
+				},
+				initObjects: []runtime.Object{
+					getReviewsService(),
+					getReviewsDeployment("v1"),
+					getReviewsDeployment("v2"),
+				},
+				object:    getSlowKubernetesExperiment(name, "reviews", "reviews-v1", "reviews-v2", service.GetURL()),
+				wantState: test.CheckServiceFound,
+				postHook:  test.DeleteObject(getReviewsDeployment("v1")),
+				wantResults: []runtime.Object{
+					getStableDestinationRule("reviews", name, getReviewsDeployment("v2")),
+					getStableVirtualService("reviews", name),
+				},
+			}
+		}("deletebaseline"),
 	}
 
 	runTestCases(t, service, testCases)
@@ -326,6 +364,12 @@ func getRatingsDeployment() runtime.Object {
 		WithLabels(labels).
 		WithContainer("ratings", RatingsImage, RatingsPort).
 		Build()
+}
+
+func getPauseExperiment(name, serviceName, baseline, candidate, analyticsHost string) *iter8v1alpha1.Experiment {
+	exp := getFastKubernetesExperiment(name, serviceName, baseline, candidate, analyticsHost)
+	exp.Action = iter8v1alpha1.ActionPause
+	return exp
 }
 
 func getCleanUpDeleteExperiment(name, serviceName, baseline, candidate string) *iter8v1alpha1.Experiment {
