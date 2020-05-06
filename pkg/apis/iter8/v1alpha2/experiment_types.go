@@ -34,13 +34,13 @@ type Experiment struct {
 	Spec ExperimentSpec `json:"spec,omitempty"`
 
 	// +optional
-	Action ExperimentAction `json:"action,omitempty"`
-
-	// +optional
 	Status ExperimentStatus `json:"status,omitempty"`
 
 	// +optional
 	Metrics ExperimentMetrics `json:"metrics,omitempty"`
+
+	// +optional
+	ManualOverride `json:"manualOverride,omitempty"`
 }
 
 // ExperimentList contains a list of Experiment
@@ -180,21 +180,18 @@ const (
 	// ActionResume is an action to resume the experiment
 	ActionResume ActionType = "resume"
 	// ActionTerminate is an action to terminate the experiment
-	// If action accepted, experiment will end as specified in .spec.trafficControl.onTermination
-	// Options in ExperimentAction can override .spec.trafficControl.onTermination
-	// Now valid option arguments to action terminate are key-value pairs of [name_of_target: traffic_percentage]
-	// e.g. {reviews-v3:20, reviews-v2:80}
 	ActionTerminate ActionType = "terminate"
 )
 
-// ExperimentAction defines actions that the user can perform to an experiment
-type ExperimentAction struct {
+// ManualOverride defines actions that the user can perform to an experiment
+type ManualOverride struct {
 	// Action to perform
 	//+kubebuilder:validation:Enum={pause,resume,terminate}
-	Do ActionType `json:"do"`
-	// Options for the action
+	Action ActionType `json:"action"`
+	// Traffic split status specification
+	// Applied to action terminate only
 	// +optional
-	Options map[string]string `json:"to,omitempty"`
+	TrafficSplit map[string]string `json:"trafficSplit,omitempty"`
 }
 
 // ExperimentStatus defines the observed state of Experiment
