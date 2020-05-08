@@ -14,10 +14,6 @@ script:
   - go test ./test/.
   - ./test/e2e/e2e.sh
 
-branches:
-  only:
-    - "master"
-
 after_success:
   - if [ "$TRAVIS_BRANCH" == "master" ]; then
       echo $DOCKERHUB_TOKEN | docker login -u $DOCKERHUB_USERNAME --password-stdin;
