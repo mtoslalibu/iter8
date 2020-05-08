@@ -100,11 +100,7 @@ type Criterion struct {
 	// Threshold specifies the numerical value for a success criterion
 	// Metric value above threhsold violates the criterion
 	// +optional
-	Threshold Threshold `json:"threshold,omitempty"`
-
-	// Once a target violates this criterion, traffic to it will be cutoff or not
-	// +optional
-	CutoffTrafficOnViolation bool `json:"cutoffTrafficOnViolation,omitempty"`
+	Threshold `json:"threshold,omitempty"`
 
 	// IsReward indicates whether the metric is a reward metric or not
 	// +optional
@@ -121,6 +117,10 @@ type Threshold struct {
 
 	// Value of threshold
 	Value float32 `json:"value"`
+
+	// Once a target metric violates this threshold, traffic to the target should be cutoff or not
+	// +optional
+	CutoffTrafficOnViolation bool `json:"cutoffTrafficOnViolation,omitempty"`
 }
 
 // Duration specifies how often/many times the expriment should re-evaluate the assessment
@@ -129,10 +129,10 @@ type Duration struct {
 	// default is 30s
 	// +optional
 	Interval string `json:"interval,omitempty"`
-	// Iterations indicates the amount of iteration
+	// MaxIterations indicates the amount of iteration
 	// default is 100
 	// +optional
-	Iterations int32 `json:"iterations,omitempty"`
+	MaxIterations int32 `json:"maxIterations,omitempty"`
 }
 
 // TrafficControl specifies constrains on traffic and stratgy used to update the traffic

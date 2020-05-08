@@ -20,25 +20,6 @@ spec:
   validation:
     openAPIV3Schema:
       properties:
-        action:
-          description: ExperimentAction defines actions that the user can perform
-            to an experiment
-          properties:
-            do:
-              description: Action to perform
-              enum:
-              - pause
-              - resume
-              - terminate
-              type: string
-            to:
-              additionalProperties:
-                type: string
-              description: Options for the action
-              type: object
-          required:
-          - do
-          type: object
         apiVersion:
           description: 'APIVersion defines the versioned schema of this representation
             of an object. Servers should convert recognized schemas to the latest
@@ -49,6 +30,26 @@ spec:
             object represents. Servers may infer this from the endpoint the client
             submits requests to. Cannot be updated. In CamelCase. More info: https://git.k8s.io/community/contributors/devel/sig-architecture/api-conventions.md#types-kinds'
           type: string
+        manualOverride:
+          description: ManualOverride defines actions that the user can perform to
+            an experiment
+          properties:
+            action:
+              description: Action to perform
+              enum:
+              - pause
+              - resume
+              - terminate
+              type: string
+            trafficSplit:
+              additionalProperties:
+                type: string
+              description: Traffic split status specification Applied to action terminate
+                only
+              type: object
+          required:
+          - action
+          type: object
         metadata:
           type: object
         metrics:
@@ -103,10 +104,6 @@ spec:
               items:
                 description: Criterion defines the criterion for assessing a target
                 properties:
-                  cutoffTrafficOnViolation:
-                    description: Once a target violates this criterion, traffic to
-                      it will be cutoff or not
-                    type: boolean
                   isReward:
                     description: IsReward indicates whether the metric is a reward
                       metric or not
@@ -118,6 +115,10 @@ spec:
                     description: Threshold specifies the numerical value for a success
                       criterion Metric value above threhsold violates the criterion
                     properties:
+                      cutoffTrafficOnViolation:
+                        description: Once a target metric violates this threshold,
+                          traffic to the target should be cutoff or not
+                        type: boolean
                       type:
                         description: 'Type of threshold relative: value of threshold
                           specifies the relative amount of changes absolute: value
@@ -146,8 +147,8 @@ spec:
                   description: Interval specifies duration between iterations default
                     is 30s
                   type: string
-                iterations:
-                  description: Iterations indicates the amount of iteration default
+                maxIterations:
+                  description: MaxIterations indicates the amount of iteration default
                     is 100
                   format: int32
                   type: integer
