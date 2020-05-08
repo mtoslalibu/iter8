@@ -19,6 +19,8 @@ spec:
     status: {}
   validation:
     openAPIV3Schema:
+      description: Experiment contains the sections for -- defining an experiment,
+        showing experiment status, listing metrics, specifying user actions
       properties:
         apiVersion:
           description: 'APIVersion defines the versioned schema of this representation
@@ -31,8 +33,8 @@ spec:
             submits requests to. Cannot be updated. In CamelCase. More info: https://git.k8s.io/community/contributors/devel/sig-architecture/api-conventions.md#types-kinds'
           type: string
         manualOverride:
-          description: ManualOverride defines actions that the user can perform to
-            an experiment
+          description: ExperimentManualOverride defines actions that the user can
+            perform to an experiment
           properties:
             action:
               description: Action to perform

@@ -24,6 +24,11 @@ import (
 // +genclient
 // +k8s:deepcopy-gen:interfaces=k8s.io/apimachinery/pkg/runtime.Object
 
+// Experiment contains the sections for --
+// defining an experiment,
+// showing experiment status,
+// listing metrics,
+// specifying user actions
 // +k8s:openapi-gen=true
 // +kubebuilder:subresource:status
 // +kubebuilder:categories=all,iter8
@@ -40,7 +45,7 @@ type Experiment struct {
 	Metrics ExperimentMetrics `json:"metrics,omitempty"`
 
 	// +optional
-	ManualOverride `json:"manualOverride,omitempty"`
+	ManualOverride ExperimentManualOverride `json:"manualOverride,omitempty"`
 }
 
 // ExperimentList contains a list of Experiment
@@ -183,8 +188,8 @@ const (
 	ActionTerminate ActionType = "terminate"
 )
 
-// ManualOverride defines actions that the user can perform to an experiment
-type ManualOverride struct {
+// ExperimentManualOverride defines actions that the user can perform to an experiment
+type ExperimentManualOverride struct {
 	// Action to perform
 	//+kubebuilder:validation:Enum={pause,resume,terminate}
 	Action ActionType `json:"action"`
