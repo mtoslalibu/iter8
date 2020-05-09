@@ -13,7 +13,7 @@ limitations under the License.
 package v1alpha2
 
 import (
-	networkingv1alpha3 "istio.io/api/networking/v1alpha3"
+	_ "istio.io/api/networking/v1alpha3" //
 	corev1 "k8s.io/api/core/v1"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	runtime "k8s.io/apimachinery/pkg/runtime"
@@ -27,8 +27,6 @@ import (
 // Experiment contains the sections for --
 // defining an experiment,
 // showing experiment status,
-// listing metrics,
-// specifying user actions
 // +k8s:openapi-gen=true
 // +kubebuilder:subresource:status
 // +kubebuilder:categories=all,iter8
@@ -36,16 +34,10 @@ type Experiment struct {
 	metav1.TypeMeta   `json:",inline"`
 	metav1.ObjectMeta `json:"metadata,omitempty"`
 
-	Spec ExperimentSpec `json:"spec,omitempty"`
+	Spec ExperimentSpec `json:"spec"`
 
 	// +optional
-	Status ExperimentStatus `json:"status,omitempty"`
-
-	// +optional
-	Metrics ExperimentMetrics `json:"metrics,omitempty"`
-
-	// +optional
-	ManualOverride ExperimentManualOverride `json:"manualOverride,omitempty"`
+	Status *ExperimentStatus `json:"status,omitempty"`
 }
 
 // ExperimentList contains a list of Experiment
@@ -67,14 +59,18 @@ type ExperimentSpec struct {
 	// +optional
 	Criteria []Criterion `json:"criteria,omitempty"`
 
+	// TrafficControl provides instructions on traffic management for an experiment
+	// +optional
+	TrafficControl *TrafficControl `json:"trafficControl,omitempty"`
+
 	// Endpoint of reaching analytics service
 	// default is http://iter8-analytics.iter8
 	// +optional
-	AnalyticsEndpoint string `json:"analyticsEndpoint,omitempty"`
+	AnalyticsEndpoint *string `json:"analyticsEndpoint,omitempty"`
 
 	// Duration specifies how often/many times the expriment should re-evaluate the assessment
 	// +optional
-	Duration `json:"duration,omitempty"`
+	Duration *Duration `json:"duration,omitempty"`
 
 	// RoutingReference provides references to routing rules set by users
 	// +optional
@@ -82,12 +78,20 @@ type ExperimentSpec struct {
 
 	// Cleanup indicates whether routing rules and deployment receiving no traffic should be deleted at the end of experiment
 	// +optional
-	Cleanup bool `json:"cleanup"`
+	Cleanup *bool `json:"cleanup"`
+
+	// The metrics used in the experiment
+	// +optional
+	Metrics *Metrics `json:"metrics,omitempty"`
+
+	// User actions to override the current status of the experiment
+	// +optional
+	ManualOverride *ManualOverride `json:"manualOverride,omitempty"`
 }
 
 // Service is a reference to the service that this experiment is targeting at
 type Service struct {
-	// defines the characteristics of the service
+	// defines the object reference to the service
 	*corev1.ObjectReference `json:",inline"`
 
 	// Name of the baseline deployment
@@ -105,11 +109,11 @@ type Criterion struct {
 	// Threshold specifies the numerical value for a success criterion
 	// Metric value above threhsold violates the criterion
 	// +optional
-	Threshold `json:"threshold,omitempty"`
+	Threshold *Threshold `json:"threshold,omitempty"`
 
 	// IsReward indicates whether the metric is a reward metric or not
 	// +optional
-	IsReward bool `json:"isReward,omitempty"`
+	IsReward *bool `json:"isReward,omitempty"`
 }
 
 // Threshold defines the value and type of a criterion threshold
@@ -125,7 +129,7 @@ type Threshold struct {
 
 	// Once a target metric violates this threshold, traffic to the target should be cutoff or not
 	// +optional
-	CutoffTrafficOnViolation bool `json:"cutoffTrafficOnViolation,omitempty"`
+	CutoffTrafficOnViolation *bool `json:"cutoffTrafficOnViolation,omitempty"`
 }
 
 // Duration specifies how often/many times the expriment should re-evaluate the assessment
@@ -133,47 +137,61 @@ type Duration struct {
 	// Interval specifies duration between iterations
 	// default is 30s
 	// +optional
-	Interval string `json:"interval,omitempty"`
+	Interval *string `json:"interval,omitempty"`
 	// MaxIterations indicates the amount of iteration
 	// default is 100
 	// +optional
-	MaxIterations int32 `json:"maxIterations,omitempty"`
+	MaxIterations *int32 `json:"maxIterations,omitempty"`
 }
+
+// OnTerminationType is type of onTermination field
+type OnTerminationType string
+
+const (
+	// OnTerminationToWinner indicates all traffic should go to winner candidate when experiment is terminated
+	OnTerminationToWinner OnTerminationType = "to_winner"
+
+	// OnTerminationToBaseline indicates all traffic should go to baseline when experiment is terminated
+	OnTerminationToBaseline OnTerminationType = "to_baseline"
+
+	// OnTerminationKeepLast keeps the last traffic status when experiment is terminated
+	OnTerminationKeepLast OnTerminationType = "keep_last"
+)
 
 // TrafficControl specifies constrains on traffic and stratgy used to update the traffic
 type TrafficControl struct {
 	// Strategy used to shift traffic
-	// default is progressive_traffic_shift
-	// +kubebuilder:validation:Enum={progressive_traffic_shift, top_2, uniform}
+	// default is progressive
+	// +kubebuilder:validation:Enum={progressive, top_2, uniform}
 	// +optional
-	Strategy string `json:"strategy,omitempty"`
+	Strategy *string `json:"strategy,omitempty"`
 
 	// OnTermination determines traffic split status at the end of experiment
 	// +kubebuilder:validation:Enum={to_winner,to_baseline,keep_last}
 	// +optional
-	OnTermination string `json:"onTermination,omitempty"`
+	OnTermination *OnTerminationType `json:"onTermination,omitempty"`
 
 	// Only requests fulfill the match section would be used in experiment
 	// Istio matching rules are used
 	// +optional
-	Match `json:"match,omitempty"`
+	Match *Match `json:"match,omitempty"`
 
 	// Percentage specifies the amount of traffic to service that would be used in experiment
 	// default is 100
 	// +optional
-	Percentage int32 `json:"percentage,omitempty"`
+	Percentage *int32 `json:"percentage,omitempty"`
 
 	// MaxIncrement is the upperlimit of traffic increment for a target in one iteration
 	// default is 2
 	// +optional
-	MaxIncrement int32 `json:"maxIncrement,omitempty"`
+	MaxIncrement *int32 `json:"maxIncrement,omitempty"`
 }
 
 // Match contains matching criteria for requests
 type Match struct {
 	// Matching criteria for HTTP requests
 	// +optional
-	HTTP []*networkingv1alpha3.HTTPMatchRequest `json:"http,omitempty"`
+	// HTTP []*networkingv1alpha3.HTTPMatchRequest `json:"http,omitempty"`
 }
 
 // ActionType is type of an Action
@@ -182,87 +200,128 @@ type ActionType string
 const (
 	// ActionPause is an action to pause the experiment
 	ActionPause ActionType = "pause"
+
 	// ActionResume is an action to resume the experiment
 	ActionResume ActionType = "resume"
+
 	// ActionTerminate is an action to terminate the experiment
 	ActionTerminate ActionType = "terminate"
 )
 
-// ExperimentManualOverride defines actions that the user can perform to an experiment
-type ExperimentManualOverride struct {
+// ManualOverride defines actions that the user can perform to an experiment
+type ManualOverride struct {
 	// Action to perform
 	//+kubebuilder:validation:Enum={pause,resume,terminate}
 	Action ActionType `json:"action"`
 	// Traffic split status specification
 	// Applied to action terminate only
+	// example:
+	// - reviews-v2:80
+	// - reviews-v3:20
 	// +optional
-	TrafficSplit map[string]string `json:"trafficSplit,omitempty"`
+	TrafficSplit []string `json:"trafficSplit,omitempty"`
+}
+
+// Metrics contains definitions for metrics used in the experiment
+type Metrics struct {
+	// List of counter metrics definiton
+	// +optional
+	CounterMetrics []CounterMetric `json:"counter_metrics,omitempty"`
+
+	// List of ratio metrics definiton
+	// +optional
+	RatioMetrics []RatioMetric `json:"ratio_metrics,omitempty"`
+}
+
+// CounterMetric is the definition of Counter Metric
+type CounterMetric struct {
+	QueryTemplate string `json:"query_template"`
+}
+
+// RatioMetric is the definiton of Ratio Metric
+type RatioMetric struct {
+	// Counter metric used in numerator
+	Numerator string `json:"numerator"`
+	// Counter metric used in denominator
+	Denominator string `json:"denominator"`
+	// Boolean flag indicating if the value of this metric is always in the range 0 to 1
+	// +optional
+	ZeroToOne *bool `json:"zero_to_one,omitempty"`
 }
 
 // ExperimentStatus defines the observed state of Experiment
 type ExperimentStatus struct {
-	Conditions `json:"conditions,omitempty"`
+	// List of conditions
+	// +optional
+	Conditions Conditions `json:"conditions,omitempty"`
 
-	// CreateTimestamp is the timestamp when the experiment is created
-	CreateTimestamp int64 `json:"createTimestamp,omitempty"`
+	// InitTimestamp is the timestamp when the experiment is initialized
+	// +optional
+	InitTimestamp *metav1.Time `json:"initTimestamp,omitempty"`
 
 	// StartTimestamp is the timestamp when the experiment starts
-	StartTimestamp int64 `json:"startTimestamp,omitempty"`
+	// +optional
+	StartTimestamp *metav1.Time `json:"startTimestamp,omitempty"`
 
 	// EndTimestamp is the timestamp when experiment completes
-	EndTimestamp int64 `json:"endTimestamp,omitempty"`
+	// +optional
+	EndTimestamp *metav1.Time `json:"endTimestamp,omitempty"`
 
 	// LastIncrementTime is the last time the traffic has been incremented
-	LastIncrementTime metav1.Time `json:"lastIncrementTime,omitempty"`
+	// +optional
+	LastIncrementTime *metav1.Time `json:"lastIncrementTime,omitempty"`
 
 	// CurrentIteration is the current iteration number
 	// +optional
-	CurrentIteration int `json:"currentIteration,omitempty"`
+	CurrentIteration *int32 `json:"currentIteration,omitempty"`
 
 	// GrafanaURL is the url to the Grafana Dashboard
 	// +optional
-	GrafanaURL string `json:"grafanaURL,omitempty"`
+	GrafanaURL *string `json:"grafanaURL,omitempty"`
 
 	// Assessment returned by the last analyis
 	// +optional
-	Assessment `json:"assessment,omitempty"`
+	Assessment *Assessment `json:"assessment,omitempty"`
 
 	// TrafficSplit tells the current traffic spliting among targets
 	// +optional
-	TrafficSplit `json:"trafficSplit,omitempty"`
+	TrafficSplit []TrafficSplit `json:"trafficSplit,omitempty"`
 
 	// Phase marks the Phase the experiment is at
 	// +optional
-	Phase `json:"phase,omitempty"`
+	Phase *Phase `json:"phase,omitempty"`
 
 	// Message specifies message to show in the kubectl printer
-	Message string `json:"message,omitempty"`
+	// +optional
+	Message *string `json:"message,omitempty"`
 
 	// AnalysisState is the last recorded analysis state
-	AnalysisState runtime.RawExtension `json:"analysisState,omitempty"`
+	// +optional
+	AnalysisState *runtime.RawExtension `json:"analysisState,omitempty"`
 }
 
-// Conditions is a list of Conditions
-type Conditions []Condition
+// Conditions is a list of ExperimentConditions
+type Conditions []ExperimentCondition
 
-// Condition specifies
-type Condition struct {
-	// Name of the condition
-	Name ExperimentConditionType `json:"name"`
+// ExperimentCondition describes a condition of an experiment
+type ExperimentCondition struct {
+	// Type of the condition
+	Type ExperimentConditionType `json:"name"`
 
 	// Status of the condition
 	Status corev1.ConditionStatus `json:"status"`
 
 	// The time when this condition is last updated
-	LastUpdateTime metav1.Time `json:"lastUpdateTime"`
+	// +optional
+	LastUpdateTime *metav1.Time `json:"lastUpdateTime,omitempty"`
 
 	// Reason for the last update
 	// +optional
-	Reason string `json:"reason"`
+	Reason *string `json:"reason,omitempty"`
 
 	// Detailed explanation on the update
 	// +optional
-	Message string `json:"message"`
+	Message *string `json:"message,omitempty"`
 }
 
 // ExperimentConditionType is type of ExperimentCondition
@@ -301,32 +360,27 @@ const (
 type Assessment struct {
 	// Assessment for baseline
 	Baseline analyticsv1alpha2.VersionAssessment `json:"baseline"`
-	// Assessment for candidates are stored as key-value pairs as {name_of_candiate:assessment_details}
-	Candidates map[string]analyticsv1alpha2.CandidateAssessment `json:"candidates"`
+
+	// Assessment for candidates
+	Candidates []CandidateAssessment `json:"candidates"`
+
 	// Assessment for winner target if exists
-	Winner analyticsv1alpha2.WinnerAssessment `json:"winner,omitempty"`
+	// +optional
+	Winner *analyticsv1alpha2.WinnerAssessment `json:"winner,omitempty"`
 }
 
-// TrafficSplit is a map from target name to corrresponding traffic percentage
-type TrafficSplit map[string]int32
-
-// ExperimentMetrics contains definitions for metrics used in the experiment
-type ExperimentMetrics struct {
-	CounterMetrics []CounterMetric `json:"counter_metrics,omitempty"`
-	RatioMetrics   []RatioMetric   `json:"ratio_metrics,omitempty"`
+// CandidateAssessment contains name of candidate and assessment details from analytics
+type CandidateAssessment struct {
+	// name of candidate
+	Name                                  string `json:"name"`
+	analyticsv1alpha2.CandidateAssessment `json:",inline"`
 }
 
-// CounterMetric is the definition of Counter Metric
-type CounterMetric struct {
-	QueryTemplate string `json:"query_template"`
-}
+// TrafficSplit shows traffic for a target
+type TrafficSplit struct {
+	// Name of deployment
+	Name string `json:"name"`
 
-// RatioMetric is the definiton of Ratio Metric
-type RatioMetric struct {
-	// Counter metric used in numerator
-	Numerator string `json:"numerator"`
-	// Counter metric used in denominator
-	Denominator string `json:"denominator"`
-	// Boolean flag indicating if the value of this metric is always in the range 0 to 1
-	ZeroToOne string `json:"zero_to_one,omitempty"`
+	// Weight of traffic
+	Weight int32 `json:"weight"`
 }
