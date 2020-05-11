@@ -38,7 +38,7 @@ spec:
           description: ExperimentSpec defines the desired state of Experiment
           properties:
             analyticsEndpoint:
-              description: Endpoint of reaching analytics service default is http://iter8-analytics.iter8
+              description: Endpoint of reaching analytics service default is http://iter8-analytics.iter8:8080
               type: string
             cleanup:
               description: Cleanup indicates whether routing rules and deployment
@@ -247,6 +247,99 @@ spec:
                 match:
                   description: Only requests fulfill the match section would be used
                     in experiment Istio matching rules are used
+                  properties:
+                    http:
+                      description: Matching criteria for HTTP requests
+                      items:
+                        properties:
+                          authority:
+                            description: HTTP Authority
+                            properties:
+                              exact:
+                                type: string
+                              prefix:
+                                type: string
+                              regex:
+                                type: string
+                            type: object
+                          gateways:
+                            description: Gateways for matching
+                            items:
+                              type: string
+                            type: array
+                          headers:
+                            additionalProperties:
+                              properties:
+                                exact:
+                                  type: string
+                                prefix:
+                                  type: string
+                                regex:
+                                  type: string
+                              type: object
+                            description: Headers to match
+                            type: object
+                          ignore_uri_case:
+                            description: Flag to specify whether the URI matching
+                              should be case-insensitive.
+                            type: boolean
+                          method:
+                            description: HTTP Method
+                            properties:
+                              exact:
+                                type: string
+                              prefix:
+                                type: string
+                              regex:
+                                type: string
+                            type: object
+                          name:
+                            description: The name assigned to a match.
+                            type: string
+                          port:
+                            description: Specifies the ports on the host that is being
+                              addressed.
+                            format: int32
+                            type: integer
+                          query_params:
+                            additionalProperties:
+                              properties:
+                                exact:
+                                  type: string
+                                prefix:
+                                  type: string
+                                regex:
+                                  type: string
+                              type: object
+                            description: Query parameters for matching.
+                            type: object
+                          scheme:
+                            description: URI Scheme
+                            properties:
+                              exact:
+                                type: string
+                              prefix:
+                                type: string
+                              regex:
+                                type: string
+                            type: object
+                          sourceLabels:
+                            additionalProperties:
+                              type: string
+                            description: SourceLabels for matching
+                            type: object
+                          uri:
+                            description: URI to match
+                            properties:
+                              exact:
+                                type: string
+                              prefix:
+                                type: string
+                              regex:
+                                type: string
+                            type: object
+                        type: object
+                      type: array
                   type: object
                 maxIncrement:
                   description: MaxIncrement is the upperlimit of traffic increment

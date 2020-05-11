@@ -13,7 +13,6 @@ limitations under the License.
 package v1alpha2
 
 import (
-	_ "istio.io/api/networking/v1alpha3" //
 	corev1 "k8s.io/api/core/v1"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	runtime "k8s.io/apimachinery/pkg/runtime"
@@ -35,7 +34,6 @@ type Experiment struct {
 	metav1.ObjectMeta `json:"metadata,omitempty"`
 
 	Spec ExperimentSpec `json:"spec"`
-
 	// +optional
 	Status *ExperimentStatus `json:"status,omitempty"`
 }
@@ -64,7 +62,7 @@ type ExperimentSpec struct {
 	TrafficControl *TrafficControl `json:"trafficControl,omitempty"`
 
 	// Endpoint of reaching analytics service
-	// default is http://iter8-analytics.iter8
+	// default is http://iter8-analytics.iter8:8080
 	// +optional
 	AnalyticsEndpoint *string `json:"analyticsEndpoint,omitempty"`
 
@@ -191,7 +189,7 @@ type TrafficControl struct {
 type Match struct {
 	// Matching criteria for HTTP requests
 	// +optional
-	// HTTP []*networkingv1alpha3.HTTPMatchRequest `json:"http,omitempty"`
+	HTTP []*HTTPMatchRequest `json:"http,omitempty"`
 }
 
 // ActionType is type of an Action
@@ -242,8 +240,10 @@ type CounterMetric struct {
 type RatioMetric struct {
 	// Counter metric used in numerator
 	Numerator string `json:"numerator"`
+
 	// Counter metric used in denominator
 	Denominator string `json:"denominator"`
+
 	// Boolean flag indicating if the value of this metric is always in the range 0 to 1
 	// +optional
 	ZeroToOne *bool `json:"zero_to_one,omitempty"`
@@ -372,7 +372,9 @@ type Assessment struct {
 // CandidateAssessment contains name of candidate and assessment details from analytics
 type CandidateAssessment struct {
 	// name of candidate
-	Name                                  string `json:"name"`
+	Name string `json:"name"`
+
+	// Assessment details from analytics
 	analyticsv1alpha2.CandidateAssessment `json:",inline"`
 }
 
