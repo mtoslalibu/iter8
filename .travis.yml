@@ -12,7 +12,7 @@ before_install:
 
 script:
   - go test ./test/.
-  - ./test/e2e/e2e.sh -s
+  - ./test/e2e/e2e.sh
 
 branches:
   only:
