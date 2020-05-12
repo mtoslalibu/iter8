@@ -34,7 +34,7 @@ parse_flags $*
 
 if [ -z "$SKIP_SETUP" ]
 then
-    setup_knative
+    configure_cluster
 fi
 
 export NAMESPACE=$(random_namespace)

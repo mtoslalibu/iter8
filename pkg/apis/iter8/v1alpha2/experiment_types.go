@@ -142,27 +142,13 @@ type Duration struct {
 	MaxIterations *int32 `json:"maxIterations,omitempty"`
 }
 
-// OnTerminationType is type of onTermination field
-type OnTerminationType string
-
-const (
-	// OnTerminationToWinner indicates all traffic should go to winner candidate when experiment is terminated
-	OnTerminationToWinner OnTerminationType = "to_winner"
-
-	// OnTerminationToBaseline indicates all traffic should go to baseline when experiment is terminated
-	OnTerminationToBaseline OnTerminationType = "to_baseline"
-
-	// OnTerminationKeepLast keeps the last traffic status when experiment is terminated
-	OnTerminationKeepLast OnTerminationType = "keep_last"
-)
-
 // TrafficControl specifies constrains on traffic and stratgy used to update the traffic
 type TrafficControl struct {
 	// Strategy used to shift traffic
 	// default is progressive
 	// +kubebuilder:validation:Enum={progressive, top_2, uniform}
 	// +optional
-	Strategy *string `json:"strategy,omitempty"`
+	Strategy *StrategyType `json:"strategy,omitempty"`
 
 	// OnTermination determines traffic split status at the end of experiment
 	// +kubebuilder:validation:Enum={to_winner,to_baseline,keep_last}
@@ -191,20 +177,6 @@ type Match struct {
 	// +optional
 	HTTP []*HTTPMatchRequest `json:"http,omitempty"`
 }
-
-// ActionType is type of an Action
-type ActionType string
-
-const (
-	// ActionPause is an action to pause the experiment
-	ActionPause ActionType = "pause"
-
-	// ActionResume is an action to resume the experiment
-	ActionResume ActionType = "resume"
-
-	// ActionTerminate is an action to terminate the experiment
-	ActionTerminate ActionType = "terminate"
-)
 
 // ManualOverride defines actions that the user can perform to an experiment
 type ManualOverride struct {
@@ -289,7 +261,7 @@ type ExperimentStatus struct {
 
 	// Phase marks the Phase the experiment is at
 	// +optional
-	Phase *Phase `json:"phase,omitempty"`
+	Phase *PhaseType `json:"phase,omitempty"`
 
 	// Message specifies message to show in the kubectl printer
 	// +optional
@@ -323,38 +295,6 @@ type ExperimentCondition struct {
 	// +optional
 	Message *string `json:"message,omitempty"`
 }
-
-// ExperimentConditionType is type of ExperimentCondition
-type ExperimentConditionType string
-
-const (
-	// ExperimentConditionTargetsProvided has status True when the Experiment detects all elements specified in targetService
-	ExperimentConditionTargetsProvided ExperimentConditionType = "TargetsProvided"
-
-	// ExperimentConditionAnalyticsServiceNormal has status True when the analytics service is operating normally
-	ExperimentConditionAnalyticsServiceNormal ExperimentConditionType = "AnalyticsServiceNormal"
-
-	// ExperimentConditionMetricsSynced has status True when metrics are successfully synced with config map
-	ExperimentConditionMetricsSynced ExperimentConditionType = "MetricsSynced"
-
-	// ExperimentConditionExperimentCompleted has status True when the experiment is completed
-	ExperimentConditionExperimentCompleted ExperimentConditionType = "ExperimentCompleted"
-
-	// ExperimentConditionRoutingRulesReady has status True when routing rules are ready
-	ExperimentConditionRoutingRulesReady ExperimentConditionType = "RoutingRulesReady"
-)
-
-// Phase the experiment is in
-type Phase string
-
-const (
-	// PhasePause indicates experiment is paused
-	PhasePause Phase = "Pause"
-	// PhaseProgressing indicates experiment is progressing
-	PhaseProgressing Phase = "Progressing"
-	// PhaseCompleted indicates experiment has competed (successfully or not)
-	PhaseCompleted Phase = "Completed"
-)
 
 // Assessment details for the each target
 type Assessment struct {
