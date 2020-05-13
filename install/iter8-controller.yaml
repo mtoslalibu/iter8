@@ -763,7 +763,7 @@ spec:
       containers:
       - command:
         - /manager
-        image: "iter8/iter8-controller:v0.0.1"
+        image: "iter8/iter8-controller:v0.1.0"
         imagePullPolicy: Always
         name: manager
         env:
