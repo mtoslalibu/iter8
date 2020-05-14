@@ -67,8 +67,7 @@ func (r *ReconcileExperiment) syncKubernetes(context context.Context, instance *
 		return reconcile.Result{RequeueAfter: interval}, nil
 	}
 
-	log.Info("Request not processed")
-	return r.endRequest(context, instance)
+	return reconcile.Result{}, nil
 }
 
 func (r *ReconcileExperiment) finalizeIstio(context context.Context, instance *iter8v1alpha2.Experiment) (reconcile.Result, error) {
