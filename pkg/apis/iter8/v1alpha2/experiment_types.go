@@ -205,11 +205,26 @@ type Metrics struct {
 
 // CounterMetric is the definition of Counter Metric
 type CounterMetric struct {
+	// Name of metric
+	Name string `json:"name"`
+
+	// Query template of this metric
 	QueryTemplate string `json:"query_template"`
+
+	// Preferred direction of the metric value
+	// +optional
+	PreferredDirection *string `json:"preferred_direction,omitempty"`
+
+	// Unit of the metric value
+	// +optional
+	Unit *string `json:"unit,omitempty"`
 }
 
 // RatioMetric is the definiton of Ratio Metric
 type RatioMetric struct {
+	// name of metric
+	Name string `json:"name"`
+
 	// Counter metric used in numerator
 	Numerator string `json:"numerator"`
 
@@ -219,6 +234,10 @@ type RatioMetric struct {
 	// Boolean flag indicating if the value of this metric is always in the range 0 to 1
 	// +optional
 	ZeroToOne *bool `json:"zero_to_one,omitempty"`
+
+	// Preferred direction of the metric value
+	// +optional
+	PreferredDirection *string `json:"preferred_direction,omitempty"`
 }
 
 // ExperimentStatus defines the observed state of Experiment
@@ -239,9 +258,9 @@ type ExperimentStatus struct {
 	// +optional
 	EndTimestamp *metav1.Time `json:"endTimestamp,omitempty"`
 
-	// LastIncrementTime is the last time the traffic has been incremented
+	// LastUpdateTime is the last time iteration has been updated
 	// +optional
-	LastIncrementTime *metav1.Time `json:"lastIncrementTime,omitempty"`
+	LastUpdateTime *metav1.Time `json:"lastUpdateTime,omitempty"`
 
 	// CurrentIteration is the current iteration number
 	// +optional
@@ -254,10 +273,6 @@ type ExperimentStatus struct {
 	// Assessment returned by the last analyis
 	// +optional
 	Assessment *Assessment `json:"assessment,omitempty"`
-
-	// TrafficSplit tells the current traffic spliting among targets
-	// +optional
-	TrafficSplit []TrafficSplit `json:"trafficSplit,omitempty"`
 
 	// Phase marks the Phase the experiment is at
 	// +optional
@@ -273,7 +288,7 @@ type ExperimentStatus struct {
 }
 
 // Conditions is a list of ExperimentConditions
-type Conditions []ExperimentCondition
+type Conditions []*ExperimentCondition
 
 // ExperimentCondition describes a condition of an experiment
 type ExperimentCondition struct {
@@ -285,7 +300,7 @@ type ExperimentCondition struct {
 
 	// The time when this condition is last updated
 	// +optional
-	LastUpdateTime *metav1.Time `json:"lastUpdateTime,omitempty"`
+	LastTransitionTime *metav1.Time `json:"lastTransitionTime,omitempty"`
 
 	// Reason for the last update
 	// +optional
@@ -298,31 +313,29 @@ type ExperimentCondition struct {
 
 // Assessment details for the each target
 type Assessment struct {
-	// Assessment for baseline
-	Baseline analyticsv1alpha2.VersionAssessment `json:"baseline"`
+	// Assessment details of baseline
+	Baseline VersionAssessment `json:"baseline"`
 
-	// Assessment for candidates
-	Candidates []CandidateAssessment `json:"candidates"`
+	// Assessment details of each candidate
+	Candidates []VersionAssessment `json:"candidates"`
 
 	// Assessment for winner target if exists
 	// +optional
 	Winner *analyticsv1alpha2.WinnerAssessment `json:"winner,omitempty"`
 }
 
-// CandidateAssessment contains name of candidate and assessment details from analytics
-type CandidateAssessment struct {
-	// name of candidate
-	Name string `json:"name"`
-
-	// Assessment details from analytics
-	analyticsv1alpha2.CandidateAssessment `json:",inline"`
-}
-
-// TrafficSplit shows traffic for a target
-type TrafficSplit struct {
-	// Name of deployment
+// VersionAssessment contains assessment details for each version
+type VersionAssessment struct {
+	// name of version
 	Name string `json:"name"`
 
 	// Weight of traffic
 	Weight int32 `json:"weight"`
+
+	// Assessment details from analytics
+	analyticsv1alpha2.VersionAssessment `json:",inline"`
+
+	// A flag indicates whether traffic to this target should be cutoff
+	// +optional
+	Rollback bool `json:"rollback,omitempty"`
 }

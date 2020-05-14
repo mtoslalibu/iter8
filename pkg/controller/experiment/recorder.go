@@ -21,147 +21,133 @@ import (
 
 	corev1 "k8s.io/api/core/v1"
 
-	iter8v1alpha1 "github.com/iter8-tools/iter8-controller/pkg/apis/iter8/v1alpha1"
+	iter8v1alpha2 "github.com/iter8-tools/iter8-controller/pkg/apis/iter8/v1alpha2"
 	"github.com/iter8-tools/iter8-controller/pkg/controller/experiment/util"
 )
 
-// MarkTargetsError records the condition that the target components are missing
-func (r *ReconcileExperiment) MarkTargetsError(context context.Context, instance *iter8v1alpha1.Experiment,
+func (r *ReconcileExperiment) markTargetsError(context context.Context, instance *iter8v1alpha2.Experiment,
 	messageFormat string, messageA ...interface{}) {
-	reason := iter8v1alpha1.ReasonTargetsNotFound
-	util.Logger(context).Info(reason + ", " + fmt.Sprintf(messageFormat, messageA...))
-	if instance.Status.MarkTargetsError(reason, messageFormat, messageA...) {
+	if updated, reason := instance.Status.MarkTargetsError(reason, messageFormat, messageA...); updated {
+		util.Logger(context).Info(reason + ", " + fmt.Sprintf(messageFormat, messageA...))
 		r.eventRecorder.Eventf(instance, corev1.EventTypeWarning, reason, messageFormat, messageA...)
 		r.notificationCenter.Notify(instance, reason, messageFormat, messageA...)
 		r.markStatusUpdate()
 	}
 }
 
-func (r *ReconcileExperiment) MarkTargetsFound(context context.Context, instance *iter8v1alpha1.Experiment) {
-	reason := iter8v1alpha1.ReasonTargetsFound
-	util.Logger(context).Info(reason)
-	if instance.Status.MarkTargetsFound() {
-		r.eventRecorder.Eventf(instance, corev1.EventTypeNormal, reason, "")
-		r.notificationCenter.Notify(instance, reason, "")
-		r.markStatusUpdate()
-	}
-}
-
-func (r *ReconcileExperiment) MarkAnalyticsServiceError(context context.Context, instance *iter8v1alpha1.Experiment,
+func (r *ReconcileExperiment) markTargetsFound(context context.Context, instance *iter8v1alpha2.Experiment,
 	messageFormat string, messageA ...interface{}) {
-	reason := iter8v1alpha1.ReasonAnalyticsServiceError
-	util.Logger(context).Info(reason + ", " + fmt.Sprintf(messageFormat, messageA...))
-	if instance.Status.MarkAnalyticsServiceError(reason, messageFormat, messageA...) {
-		r.eventRecorder.Eventf(instance, corev1.EventTypeWarning, reason, messageFormat, messageA...)
-		r.notificationCenter.Notify(instance, reason, messageFormat, messageA...)
-		r.markStatusUpdate()
-	}
-}
-
-func (r *ReconcileExperiment) MarkAnalyticsServiceRunning(context context.Context, instance *iter8v1alpha1.Experiment) {
-	reason := iter8v1alpha1.ReasonAnalyticsServiceRunning
-	util.Logger(context).Info(reason)
-	if instance.Status.MarkAnalyticsServiceRunning() {
-		r.eventRecorder.Eventf(instance, corev1.EventTypeNormal, reason, "")
-		r.notificationCenter.Notify(instance, reason, "")
-		r.markStatusUpdate()
-	}
-}
-
-func (r *ReconcileExperiment) MarkExperimentProgress(context context.Context, instance *iter8v1alpha1.Experiment,
-	broadcast bool, reason, messageFormat string, messageA ...interface{}) {
-
-	util.Logger(context).Info(reason + ", " + fmt.Sprintf(messageFormat, messageA...))
-	r.eventRecorder.Eventf(instance, corev1.EventTypeNormal, reason, messageFormat, messageA...)
-	r.notificationCenter.Notify(instance, reason, messageFormat, messageA...)
-
-	instance.Status.MarkExperimentNotCompleted(reason, messageFormat, messageA...)
-	r.markProgress()
-	r.markStatusUpdate()
-}
-
-func (r *ReconcileExperiment) MarkExperimentSucceeded(context context.Context, instance *iter8v1alpha1.Experiment,
-	messageFormat string, messageA ...interface{}) {
-	reason := iter8v1alpha1.ReasonExperimentSucceeded
-	instance.Status.MarkExperimentSucceeded(reason, messageFormat, messageA...)
-	util.Logger(context).Info(reason + ", " + fmt.Sprintf(messageFormat, messageA...))
-	r.eventRecorder.Eventf(instance, corev1.EventTypeNormal, reason, messageFormat, messageA...)
-	r.notificationCenter.Notify(instance, reason, messageFormat, messageA...)
-	r.markStatusUpdate()
-}
-
-func (r *ReconcileExperiment) MarkExperimentFailed(context context.Context, instance *iter8v1alpha1.Experiment,
-	messageFormat string, messageA ...interface{}) {
-	reason := iter8v1alpha1.ReasonExperimentFailed
-	instance.Status.MarkExperimentFailed(reason, messageFormat, messageA...)
-	util.Logger(context).Info(reason + ", " + fmt.Sprintf(messageFormat, messageA...))
-	r.eventRecorder.Eventf(instance, corev1.EventTypeWarning, reason, messageFormat, messageA...)
-	r.notificationCenter.Notify(instance, reason, messageFormat, messageA...)
-	r.markStatusUpdate()
-}
-
-func (r *ReconcileExperiment) MarkSyncMetricsError(context context.Context, instance *iter8v1alpha1.Experiment,
-	messageFormat string, messageA ...interface{}) {
-	reason := iter8v1alpha1.ReasonSyncMetricsError
-	util.Logger(context).Info(reason + ", " + fmt.Sprintf(messageFormat, messageA...))
-	if instance.Status.MarkMetricsSyncedError(reason, messageFormat, messageA...) {
-		r.eventRecorder.Eventf(instance, corev1.EventTypeWarning, reason, messageFormat, messageA...)
-		r.notificationCenter.Notify(instance, reason, messageFormat, messageA...)
-		r.markStatusUpdate()
-	}
-}
-
-func (r *ReconcileExperiment) MarkSyncMetrics(context context.Context, instance *iter8v1alpha1.Experiment) {
-	reason := iter8v1alpha1.ReasonSyncMetricsSucceeded
-	util.Logger(context).Info(reason)
-	if instance.Status.MarkMetricsSynced() {
-		r.eventRecorder.Eventf(instance, corev1.EventTypeNormal, reason, "")
-		r.notificationCenter.Notify(instance, reason, "")
-		r.markStatusUpdate()
-	}
-}
-
-func (r *ReconcileExperiment) MarkRoutingRulesError(context context.Context, instance *iter8v1alpha1.Experiment,
-	messageFormat string, messageA ...interface{}) {
-	reason := iter8v1alpha1.ReasonRoutingRulesError
-	util.Logger(context).Info(reason + ", " + fmt.Sprintf(messageFormat, messageA...))
-	if instance.Status.MarkRoutingRulesError(reason, messageFormat, messageA...) {
-		r.eventRecorder.Eventf(instance, corev1.EventTypeWarning, reason, messageFormat, messageA...)
-		r.notificationCenter.Notify(instance, reason, messageFormat, messageA...)
-		r.markStatusUpdate()
-	}
-}
-
-func (r *ReconcileExperiment) MarkRoutingRulesReady(context context.Context, instance *iter8v1alpha1.Experiment,
-	messageFormat string, messageA ...interface{}) {
-	reason := iter8v1alpha1.ReasonRoutingRulesReady
-	util.Logger(context).Info(reason + ", " + fmt.Sprintf(messageFormat, messageA...))
-	if instance.Status.MarkRoutingRulesReady() {
+	if updated, reason := instance.Status.MarkTargetsFound(); updated {
+		util.Logger(context).Info(reason + ", " + fmt.Sprintf(messageFormat, messageA...))
 		r.eventRecorder.Eventf(instance, corev1.EventTypeNormal, reason, messageFormat, messageA...)
 		r.notificationCenter.Notify(instance, reason, messageFormat, messageA...)
 		r.markStatusUpdate()
 	}
 }
 
-func (r *ReconcileExperiment) MarkActionPause(context context.Context, instance *iter8v1alpha1.Experiment) {
-	reason := iter8v1alpha1.ReasonActionPause
-	util.Logger(context).Info(reason)
-	if instance.Status.MarkActionPause() {
+func (r *ReconcileExperiment) markAnalyticsServiceError(context context.Context, instance *iter8v1alpha2.Experiment,
+	messageFormat string, messageA ...interface{}) {
+	if updated, reason := instance.Status.MarkAnalyticsServiceError(reason, messageFormat, messageA...); updated {
+		util.Logger(context).Info(reason + ", " + fmt.Sprintf(messageFormat, messageA...))
+		r.eventRecorder.Eventf(instance, corev1.EventTypeWarning, reason, messageFormat, messageA...)
+		r.notificationCenter.Notify(instance, reason, messageFormat, messageA...)
+		r.markStatusUpdate()
+	}
+}
+
+func (r *ReconcileExperiment) markAnalyticsServiceRunning(context context.Context, instance *iter8v1alpha2.Experiment,
+	messageFormat string, messageA ...interface{}) {
+	if updated, reason := instance.Status.MarkAnalyticsServiceRunning(messageFormat, messageA ...); updated {
+		util.Logger(context).Info(reason)
 		r.eventRecorder.Eventf(instance, corev1.EventTypeNormal, reason, "")
 		r.notificationCenter.Notify(instance, reason, "")
 		r.markStatusUpdate()
 	}
 }
 
-func (r *ReconcileExperiment) MarkActionResume(context context.Context, instance *iter8v1alpha1.Experiment) {
-	reason := iter8v1alpha1.ReasonActionResume
-	util.Logger(context).Info(reason)
-	if instance.Status.MarkActionResume() {
+func (r *ReconcileExperiment) markIterationUpdate(context context.Context, instance *iter8v1alpha2.Experiment,
+	messageFormat string, messageA ...interface{}) {
+	if updated, reason := instance.Status.MarkIterationUpdate(messageFormat, messageA ...); updated {
+		util.Logger(context).Info(reason + ", " + fmt.Sprintf(messageFormat, messageA...))
+		r.eventRecorder.Eventf(instance, corev1.EventTypeNormal, reason, messageFormat, messageA...)
+		r.notificationCenter.Notify(instance, reason, messageFormat, messageA...)
+		r.markProgress()
+		r.markStatusUpdate()
+	}
+}
+
+func (r *ReconcileExperiment) markExperimentCompleted(context context.Context, instance *iter8v1alpha2.Experiment,
+	messageFormat string, messageA ...interface{}) {
+	if updated, reason := instance.Status.MarkExperimentCompleted(messageFormat, messageA ...); updated {
+		util.Logger(context).Info(reason + ", " + fmt.Sprintf(messageFormat, messageA...))
+		r.eventRecorder.Eventf(instance, corev1.EventTypeNormal, reason, messageFormat, messageA...)
+		r.notificationCenter.Notify(instance, reason, messageFormat, messageA...)
+		// Clear analysis state
+		instance.Status.AnalysisState.Raw = []byte("{}")
+		// Update grafana url
+		*instance.Status.EndTimestamp = metav1.Now()
+		r.grafanaConfig.UpdateGrafanaURL(instance)
+		r.markStatusUpdate()
+	} 
+}
+
+func (r *ReconcileExperiment) markSyncMetricsError(context context.Context, instance *iter8v1alpha2.Experiment,
+	messageFormat string, messageA ...interface{}) {
+	if updated, reason := instance.Status.MarkMetricsSyncedError(messageFormat, messageA...); updated {
+		util.Logger(context).Info(reason + ", " + fmt.Sprintf(messageFormat, messageA...))
+		r.eventRecorder.Eventf(instance, corev1.EventTypeWarning, reason, messageFormat, messageA...)
+		r.notificationCenter.Notify(instance, reason, messageFormat, messageA...)
+		r.markStatusUpdate()
+	}
+}
+
+func (r *ReconcileExperiment) markSyncMetrics(context context.Context, instance *iter8v1alpha2.Experiment) {
+	if updated, reason := instance.Status.MarkMetricsSynced(); updated {
+		util.Logger(context).Info(reason)
 		r.eventRecorder.Eventf(instance, corev1.EventTypeNormal, reason, "")
 		r.notificationCenter.Notify(instance, reason, "")
+		r.markStatusUpdate()
+	}
+}
+
+func (r *ReconcileExperiment) markRoutingRulesError(context context.Context, instance *iter8v1alpha2.Experiment,
+	messageFormat string, messageA ...interface{}) {
+	if updated, reason := instance.Status.MarkRoutingRulesError(messageFormat, messageA...); updated {
+		util.Logger(context).Info(reason + ", " + fmt.Sprintf(messageFormat, messageA...))
+		r.eventRecorder.Eventf(instance, corev1.EventTypeWarning, reason, messageFormat, messageA...)
+		r.notificationCenter.Notify(instance, reason, messageFormat, messageA...)
+		r.markStatusUpdate()
+	}
+}
+
+func (r *ReconcileExperiment) markRoutingRulesReady(context context.Context, instance *iter8v1alpha2.Experiment,
+	messageFormat string, messageA ...interface{}) {
+	if updated, reason := instance.Status.MarkRoutingRulesReady(messageFormat, messageA...); updated {
+		util.Logger(context).Info(reason + ", " + fmt.Sprintf(messageFormat, messageA...))
+		r.eventRecorder.Eventf(instance, corev1.EventTypeNormal, reason, messageFormat, messageA...)
+		r.notificationCenter.Notify(instance, reason, messageFormat, messageA...)
+		r.markStatusUpdate()
+	}
+}
+
+func (r *ReconcileExperiment) markActionPause(context context.Context, instance *iter8v1alpha2.Experiment,
+	messageFormat string, messageA ...interface{}) {
+	if updated, reason := instance.Status.MarkExperimentPause(messageFormat, messageA...); updated {
+		util.Logger(context).Info(reason + ", " + fmt.Sprintf(messageFormat, messageA...))
+		r.eventRecorder.Eventf(instance, corev1.EventTypeNormal, reason, "")
+		r.notificationCenter.Notify(instance, reason, "")
+		r.markStatusUpdate()
+	}
+}
+
+func (r *ReconcileExperiment) markActionResume(context context.Context, instance *iter8v1alpha2.Experiment,
+	messageFormat string, messageA ...interface{}) {
+	if instance.Status.MarkExperimentResume(messageFormat, messageA...) {
+		util.Logger(context).Info(reason + ", " + fmt.Sprintf(messageFormat, messageA...))
+		r.eventRecorder.Eventf(instance, corev1.EventTypeNormal, reason, messageFormat, messageA...))
+		r.notificationCenter.Notify(instance, reason, messageFormat, messageA...))
 		r.markStatusUpdate()
 		// need to refresh the whole flow
 		r.markRefresh()
 	}
-	return
 }

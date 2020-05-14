@@ -87,3 +87,20 @@ const (
 	// PhaseCompleted indicates experiment has competed (successfully or not)
 	PhaseCompleted PhaseType = "Completed"
 )
+
+// A set of reason setting the experiment condition status
+const (
+	ReasonTargetsFound            = "TargetsFound"
+	ReasonTargetsError            = "TargetsError"
+	ReasonAnalyticsServiceError   = "AnalyticsServiceError"
+	ReasonAnalyticsServiceRunning = "AnalyticsServiceRunning"
+	ReasonIterationUpdate         = "IterationUpdate"
+	ReasonTrafficUpdate           = "TrafficUpdate"
+	ReasonExperimentCompleted     = "ExperimentCompleted"
+	ReasonSyncMetricsError        = "SyncMetricsError"
+	ReasonSyncMetricsSucceeded    = "SyncMetricsSucceeded"
+	ReasonRoutingRulesError       = "RoutingRulesError"
+	ReasonRoutingRulesReady       = "RoutingRulesReady"
+	ReasonActionPause             = "ActionPause"
+	ReasonActionResume            = "ActionResume"
+)

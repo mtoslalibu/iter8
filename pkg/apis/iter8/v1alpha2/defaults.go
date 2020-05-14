@@ -51,6 +51,46 @@ func (e *Experiment) ServiceNamespace() string {
 	return serviceNamespace
 }
 
+// Pause indicates whether an Experiment Pause request is issued or not
+func (s *ExperimentSpec) Pause() bool {
+	if s.ManualOverride != nil && s.ManualOverride.Action == ActionPause {
+		return true
+	}
+	return false
+}
+
+// Resume indicates whether an Experiment Resume request is issued or not
+func (s *ExperimentSpec) Resume() bool {
+	if s.ManualOverride != nil && s.ManualOverride.Action == ActionResume {
+		return true
+	}
+	return false
+}
+
+// Terminate indicates whether an Experiment Terminate request is issued or not
+func (s *ExperimentSpec) Terminate() bool {
+	if s.ManualOverride != nil && s.ManualOverride.Action == ActionTerminate {
+		return true
+	}
+	return false
+}
+
+// GetInterval returns specified(or default) interval for each duration
+func (s *ExperimentSpec) GetInterval() (time.Duration, error) {
+	if s.Duration == nil || s.Duration.Interval == nil {
+		return DefaultDuration, nil
+	}
+	return time.ParseDuration(*s.Duration.Interval)
+}
+
+// GetMaxIterations returns specified(or default) max of iterations
+func (s *ExperimentSpec) GetMaxIterations() int32 {
+	if s.Duration == nil || s.Duration.MaxIterations == nil {
+		return DefaultMaxIterations
+	}
+	return *s.Duration.MaxIterations
+}
+
 // HasRewardMetric indicates whether this criterion uses a reward metric or not
 func (c *Criterion) HasRewardMetric() bool {
 	if c.IsReward == nil {
@@ -68,51 +108,35 @@ func (t *Threshold) CutOffOnViolation() bool {
 }
 
 // GetStrategy gets the specified(or default) strategy used for traffic control
-func (t *TrafficControl) GetStrategy() StrategyType {
-	if t.Strategy == nil {
-		return DefaultStrategy
+func (s *ExperimentSpec) GetStrategy() string {
+	if s.TrafficControl == nil || s.TrafficControl.Strategy == nil {
+		return string(DefaultStrategy)
 	}
-	return *t.Strategy
+	return string(*s.TrafficControl.Strategy)
 }
 
 // GetOnTermination returns specified(or default) onTermination strategy for traffic controller
-func (t *TrafficControl) GetOnTermination() OnTerminationType {
-	if t.OnTermination == nil {
+func (s *ExperimentSpec) GetOnTermination() OnTerminationType {
+	if s.TrafficControl == nil || s.TrafficControl.OnTermination == nil {
 		return DefaultOnTermination
 	}
-	return *t.OnTermination
+	return *s.TrafficControl.OnTermination
 }
 
 // GetPercentage returns specified(or default) experiment traffic percentage
-func (t *TrafficControl) GetPercentage() int32 {
-	if t.Percentage == nil {
+func (s *ExperimentSpec) GetPercentage() int32 {
+	if s.TrafficControl == nil || s.TrafficControl.Percentage == nil {
 		return DefaultPercentage
 	}
-	return *t.Percentage
+	return *s.TrafficControl.Percentage
 }
 
 // GetMaxIncrements returns specified(or default) maxIncrements for each traffic update
-func (t *TrafficControl) GetMaxIncrements() int32 {
-	if t.MaxIncrement == nil {
+func (s *ExperimentSpec) GetMaxIncrements() int32 {
+	if s.TrafficControl == nil || s.TrafficControl.MaxIncrement == nil {
 		return DefaultMaxIncrement
 	}
-	return *t.MaxIncrement
-}
-
-// GetInterval returns specified(or default) interval for each duration
-func (d *Duration) GetInterval() (time.Duration, error) {
-	if d.Interval == nil {
-		return DefaultDuration, nil
-	}
-	return time.ParseDuration(*d.Interval)
-}
-
-// GetMaxIterations returns specified(or default) max of iterations
-func (d *Duration) GetMaxIterations() int32 {
-	if d.MaxIterations == nil {
-		return DefaultMaxIterations
-	}
-	return *d.MaxIterations
+	return *s.TrafficControl.MaxIncrement
 }
 
 // IsZeroToOne returns specified(or default) zeroToOne value

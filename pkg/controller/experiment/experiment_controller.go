@@ -38,11 +38,12 @@ import (
 	"sigs.k8s.io/controller-runtime/pkg/source"
 
 	"github.com/iter8-tools/iter8-controller/pkg/analytics/metrics"
-	iter8v1alpha1 "github.com/iter8-tools/iter8-controller/pkg/apis/iter8/v1alpha1"
+	iter8v1alpha2 "github.com/iter8-tools/iter8-controller/pkg/apis/iter8/v1alpha2"
 	iter8cache "github.com/iter8-tools/iter8-controller/pkg/controller/experiment/cache"
 	"github.com/iter8-tools/iter8-controller/pkg/controller/experiment/routing"
 	"github.com/iter8-tools/iter8-controller/pkg/controller/experiment/targets"
 	"github.com/iter8-tools/iter8-controller/pkg/controller/experiment/util"
+	"github.com/iter8-tools/iter8-controller/pkg/grafana"
 	iter8notifier "github.com/iter8-tools/iter8-controller/pkg/notifier"
 )
 
@@ -89,6 +90,8 @@ func newReconciler(mgr manager.Manager) (*ReconcileExperiment, error) {
 		return nil, err
 	}
 
+	grafanaConfig := grafana.NewConfigStore(log, client)
+
 	iter8Cache := iter8cache.New(log)
 
 	return &ReconcileExperiment{
@@ -98,6 +101,7 @@ func newReconciler(mgr manager.Manager) (*ReconcileExperiment, error) {
 		eventRecorder:      mgr.GetEventRecorderFor(Iter8Controller),
 		notificationCenter: nc,
 		iter8Cache:         iter8Cache,
+		grafanaConfig:      grafanaConfig,
 	}, nil
 }
 
@@ -209,13 +213,13 @@ func add(mgr manager.Manager, r *ReconcileExperiment) error {
 		servicePredicate)
 
 	// Watch for changes to Experiment
-	err = c.Watch(&source.Kind{Type: &iter8v1alpha1.Experiment{}}, &handler.EnqueueRequestForObject{},
+	err = c.Watch(&source.Kind{Type: &iter8v1alpha2.Experiment{}}, &handler.EnqueueRequestForObject{},
 		// Ignore status update event
 		predicate.GenerationChangedPredicate{},
 		predicate.Funcs{
 			UpdateFunc: func(e event.UpdateEvent) bool {
-				oldInstance, _ := e.ObjectOld.(*iter8v1alpha1.Experiment)
-				newInstance, _ := e.ObjectNew.(*iter8v1alpha1.Experiment)
+				oldInstance, _ := e.ObjectOld.(*iter8v1alpha2.Experiment)
+				newInstance, _ := e.ObjectNew.(*iter8v1alpha2.Experiment)
 				// Ignore finalizer update
 				if len(oldInstance.Finalizers) == 0 && len(newInstance.Finalizers) > 0 {
 					log.Info("UpdateRequestDetected", "FinalizerChanged", "Reject")
@@ -223,13 +227,13 @@ func add(mgr manager.Manager, r *ReconcileExperiment) error {
 				}
 
 				// Ignore event of revert changes in action field
-				if len(oldInstance.Action) > 0 && len(newInstance.Action) == 0 {
-					log.Info("UpdateRequestDetected", "ActionReverted", "Reject")
+				if oldInstance.Spec.ManualOverride != nil && newInstance.Spec.ManualOverride == nil {
+					log.Info("UpdateRequestDetected", "ManualOverride", "Reject")
 					return false
 				}
 
 				// Ignore event of metrics load
-				if len(oldInstance.Metrics) == 0 && len(newInstance.Metrics) > 0 {
+				if len(oldInstance.Spec.Metrics) == 0 && len(newInstance.Spec.Metrics) > 0 {
 					log.Info("UpdateRequestDetected", "MetrcisLoad", "Reject")
 					return false
 				}
@@ -254,9 +258,10 @@ type ReconcileExperiment struct {
 	notificationCenter *iter8notifier.NotificationCenter
 	istioClient        istioclient.Interface
 	iter8Cache         iter8cache.Interface
+	grafanaConfig      grafana.Interface
 
 	targets *targets.Targets
-	rules   *routing.IstioRoutingRules
+	rules   *routing.Router
 	interState
 }
 
@@ -276,7 +281,7 @@ func (r *ReconcileExperiment) Reconcile(request reconcile.Request) (reconcile.Re
 	ctx := context.Background()
 
 	// Fetch the Experiment instance
-	instance := &iter8v1alpha1.Experiment{}
+	instance := &iter8v1alpha2.Experiment{}
 	err := r.Get(ctx, request.NamespacedName, instance)
 	if err != nil {
 		if errors.IsNotFound(err) {
@@ -311,7 +316,7 @@ func (r *ReconcileExperiment) Reconcile(request reconcile.Request) (reconcile.Re
 		return r.finalize(ctx, instance)
 	}
 
-	if instance.Status.Phase == iter8v1alpha1.PhaseCompleted {
+	if instance.Status.Phase == iter8v1alpha2.PhaseCompleted {
 		log.Info("NotToProceed", "phase", instance.Status.Phase)
 		return reconcile.Result{}, nil
 	}
@@ -328,22 +333,15 @@ func (r *ReconcileExperiment) Reconcile(request reconcile.Request) (reconcile.Re
 		return reconcile.Result{}, nil
 	}
 
-	switch instance.Spec.TargetService.APIVersion {
-	case KubernetesV1:
-		return r.syncKubernetes(ctx, instance)
-	default:
-		instance.Status.MarkTargetsError("UnsupportedAPIVersion", "")
-		r.Status().Update(ctx, instance)
-		return reconcile.Result{}, nil
-	}
+	return r.syncKubernetes(ctx, instance)
 }
 
-func (r *ReconcileExperiment) syncMetrics(ctx context.Context, instance *iter8v1alpha1.Experiment) error {
+func (r *ReconcileExperiment) syncMetrics(ctx context.Context, instance *iter8v1alpha2.Experiment) error {
 	if len(instance.Spec.Analysis.SuccessCriteria) == 0 {
 		return nil
 	}
 	// Sync metric definitions from the config map
-	metricsSycned := instance.Status.GetCondition(iter8v1alpha1.ExperimentConditionMetricsSynced)
+	metricsSycned := instance.Status.GetCondition(iter8v1alpha2.ExperimentConditionMetricsSynced)
 	if metricsSycned == nil || metricsSycned.Status != corev1.ConditionTrue {
 		if err := metrics.Read(ctx, r, instance); err != nil && !validUpdateErr(err) {
 			r.MarkSyncMetricsError(ctx, instance, "Fail to read metrics: %v", err)
@@ -362,7 +360,7 @@ func (r *ReconcileExperiment) syncMetrics(ctx context.Context, instance *iter8v1
 	return nil
 }
 
-func addFinalizerIfAbsent(context context.Context, c client.Client, instance *iter8v1alpha1.Experiment, fName string) (err error) {
+func addFinalizerIfAbsent(context context.Context, c client.Client, instance *iter8v1alpha2.Experiment, fName string) (err error) {
 	for _, finalizer := range instance.ObjectMeta.GetFinalizers() {
 		if finalizer == fName {
 			return
@@ -377,7 +375,7 @@ func addFinalizerIfAbsent(context context.Context, c client.Client, instance *it
 	return
 }
 
-func removeFinalizer(context context.Context, c client.Client, instance *iter8v1alpha1.Experiment, fName string) (err error) {
+func removeFinalizer(context context.Context, c client.Client, instance *iter8v1alpha2.Experiment, fName string) (err error) {
 	finalizers := make([]string, 0)
 	for _, f := range instance.GetFinalizers() {
 		if f != fName {
@@ -393,7 +391,7 @@ func removeFinalizer(context context.Context, c client.Client, instance *iter8v1
 	return
 }
 
-func (r *ReconcileExperiment) finalize(context context.Context, instance *iter8v1alpha1.Experiment) (reconcile.Result, error) {
+func (r *ReconcileExperiment) finalize(context context.Context, instance *iter8v1alpha2.Experiment) (reconcile.Result, error) {
 	log := util.Logger(context)
 	log.Info("finalizing")
 
@@ -406,7 +404,7 @@ func (r *ReconcileExperiment) finalize(context context.Context, instance *iter8v
 	return reconcile.Result{}, removeFinalizer(context, r, instance, Finalizer)
 }
 
-func (r *ReconcileExperiment) syncExperiment(context context.Context, instance *iter8v1alpha1.Experiment) {
+func (r *ReconcileExperiment) syncExperiment(context context.Context, instance *iter8v1alpha2.Experiment) {
 	eas := experimentAbstract(context)
 	// Abort Experiment by setting action flag
 	util.Logger(context).Info("phase", "before", instance.Status.Phase)
@@ -417,15 +415,17 @@ func (r *ReconcileExperiment) syncExperiment(context context.Context, instance *
 			util.Logger(context).Info("phase", "after", instance.Status.Phase)
 		}
 	} else if eas.Resume() {
-		instance.Status.Phase = iter8v1alpha1.PhaseProgressing
+		instance.Status.Phase = iter8v1alpha2.PhaseProgressing
 	}
 
 	r.initState()
+	r.targets.Init(instance, r.Client)
+	r.router.Init(r.istioClient)
 }
 
-func (r *ReconcileExperiment) proceed(context context.Context, instance *iter8v1alpha1.Experiment) (err error) {
+func (r *ReconcileExperiment) proceed(context context.Context, instance *iter8v1alpha2.Experiment) (err error) {
 	// Pause action rejects all other resume mechanisms except resume action
-	if instance.Action == iter8v1alpha1.ActionPause {
+	if instance.Spec.Pause() {
 		r.MarkActionPause(context, instance)
 		if r.needStatusUpdate() {
 			if err := r.Status().Update(context, instance); err != nil && !validUpdateErr(err) {
@@ -437,14 +437,14 @@ func (r *ReconcileExperiment) proceed(context context.Context, instance *iter8v1
 		return
 	}
 
-	if instance.Status.Phase == iter8v1alpha1.PhasePause {
+	if instance.Status.Phase == iter8v1alpha2.PhasePause {
 		// termination request overrides pause phase
-		if instance.Action.TerminateExperiment() {
+		if instance.Spec.Terminate() {
 			return
 		}
-		if instance.Action == iter8v1alpha1.ActionResume {
-			// revert action field
-			instance.Action = ""
+		if instance.Spec.Resume() {
+			// clear
+			instance.Spec.ManualOverride = nil
 			if err := r.Update(context, instance); err != nil && !validUpdateErr(err) {
 				log.Error(err, "Fail to update instance")
 				return err
