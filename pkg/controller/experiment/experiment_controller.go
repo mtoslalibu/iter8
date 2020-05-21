@@ -330,7 +330,7 @@ func (r *ReconcileExperiment) Reconcile(request reconcile.Request) (reconcile.Re
 	}
 
 	if err := r.syncMetrics(ctx, instance); err != nil {
-		return reconcile.Result{}, nil
+		return r.endRequest(ctx, instance)
 	}
 
 	switch instance.Spec.TargetService.APIVersion {
@@ -352,13 +352,6 @@ func (r *ReconcileExperiment) syncMetrics(ctx context.Context, instance *iter8v1
 	if metricsSycned == nil || metricsSycned.Status != corev1.ConditionTrue {
 		if err := metrics.Read(ctx, r, instance); err != nil && !validUpdateErr(err) {
 			r.MarkSyncMetricsError(ctx, instance, "Fail to read metrics: %v", err)
-
-			if err := r.Status().Update(ctx, instance); err != nil && !validUpdateErr(err) {
-				log.Info("Fail to update status: %v", err)
-				// TODO: need a better way of handling this error
-				return err
-			}
-
 			return err
 		}
 		r.MarkSyncMetrics(ctx, instance)
