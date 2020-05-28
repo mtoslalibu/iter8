@@ -1,0 +1,27 @@
+apiVersion: iter8.tools/v1alpha2
+kind: Experiment
+metadata:
+  name: reviews-v5-rollout
+spec:
+  service:
+    name: reviews
+    apiVersion: v1
+    baseline: reviews-v3
+    candidates: [ "reviews-v5" ]
+  criteria:
+    - metric: iter8_mean_latenecy
+      threshold:
+        type: absolute
+        value: 200
+    - metric: iter8_error_count
+      threshold:
+        type: relative
+        value: 0.02
+        cutoffTrafficOnViolation: true
+  duration:
+    interval: 30s
+    maxIterations: 8
+  trafficControl:
+    maxIncrement: 20
+  cleanup: true
+  analyticsSerivceURL: http://iter8-analytics:8080
