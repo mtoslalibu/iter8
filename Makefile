@@ -29,7 +29,7 @@ load: manifests
 	  -x templates/metrics/iter8_metrics.yaml \
 	  -x templates/notifier/iter8_notifiers.yaml\
       --set istioTelemetry=${TELEMETRY} \
-	| cat - #kubectl apply -f -
+	| kubectl apply -f -
 
 # Deploy controller to the Kubernetes cluster configured in $KUBECONFIG or ~/.kube/config
 deploy: manifests
@@ -38,7 +38,7 @@ deploy: manifests
 	  --set image.repository=`echo ${IMG} | cut -f1 -d':'` \
 	  --set image.tag=`echo ${IMG} | cut -f2 -d':'` \
       --set istioTelemetry=${TELEMETRY} \
-	| cat - #kubectl apply -f -
+	| kubectl apply -f -
 
 # Run go fmt against code
 fmt:
