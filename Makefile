@@ -1,5 +1,6 @@
 # Image URL to use all building/pushing image targets
 IMG ?= iter8-controller:latest
+TELEMETRY ?= v1
 
 all: manager
 
@@ -27,7 +28,8 @@ load: manifests
 	  -x templates/crds/iter8.tools_experiments.yaml \
 	  -x templates/metrics/iter8_metrics.yaml \
 	  -x templates/notifier/iter8_notifiers.yaml\
-	| kubectl apply -f -
+      --set istioTelemetry=${TELEMETRY} \
+	| cat - #kubectl apply -f -
 
 # Deploy controller to the Kubernetes cluster configured in $KUBECONFIG or ~/.kube/config
 deploy: manifests
@@ -35,7 +37,8 @@ deploy: manifests
 	  --name iter8-controller \
 	  --set image.repository=`echo ${IMG} | cut -f1 -d':'` \
 	  --set image.tag=`echo ${IMG} | cut -f2 -d':'` \
-	| kubectl apply -f -
+      --set istioTelemetry=${TELEMETRY} \
+	| cat - #kubectl apply -f -
 
 # Run go fmt against code
 fmt:
