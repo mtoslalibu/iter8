@@ -5,7 +5,6 @@ metadata:
 spec:
   service:
     name: productpage
-    apiVersion: v1
     baseline: productpage-v1
     candidates: [ "productpage-v2" ]
   routingReference:
@@ -16,11 +15,11 @@ spec:
     - metric: iter8_mean_latenecy
       threshold:
         type: absolute
-        value: 300
+        value: 300 # milliseconds
   duration:
     interval: 30s
     maxIterations: 8
   trafficControl:
-    maxIncrement: 20
+    percentage: 100
+    maxIncrement: 100
   cleanup: true
-  analyticsSerivceURL: http://iter8-analytics:8080

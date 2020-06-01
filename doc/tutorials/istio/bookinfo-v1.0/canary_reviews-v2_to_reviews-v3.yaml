@@ -5,18 +5,16 @@ metadata:
 spec:
   service:
     name: reviews
-    apiVersion: v1
     baseline: reviews-v2
     candidates: [ "reviews-v3" ]
   criteria:
-    - metric: iter8_mean_latenecy
+    - metric: iter8_mean_latency
       threshold:
         type: absolute
-        value: 200
+        value: 200 # milliseconds
   duration:
     interval: 30s
     maxIterations: 8
   trafficControl:
-    maxIncrement: 20
-  cleanup: true
-  analyticsSerivceURL: http://iter8-analytics:8080
+    percentage: 100
+    maxIncrement: 100
