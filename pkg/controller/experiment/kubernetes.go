@@ -67,7 +67,8 @@ func (r *ReconcileExperiment) syncKubernetes(context context.Context, instance *
 		return reconcile.Result{RequeueAfter: interval}, nil
 	}
 
-	return reconcile.Result{}, nil
+	log.Info("Request not processed")
+	return r.endRequest(context, instance)
 }
 
 func (r *ReconcileExperiment) finalizeIstio(context context.Context, instance *iter8v1alpha2.Experiment) (reconcile.Result, error) {
@@ -105,6 +106,7 @@ func (r *ReconcileExperiment) toUpdate(context context.Context, instance *iter8v
 	}
 
 	now := time.Now()
+	traffic := instance.Spec.TrafficControl
 	interval, _ := instance.Spec.GetInterval()
 
 	return instance.Status.LastUpdateTime != nil && now.After(instance.Status.LastUpdateTime.Add(interval))
