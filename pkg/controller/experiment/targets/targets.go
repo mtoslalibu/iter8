@@ -21,7 +21,7 @@ import (
 
 	appsv1 "k8s.io/api/apps/v1"
 	corev1 "k8s.io/api/core/v1"
-	"k8s.io/apimachinery/pkg/api/errors"
+	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/apimachinery/pkg/types"
 	"sigs.k8s.io/controller-runtime/pkg/client"
 
@@ -39,9 +39,9 @@ const (
 
 // Targets contains details for target service of an experiment
 type Targets struct {
-	service    *corev1.Service
-	baseline   *appsv1.Deployment
-	candidates []*appsv1.Deployment
+	Service    *corev1.Service
+	Baseline   *appsv1.Deployment
+	Candidates []*appsv1.Deployment
 	namespace  string
 
 	client client.Client
@@ -53,7 +53,7 @@ func Init(instance *iter8v1alpha2.Experiment, client client.Client) *Targets {
 		Service:    &corev1.Service{},
 		Baseline:   &appsv1.Deployment{},
 		Candidates: make([]*appsv1.Deployment, len(instance.Spec.Candidates)),
-		Namespace:  instance.ServiceNamespace(),
+		namespace:  instance.ServiceNamespace(),
 		client:     client,
 	}
 }
@@ -62,8 +62,8 @@ func Init(instance *iter8v1alpha2.Experiment, client client.Client) *Targets {
 // returns non-nil error if there is problem in getting the runtime object from cluster
 func (t *Targets) GetService(context context.Context, instance *iter8v1alpha2.Experiment) error {
 	return t.client.Get(context, types.NamespacedName{
-		Name:      t.Service.Name,
-		Namespace: t.Namespace},
+		Name:      instance.Spec.Service.Name,
+		Namespace: t.namespace},
 		t.Service)
 }
 
@@ -72,22 +72,22 @@ func (t *Targets) GetService(context context.Context, instance *iter8v1alpha2.Ex
 func (t *Targets) GetBaseline(context context.Context, instance *iter8v1alpha2.Experiment) error {
 	return t.client.Get(context, types.NamespacedName{
 		Name:      instance.Spec.Baseline,
-		Namespace: t.Namespace},
+		Namespace: t.namespace},
 		t.Baseline)
 }
 
 // GetCandidates substantializes all candidates in the targets
 // returns non-nil error if there is problem in getting the runtime objects from cluster
 func (t *Targets) GetCandidates(context context.Context, instance *iter8v1alpha2.Experiment) (err error) {
-	if len(t.candidates) != len(instance.Spec.Candidates) {
+	if len(t.Candidates) != len(instance.Spec.Candidates) {
 		return fmt.Errorf("Mismatch of candidate list length, %d in targets while %d in instance",
-			len(instance.Spec.Candidates), len(t.candidates))
+			len(instance.Spec.Candidates), len(t.Candidates))
 	}
-	for i, candidate := range t.candidates {
+	for i, candidate := range t.Candidates {
 		candidate = &appsv1.Deployment{}
 		err = t.client.Get(context, types.NamespacedName{
 			Name:      instance.Spec.Candidates[i],
-			Namespace: t.Namespace},
+			Namespace: t.namespace},
 			candidate)
 		if err != nil {
 			return
@@ -98,7 +98,7 @@ func (t *Targets) GetCandidates(context context.Context, instance *iter8v1alpha2
 
 // Cleanup deletes cluster runtime objects of targets at the end of experiment
 func (t *Targets) Cleanup(context context.Context, instance *iter8v1alpha2.Experiment) {
-	if *instance.Spec.CleanUp {
+	if *instance.Spec.Cleanup {
 		assessment := instance.Status.Assessment
 		toKeep := make(map[string]bool)
 		switch instance.Spec.GetOnTermination() {
@@ -115,7 +115,7 @@ func (t *Targets) Cleanup(context context.Context, instance *iter8v1alpha2.Exper
 				if assessment.Baseline.Weight > 0 {
 					toKeep[assessment.Baseline.Name] = true
 				}
-				for i, candidate := range assessment.Candidates {
+				for _, candidate := range assessment.Candidates {
 					if candidate.Weight > 0 {
 						toKeep[candidate.Name] = true
 					}

@@ -19,7 +19,6 @@ import (
 	"context"
 	"time"
 
-	corev1 "k8s.io/api/core/v1"
 	"sigs.k8s.io/controller-runtime/pkg/reconcile"
 
 	iter8v1alpha2 "github.com/iter8-tools/iter8-controller/pkg/apis/iter8/v1alpha2"
@@ -32,77 +31,51 @@ func (r *ReconcileExperiment) syncKubernetes(context context.Context, instance *
 	// check routing rules for this experiment
 	err := r.checkOrInitRules(context, instance)
 	if err != nil {
-		if r.needStatusUpdate() {
-			if err := r.Status().Update(context, instance); err != nil && !validUpdateErr(err) {
-				log.Info("Fail to update status: %v", err)
-				return reconcile.Result{}, nil
-			}
-		}
-		return reconcile.Result{}, nil
+		return r.endRequest(context, instance)
 	}
 
 	// detect targets of this experiment if necessary
 	if r.toDetectTargets(context, instance) {
 		err = r.detectTargets(context, instance)
 		if err != nil {
-			if r.needStatusUpdate() {
-				if err := r.Status().Update(context, instance); err != nil && !validUpdateErr(err) {
-					log.Info("Fail to update status: %v", err)
-					return reconcile.Result{}, nil
-				}
-			}
-			return reconcile.Result{}, nil
+			return r.endRequest(context, instance)
 		}
 	}
 
-	if r.toUpdateIteration(context, instance) {
+	if r.toUpdate(context, instance) {
 		err := r.updateIteration(context, instance)
-		if r.needStatusUpdate() {
-			if err := r.Status().Update(context, instance); err != nil && !validUpdateErr(err) {
-				log.Info("Fail to update status: %v", err)
-				return reconcile.Result{}, nil
-			}
-		}
 		if err != nil {
-			// pause experiment
-			return reconcile.Result{}, nil
+			return r.endRequest(context, instance)
 		}
 	}
 
 	// complete experiment if required
 	if r.toComplete(context, instance) {
 		err := r.completeExperiment(context, instance)
-		if r.needStatusUpdate() {
-			if err := r.Status().Update(context, instance); err != nil && !validUpdateErr(err) {
-				log.Info("Fail to update status: %v", err)
-				return reconcile.Result{}, nil
-			}
-		}
 		if err != nil {
 			// retry
 			return reconcile.Result{Requeue: true}, nil
-		} else {
-			return reconcile.Result{}, nil
 		}
+		return r.endRequest(context, instance)
 	}
 
 	// requeue for next iteration
 	if r.hasProgress() {
-		// TODO: need to handle error of interpreting interval
 		interval, _ := instance.Spec.GetInterval()
-		instance.Status.CurrentIteration++
-		r.markIterationUpdate(context, instance,
-			"Iteration %d Started", instance.Status.CurrentIteration)
+		r.endRequest(context, instance)
+		log.Info("Requeue for next iteration")
 		return reconcile.Result{RequeueAfter: interval}, nil
 	}
 
-	return reconcile.Result{}, nil
+	log.Info("Request not processed")
+	return r.endRequest(context, instance)
 }
 
 func (r *ReconcileExperiment) finalizeIstio(context context.Context, instance *iter8v1alpha2.Experiment) (reconcile.Result, error) {
-	completed := instance.Status.GetCondition(iter8v1alpha1.ExperimentConditionExperimentCompleted)
-	if completed != nil && completed.Status != corev1.ConditionTrue {
-		instance.Action = iter8v1alpha2.ActionOverrideFailure
+	if !instance.Status.ExperimentCompleted() {
+		instance.Spec.ManualOverride = &iter8v1alpha2.ManualOverride{
+			Action: iter8v1alpha2.ActionTerminate,
+		}
 		if _, err := r.syncKubernetes(context, instance); err != nil {
 			util.Logger(context).Error(err, "Fail to execute finalize sync process")
 		}
@@ -127,18 +100,28 @@ func (r *ReconcileExperiment) toDetectTargets(context context.Context, instance 
 	return true
 }
 
-func (r *ReconcileExperiment) toUpdateIteration(context context.Context, instance *iter8v1alpha2.Experiment) bool {
+func (r *ReconcileExperiment) toUpdate(context context.Context, instance *iter8v1alpha2.Experiment) bool {
 	if instance.Spec.Terminate() {
 		return false
 	}
 
 	now := time.Now()
+	traffic := instance.Spec.TrafficControl
 	interval, _ := instance.Spec.GetInterval()
 
-	return now.After(instance.Status.LastIncrementTime.Add(interval))
+	return instance.Status.LastUpdateTime != nil && now.After(instance.Status.LastUpdateTime.Add(interval))
 }
 
 func (r *ReconcileExperiment) toComplete(context context.Context, instance *iter8v1alpha2.Experiment) bool {
-	return instance.Spec.Duration.GetMaxIterations() < instance.Status.CurrentIteration ||
+	return instance.Spec.GetMaxIterations() < *instance.Status.CurrentIteration ||
 		instance.Spec.Terminate() || experimentAbstract(context).Terminate()
+}
+
+func (r *ReconcileExperiment) endRequest(context context.Context, instance *iter8v1alpha2.Experiment) (reconcile.Result, error) {
+	if r.needStatusUpdate() {
+		if err := r.Status().Update(context, instance); err != nil && !validUpdateErr(err) {
+			log.Info("Fail to update status: %v", err)
+		}
+	}
+	return reconcile.Result{}, nil
 }

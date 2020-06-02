@@ -18,10 +18,10 @@ package cache
 import (
 	"strings"
 
-	iter8v1alpha1 "github.com/iter8-tools/iter8-controller/pkg/apis/iter8/v1alpha1"
+	iter8v1alpha2 "github.com/iter8-tools/iter8-controller/pkg/apis/iter8/v1alpha2"
 )
 
-func experimentKey(instance *iter8v1alpha1.Experiment) string {
+func experimentKey(instance *iter8v1alpha2.Experiment) string {
 	return instance.Name + "." + instance.Namespace
 }
 

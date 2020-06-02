@@ -16,6 +16,9 @@ limitations under the License.
 package grafana
 
 import (
+	"strconv"
+	"time"
+
 	"github.com/go-logr/logr"
 	"sigs.k8s.io/controller-runtime/pkg/client"
 
@@ -77,16 +80,20 @@ func (c *ConfigStore) UpdateGrafanaURL(instance *iter8v1alpha2.Experiment) {
 		// StartTimestamp value is required
 		return
 	}
+	candidates := ""
+	for _, candidate := range instance.Spec.Service.Candidates {
+		candidates += "," + candidate
+	}
 	endTsStr := "now"
 	if instance.Status.EndTimestamp != nil {
 		endTsStr = strconv.FormatInt(instance.Status.EndTimestamp.UTC().UnixNano()/int64(time.Millisecond), 10)
 	}
-	instance.Status.GrafanaURL = instance.Spec.Analysis.GetGrafanaEndpoint() +
+	*instance.Status.GrafanaURL = c.getEndpoint() +
 		"/d/" + defaultBoardUID + "/iter8-application-metrics?" +
 		"var-namespace=" + instance.ServiceNamespace() +
 		"&var-service=" + instance.Spec.Service.Name +
 		"&var-baseline=" + instance.Spec.Service.Baseline +
-		"&var-candidate=" + instance.Spec.Service.Candidate +
+		"&var-candidate=" + candidates[1:] +
 		"&from=" + strconv.FormatInt(instance.Status.StartTimestamp.UTC().UnixNano()/int64(time.Millisecond), 10) +
 		"&to=" + endTsStr
 }

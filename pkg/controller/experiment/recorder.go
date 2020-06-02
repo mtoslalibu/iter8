@@ -57,7 +57,7 @@ func (r *ReconcileExperiment) markAnalyticsServiceError(context context.Context,
 
 func (r *ReconcileExperiment) markAnalyticsServiceRunning(context context.Context, instance *iter8v1alpha2.Experiment,
 	messageFormat string, messageA ...interface{}) {
-	if updated, reason := instance.Status.MarkAnalyticsServiceRunning(messageFormat, messageA ...); updated {
+	if updated, reason := instance.Status.MarkAnalyticsServiceRunning(messageFormat, messageA...); updated {
 		util.Logger(context).Info(reason)
 		r.eventRecorder.Eventf(instance, corev1.EventTypeNormal, reason, "")
 		r.notificationCenter.Notify(instance, reason, "")
@@ -67,7 +67,7 @@ func (r *ReconcileExperiment) markAnalyticsServiceRunning(context context.Contex
 
 func (r *ReconcileExperiment) markIterationUpdate(context context.Context, instance *iter8v1alpha2.Experiment,
 	messageFormat string, messageA ...interface{}) {
-	if updated, reason := instance.Status.MarkIterationUpdate(messageFormat, messageA ...); updated {
+	if updated, reason := instance.Status.MarkIterationUpdate(messageFormat, messageA...); updated {
 		util.Logger(context).Info(reason + ", " + fmt.Sprintf(messageFormat, messageA...))
 		r.eventRecorder.Eventf(instance, corev1.EventTypeNormal, reason, messageFormat, messageA...)
 		r.notificationCenter.Notify(instance, reason, messageFormat, messageA...)
@@ -78,7 +78,7 @@ func (r *ReconcileExperiment) markIterationUpdate(context context.Context, insta
 
 func (r *ReconcileExperiment) markExperimentCompleted(context context.Context, instance *iter8v1alpha2.Experiment,
 	messageFormat string, messageA ...interface{}) {
-	if updated, reason := instance.Status.MarkExperimentCompleted(messageFormat, messageA ...); updated {
+	if updated, reason := instance.Status.MarkExperimentCompleted(messageFormat, messageA...); updated {
 		util.Logger(context).Info(reason + ", " + fmt.Sprintf(messageFormat, messageA...))
 		r.eventRecorder.Eventf(instance, corev1.EventTypeNormal, reason, messageFormat, messageA...)
 		r.notificationCenter.Notify(instance, reason, messageFormat, messageA...)
@@ -88,7 +88,7 @@ func (r *ReconcileExperiment) markExperimentCompleted(context context.Context, i
 		*instance.Status.EndTimestamp = metav1.Now()
 		r.grafanaConfig.UpdateGrafanaURL(instance)
 		r.markStatusUpdate()
-	} 
+	}
 }
 
 func (r *ReconcileExperiment) markSyncMetricsError(context context.Context, instance *iter8v1alpha2.Experiment,
@@ -144,8 +144,8 @@ func (r *ReconcileExperiment) markActionResume(context context.Context, instance
 	messageFormat string, messageA ...interface{}) {
 	if instance.Status.MarkExperimentResume(messageFormat, messageA...) {
 		util.Logger(context).Info(reason + ", " + fmt.Sprintf(messageFormat, messageA...))
-		r.eventRecorder.Eventf(instance, corev1.EventTypeNormal, reason, messageFormat, messageA...))
-		r.notificationCenter.Notify(instance, reason, messageFormat, messageA...))
+		r.eventRecorder.Eventf(instance, corev1.EventTypeNormal, reason, messageFormat, messageA...)
+		r.notificationCenter.Notify(instance, reason, messageFormat, messageA...)
 		r.markStatusUpdate()
 		// need to refresh the whole flow
 		r.markRefresh()

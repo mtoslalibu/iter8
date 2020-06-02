@@ -106,8 +106,8 @@ func updateConfigFromConfigmap(c *ConfigStore) func(obj interface{}) {
 		}
 
 		for _, instance := range experimentList.Items {
-			c.UpdateGrafanaURL(instance)
-			if err := c.client.Update(ctx, instance); err != nil {
+			c.UpdateGrafanaURL(&instance)
+			if err := c.client.Update(ctx, &instance); err != nil {
 				// Just log the error for now
 				// TODO: log the error in condition
 				c.logger.Error(err, "Fail to update grafana url")

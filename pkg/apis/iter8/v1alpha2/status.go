@@ -47,7 +47,7 @@ func (s *ExperimentStatus) getCondition(condition ExperimentConditionType) *Expe
 }
 
 // Init initialize status value of an experiment
-func (e *Experiment) Init() {
+func (e *Experiment) InitStatus() {
 	e.Status.Assessment = &Assessment{
 		Baseline: VersionAssessment{
 			Name:   e.Spec.Baseline,
@@ -84,6 +84,11 @@ func (c *ExperimentCondition) markCondition(status corev1.ConditionStatus, reaso
 	*c.Message = fmt.Sprintf(messageFormat, messageA...)
 	*c.LastTransitionTime = metav1.Now()
 	return updated
+}
+
+// MetricsSynced returns whether status of ExperimentConditionMetricsSynced is true or not
+func (s *ExperimentStatus) MetricsSynced() bool {
+	return s.getCondition(ExperimentConditionMetricsSynced).Status == corev1.ConditionTrue
 }
 
 // MarkMetricsSynced sets the condition that the metrics are synced with config map
@@ -160,6 +165,10 @@ func (s *ExperimentStatus) MarkAnalyticsServiceError(messageFormat string, messa
 	*s.Phase = PhasePause
 	return s.getCondition(ExperimentConditionAnalyticsServiceNormal).
 		markCondition(corev1.ConditionFalse, reason, messageFormat, messageA...), reason
+}
+
+func (s *ExperimentStatus) ExperimentCompleted() bool {
+	return s.getCondition(ExperimentConditionExperimentCompleted).Status == corev1.ConditionTrue
 }
 
 // MarkExperimentCompleted sets the condition that the experiemnt is completed

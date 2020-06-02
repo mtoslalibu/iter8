@@ -40,6 +40,9 @@ const (
 
 	// DefaultMaxIterations is the default number of iterations, which is 100
 	DefaultMaxIterations int32 = 100
+
+	// DefaultAnalyticsEndpoint is the default endpoint of analytics
+	DefaultAnalyticsEndpoint string = "http://iter8-analytics.iter8:8080"
 )
 
 // ServiceNamespace gets the namespace for targets
@@ -73,6 +76,14 @@ func (s *ExperimentSpec) Terminate() bool {
 		return true
 	}
 	return false
+}
+
+// GetAction retrieves the action specified in manual override if any
+func (s *ExperimentSpec) GetAction() ActionType {
+	if s.ManualOverride != nil {
+		return s.ManualOverride.Action
+	}
+	return ActionType("")
 }
 
 // GetInterval returns specified(or default) interval for each duration
@@ -137,6 +148,14 @@ func (s *ExperimentSpec) GetMaxIncrements() int32 {
 		return DefaultMaxIncrement
 	}
 	return *s.TrafficControl.MaxIncrement
+}
+
+// GetAnalyticsEndpoint returns specified(or default) analytics endpoint
+func (s *ExperimentSpec) GetAnalyticsEndpoint() string {
+	if s.AnalyticsEndpoint == nil {
+		return DefaultAnalyticsEndpoint
+	}
+	return *s.AnalyticsEndpoint
 }
 
 // IsZeroToOne returns specified(or default) zeroToOne value

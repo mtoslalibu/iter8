@@ -186,10 +186,10 @@ type ManualOverride struct {
 	// Traffic split status specification
 	// Applied to action terminate only
 	// example:
-	// - reviews-v2:80
-	// - reviews-v3:20
+	//   reviews-v2:80
+	//   reviews-v3:20
 	// +optional
-	TrafficSplit []string `json:"trafficSplit,omitempty"`
+	TrafficSplit map[string]int32 `json:"trafficSplit,omitempty"`
 }
 
 // Metrics contains definitions for metrics used in the experiment
@@ -206,38 +206,38 @@ type Metrics struct {
 // CounterMetric is the definition of Counter Metric
 type CounterMetric struct {
 	// Name of metric
-	Name string `json:"name"`
+	Name string `json:"name" yaml:"name"`
 
 	// Query template of this metric
-	QueryTemplate string `json:"query_template"`
+	QueryTemplate string `json:"query_template" yaml:"query_template"`
 
 	// Preferred direction of the metric value
 	// +optional
-	PreferredDirection *string `json:"preferred_direction,omitempty"`
+	PreferredDirection *string `json:"preferred_direction,omitempty" yaml:"preferred_direction,omitempty"`
 
 	// Unit of the metric value
 	// +optional
-	Unit *string `json:"unit,omitempty"`
+	Unit *string `json:"unit,omitempty" yaml:"unit,omitempty"`
 }
 
 // RatioMetric is the definiton of Ratio Metric
 type RatioMetric struct {
 	// name of metric
-	Name string `json:"name"`
+	Name string `json:"name" yaml:"name"`
 
 	// Counter metric used in numerator
-	Numerator string `json:"numerator"`
+	Numerator string `json:"numerator" yaml:"numerator"`
 
 	// Counter metric used in denominator
-	Denominator string `json:"denominator"`
+	Denominator string `json:"denominator" yaml:"denominator"`
 
 	// Boolean flag indicating if the value of this metric is always in the range 0 to 1
 	// +optional
-	ZeroToOne *bool `json:"zero_to_one,omitempty"`
+	ZeroToOne *bool `json:"zero_to_one,omitempty" yaml:"zero_to_one,omitempty"`
 
 	// Preferred direction of the metric value
 	// +optional
-	PreferredDirection *string `json:"preferred_direction,omitempty"`
+	PreferredDirection *string `json:"preferred_direction,omitempty" yaml:"preferred_direction,omitempty"`
 }
 
 // ExperimentStatus defines the observed state of Experiment

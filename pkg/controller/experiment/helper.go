@@ -18,6 +18,7 @@ import (
 	"context"
 	"strings"
 
+	iter8v1alpha2 "github.com/iter8-tools/iter8-controller/pkg/apis/iter8/v1alpha2"
 	"github.com/iter8-tools/iter8-controller/pkg/controller/experiment/cache/abstract"
 )
 
@@ -69,4 +70,32 @@ func validUpdateErr(err error) bool {
 	}
 	benignMsg := "the object has been modified"
 	return strings.Contains(err.Error(), benignMsg)
+}
+
+// overrideAssessment sets the assessment as what had has specified in manual override traffic split
+func overrideAssessment(instance *iter8v1alpha2.Experiment) {
+	if len(instance.Spec.ManualOverride.TrafficSplit) == 0 {
+		// set all to baseline
+		instance.Spec.TrafficControl = &iter8v1alpha2.TrafficControl{}
+		*instance.Spec.TrafficControl.OnTermination = iter8v1alpha2.OnTerminationToBaseline
+	} else {
+		trafficSplit := instance.Spec.ManualOverride.TrafficSplit
+		if ts, ok := trafficSplit[instance.Status.Assessment.Baseline.Name]; ok {
+			instance.Status.Assessment.Baseline.Weight = ts
+		} else {
+			instance.Status.Assessment.Baseline.Weight = 0
+		}
+
+		for i, candidate := range instance.Status.Assessment.Candidates {
+			if ts, ok := trafficSplit[candidate.Name]; ok {
+				candidate.Weight = ts
+			} else {
+				candidate.Weight = 0
+			}
+		}
+
+		instance.Spec.TrafficControl = &iter8v1alpha2.TrafficControl{}
+		*instance.Spec.TrafficControl.OnTermination = iter8v1alpha2.OnTerminationKeepLast
+
+	}
 }

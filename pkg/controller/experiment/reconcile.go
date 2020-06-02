@@ -19,31 +19,27 @@ import (
 	"context"
 	"encoding/json"
 	"fmt"
-	"strconv"
-	"time"
 
-	networkingv1alpha3 "istio.io/api/networking/v1alpha3"
-	appsv1 "k8s.io/api/apps/v1"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
-	"k8s.io/apimachinery/pkg/labels"
 	runtime "k8s.io/apimachinery/pkg/runtime"
-	"k8s.io/apimachinery/pkg/types"
 
 	"github.com/iter8-tools/iter8-controller/pkg/analytics"
 	iter8v1alpha2 "github.com/iter8-tools/iter8-controller/pkg/apis/iter8/v1alpha2"
-	"github.com/iter8-tools/iter8-controller/pkg/controller/experiment/routing"
 	"github.com/iter8-tools/iter8-controller/pkg/controller/experiment/targets"
 	"github.com/iter8-tools/iter8-controller/pkg/controller/experiment/util"
-	"istio.io/client-go/pkg/apis/networking/v1alpha3"
 )
 
-func (r *ReconcileExperiment) completeExperiment(context context.Context, instance *iter8v1alpha2.Experiment) {
+func (r *ReconcileExperiment) completeExperiment(context context.Context, instance *iter8v1alpha2.Experiment) error {
 	r.iter8Cache.RemoveExperiment(instance)
 	r.targets.Cleanup(context, instance)
-	r.router.Cleanup(context, instance)
+	err := r.router.Cleanup(context, instance)
+	if err != nil {
+		return err
+	}
 
 	msg := completeStatusMessage(context, instance)
 	r.markExperimentCompleted(context, instance, "%s", msg)
+	return nil
 }
 
 // returns hard-coded termination message
@@ -53,7 +49,7 @@ func completeStatusMessage(context context.Context, instance *iter8v1alpha2.Expe
 		return experimentAbstract(context).GetTerminateStatus()
 	} else if instance.Spec.Terminate() {
 		return "Abort"
-	} else if instance.Spec.GetMaxIterations() < instance.Status.CurrentIteration {
+	} else if instance.Spec.GetMaxIterations() < *instance.Status.CurrentIteration {
 		return "Last Iteration Was Completed"
 	}
 
@@ -68,7 +64,7 @@ func (r *ReconcileExperiment) checkOrInitRules(context context.Context, instance
 		r.markRoutingRulesError(context, instance, "Error in getting routing rules: %s, Experiment Ended.", err.Error())
 		r.completeExperiment(context, instance)
 	} else {
-		r.markRoutingRulesReady(context, instance, "%s", r.router.GetRoutingRulesNames())
+		r.markRoutingRulesReady(context, instance, "")
 	}
 
 	return err
@@ -76,11 +72,11 @@ func (r *ReconcileExperiment) checkOrInitRules(context context.Context, instance
 
 // return true if instance status should be updated
 // returns non-nil error if current reconcile request should be terminated right after this function
-func (r *ReconcileExperiment) detectTargets(context context.Context, instance *iter8v1alpha2.Experiment) error {
+func (r *ReconcileExperiment) detectTargets(context context.Context, instance *iter8v1alpha2.Experiment) (err error) {
 	serviceName := instance.Spec.Service.Name
 	serviceNamespace := instance.ServiceNamespace()
 
-	if err = r.targets.GetService(context context.Context); err != nil {
+	if err = r.targets.GetService(context, instance); err != nil {
 		if instance.Status.TargetsFound() {
 			r.markTargetsError(context, instance, "Service Deleted")
 			onDeletedTarget(instance, targets.RoleService)
@@ -91,7 +87,7 @@ func (r *ReconcileExperiment) detectTargets(context context.Context, instance *i
 		}
 	}
 
-	if err = r.targets.GetBaseline(context); err != nil {
+	if err = r.targets.GetBaseline(context, instance); err != nil {
 		if instance.Status.TargetsFound() {
 			r.markTargetsError(context, instance, "Baseline Deleted")
 			onDeletedTarget(instance, targets.RoleBaseline)
@@ -100,14 +96,14 @@ func (r *ReconcileExperiment) detectTargets(context context.Context, instance *i
 			r.markTargetsError(context, instance, "Missing Baseline")
 			return err
 		}
-	}else{
-		if err = r.router.ToProgressing(); err != nil {
+	} else {
+		if err = r.router.ToProgressing(instance, r.targets); err != nil {
 			r.markRoutingRulesError(context, instance, "Fail in updating routing rule: %v", err)
 			return err
 		}
 	}
-	
-	if err = r.targets.GetCandidates(context); err != nil {
+
+	if err = r.targets.GetCandidates(context, instance); err != nil {
 		if instance.Status.TargetsFound() {
 			r.markTargetsError(context, instance, "Candidate Deleted")
 			onDeletedTarget(instance, targets.RoleCandidate)
@@ -116,7 +112,7 @@ func (r *ReconcileExperiment) detectTargets(context context.Context, instance *i
 			r.markTargetsError(context, instance, "Err in getting candidates: %v", err)
 			return err
 		}
-	}else {
+	} else {
 		if err = r.router.UpdateCandidates(r.targets); err != nil {
 			r.markRoutingRulesError(context, instance, "Fail in updating routing rule: %v", err)
 			return err
@@ -142,9 +138,9 @@ func (r *ReconcileExperiment) updateIteration(context context.Context, instance 
 		// each candidate gets maxincrement traffic at each interval
 		// until no more traffic can be deducted from baseline
 		basetraffic := instance.Status.Assessment.Baseline.Weight
-		diff := instance.Spec.GetMaxIncrements() * len(instance.Spec.Candidates)
+		diff := instance.Spec.GetMaxIncrements() * int32(len(instance.Spec.Candidates))
 		if basetraffic-diff >= 0 {
-			instance.Status.Assessment.Baseline = basetraffic - diff
+			instance.Status.Assessment.Baseline.Weight = basetraffic - diff
 			for _, candidate := range instance.Status.Assessment.Candidates {
 				candidate.Weight += instance.Spec.GetMaxIncrements()
 			}
@@ -157,7 +153,7 @@ func (r *ReconcileExperiment) updateIteration(context context.Context, instance 
 			return err
 		}
 
-		response, err := analytics.Invoke(log, instance, payload)
+		response, err := analytics.Invoke(log, instance.Spec.GetAnalyticsEndpoint(), payload)
 		if err != nil {
 			r.markAnalyticsServiceError(context, instance, "%s", err.Error())
 			return err
@@ -171,7 +167,7 @@ func (r *ReconcileExperiment) updateIteration(context context.Context, instance 
 				r.markAnalyticsServiceError(context, instance, "%s", err.Error())
 				return err
 			}
-			instance.Status.AnalysisState = runtime.RawExtension{Raw: lastState}
+			*instance.Status.AnalysisState = runtime.RawExtension{Raw: lastState}
 		}
 
 		instance.Status.Assessment.Baseline.VersionAssessment = response.BaselineAssessment
@@ -180,7 +176,7 @@ func (r *ReconcileExperiment) updateIteration(context context.Context, instance 
 			instance.Status.Assessment.Candidates[i].Rollback = ca.Rollback
 		}
 
-		instance.Status.Assessment.Winner = response.WinnerAssessment
+		*instance.Status.Assessment.Winner = response.WinnerAssessment
 
 		strategy := instance.Spec.GetStrategy()
 		trafficSplit, ok := response.TrafficSplitRecommendation[strategy]
@@ -225,7 +221,7 @@ func (r *ReconcileExperiment) updateIteration(context context.Context, instance 
 			}
 		}
 
-		r.markAnalyticsServiceRunning(context, instance)
+		r.markAnalyticsServiceRunning(context, instance, "")
 	}
 
 	*instance.Status.LastUpdateTime = metav1.Now()
@@ -233,13 +229,16 @@ func (r *ReconcileExperiment) updateIteration(context context.Context, instance 
 }
 
 func onDeletedTarget(instance *iter8v1alpha2.Experiment, role targets.Role) {
-	instance.ManualOverride.Action = iter8v1alpha2.ActionTerminate
+	instance.Spec.ManualOverride = &iter8v1alpha2.ManualOverride{
+		Action: iter8v1alpha2.ActionTerminate,
+	}
 	switch role {
 	case targets.RoleBaseline:
 		// Keep traffic status
 	case targets.RoleCandidate, targets.RoleService:
 		// Send all traffic to baseline
-		instance.ManualOverride.TrafficSplit = append(instance.ManualOverride.TrafficSplit,
-			instance.Spec.Service.Baseline+":100")
+		instance.Spec.ManualOverride.TrafficSplit = map[string]int32{
+			instance.Spec.Service.Baseline: 100,
+		}
 	}
 }

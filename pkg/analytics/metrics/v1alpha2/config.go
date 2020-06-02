@@ -35,34 +35,29 @@ const (
 	ratioMetricsName   = "ratio_metrics.yaml"
 )
 
-type counterMetric struct {
-	name          string `yaml:"name"`
-	queryTemplate string `yaml:"query_template"`
-}
-
-type ratioMetric struct {
-	name        string `yaml:"name"`
-	numerator   string `yaml:"numerator"`
-	denominator string `yaml:"denominator"`
-	zeroToOne   bool   `yaml:"zero_to_one,omitempty"`
-}
-
 // Read will read metrics from configmap into experiment.
 // Configmap in the same namespace as the experiment will override the one in iter8 system namespace.
 func Read(context context.Context, c client.Client, instance *iter8v1alpha2.Experiment) error {
-	cmOverride, cmSystem := &corev1.ConfigMap{}, &corev1.ConfigMap{}
+	cmSystem := &corev1.ConfigMap{}
 
-	errOverride := c.Get(context, types.NamespacedName{Name: configMapName, Namespace: instance.GetNamespace()}, cmOverride)
 	errSystem := c.Get(context, types.NamespacedName{Name: configMapName, Namespace: getConfigMapNamespace()}, cmSystem)
 
-	if errOverride != nil && errSystem != nil {
-		return fmt.Errorf("Fail to read metrics configmaps: %v, %v", errOverride, errSystem)
+	if errSystem != nil {
+		return fmt.Errorf("Fail to read metrics configmaps: %v", errSystem)
 	}
 
-}
+	instance.Spec.Metrics = &iter8v1alpha2.Metrics{}
+	err := yaml.Unmarshal([]byte(cmSystem.Data[counterMetricsName]), &instance.Spec.Metrics.CounterMetrics)
+	if err != nil {
+		return err
+	}
 
-func readCounterMetrics(cm *corev1.ConfigMap) {
+	err = yaml.Unmarshal([]byte(cmSystem.Data[ratioMetricsName]), &instance.Spec.Metrics.RatioMetrics)
+	if err != nil {
+		return err
+	}
 
+	return nil
 }
 
 func getConfigMapNamespace() string {
