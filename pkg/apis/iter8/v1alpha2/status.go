@@ -137,7 +137,6 @@ func (s *ExperimentStatus) MarkTargetsError(messageFormat string, messageA ...in
 // Return true if it's converted from false or unknown
 func (s *ExperimentStatus) MarkRoutingRulesReady(messageFormat string, messageA ...interface{}) (bool, string) {
 	reason := ReasonRoutingRulesReady
-	*s.Phase = PhaseProgressing
 	*s.Message = composeMessage(reason, messageFormat, messageA...)
 	return s.getCondition(ExperimentConditionRoutingRulesReady).
 		markCondition(corev1.ConditionTrue, reason, messageFormat, messageA...), reason

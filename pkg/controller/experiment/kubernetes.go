@@ -106,7 +106,7 @@ func (r *ReconcileExperiment) toUpdate(context context.Context, instance *iter8v
 	}
 
 	now := time.Now()
-	traffic := instance.Spec.TrafficControl
+	// traffic := instance.Spec.TrafficControl
 	interval, _ := instance.Spec.GetInterval()
 
 	return instance.Status.LastUpdateTime != nil && now.After(instance.Status.LastUpdateTime.Add(interval))
