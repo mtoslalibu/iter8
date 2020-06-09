@@ -107,17 +107,11 @@ func (r *Router) ToProgressing(instance *iter8v1alpha2.Experiment, targets *targ
 		drb = NewDestinationRule(instance.Spec.Service.Name, instance.GetName(), instance.ServiceNamespace()).
 			WithInitLabel()
 	}
-	// drb = drb.
-	// 	InitSubsets(1+len(targets.Candidates)).
-	// 	WithSubset(targets.Baseline, SubsetBaseline, 0).
-	// 	WithProgressingLabel().
-	// 	WithExperimentRegistered(instance.Name)
-	drb = drb.InitSubsets(1)
-	// log.Printf(">>>>>>>>>>>> ToProgressing len %d", 1 + len(targets.Candidates))
-	// drb = drb.InitSubsets(1 + len(targets.Candidates))
-	drb = drb.WithSubset(targets.Baseline, SubsetBaseline, 0)
-	drb = drb.WithProgressingLabel()
-	drb = drb.WithExperimentRegistered(instance.Name)
+	drb = drb.
+		InitSubsets(1).
+		WithSubset(targets.Baseline, SubsetBaseline, 0).
+		WithProgressingLabel().
+		WithExperimentRegistered(instance.Name)
 
 	dr := (*v1alpha3.DestinationRule)(nil)
 	if r.rules.isDestinationRuleDefined() {
