@@ -507,7 +507,6 @@ spec:
                       format: float64
                       type: number
                   required:
-                  - criterion_assessments
                   - name
                   - request_count
                   - weight
@@ -625,7 +624,6 @@ spec:
                         format: float64
                         type: number
                     required:
-                    - criterion_assessments
                     - name
                     - request_count
                     - weight

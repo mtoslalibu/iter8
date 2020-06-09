@@ -29,6 +29,8 @@ func (r *ReconcileExperiment) syncKubernetes(context context.Context, instance *
 	log := util.Logger(context)
 
 	// check routing rules for this experiment
+	// initialization will be defered until targets are detected
+	// TODO: consider renaming the method checkOrInitRules
 	err := r.checkOrInitRules(context, instance)
 	if err != nil {
 		return r.endRequest(context, instance)
@@ -36,7 +38,7 @@ func (r *ReconcileExperiment) syncKubernetes(context context.Context, instance *
 
 	// detect targets of this experiment if necessary
 	if r.toDetectTargets(context, instance) {
-		err = r.detectTargets(context, instance)
+		err := r.detectTargets(context, instance)
 		if err != nil {
 			return r.endRequest(context, instance)
 		}
@@ -109,7 +111,7 @@ func (r *ReconcileExperiment) toUpdate(context context.Context, instance *iter8v
 	// traffic := instance.Spec.TrafficControl
 	interval, _ := instance.Spec.GetInterval()
 
-	return instance.Status.LastUpdateTime != nil && now.After(instance.Status.LastUpdateTime.Add(interval))
+	return instance.Status.LastUpdateTime == nil || now.After(instance.Status.LastUpdateTime.Add(interval))
 }
 
 func (r *ReconcileExperiment) toComplete(context context.Context, instance *iter8v1alpha2.Experiment) bool {

@@ -92,6 +92,7 @@ func (r *ReconcileExperiment) detectTargets(context context.Context, instance *i
 			return err
 		}
 	} else {
+		// ToProgressing will create DestinationRule and VirtualService if needed
 		if err = r.router.ToProgressing(instance, r.targets); err != nil {
 			r.markRoutingRulesError(context, instance, "Fail in updating routing rule: %v", err)
 			return err
@@ -124,7 +125,8 @@ func (r *ReconcileExperiment) updateIteration(context context.Context, instance 
 	log := util.Logger(context)
 	// mark experiment begin
 	if instance.Status.StartTimestamp == nil {
-		*instance.Status.StartTimestamp = metav1.Now()
+		startTime := metav1.Now()
+		instance.Status.StartTimestamp = &startTime
 		r.grafanaConfig.UpdateGrafanaURL(instance)
 		r.markStatusUpdate()
 	}
@@ -162,7 +164,7 @@ func (r *ReconcileExperiment) updateIteration(context context.Context, instance 
 				r.markAnalyticsServiceError(context, instance, "%s", err.Error())
 				return err
 			}
-			*instance.Status.AnalysisState = runtime.RawExtension{Raw: lastState}
+			instance.Status.AnalysisState = runtime.RawExtension{Raw: lastState}
 		}
 
 		instance.Status.Assessment.Baseline.VersionAssessment = response.BaselineAssessment
@@ -220,6 +222,8 @@ func (r *ReconcileExperiment) updateIteration(context context.Context, instance 
 	}
 
 	*instance.Status.LastUpdateTime = metav1.Now()
+	*instance.Status.CurrentIteration++
+	r.markIterationUpdate(context, instance, "")
 	return nil
 }
 

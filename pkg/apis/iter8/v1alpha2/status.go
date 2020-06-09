@@ -15,6 +15,7 @@ package v1alpha2
 import (
 	"fmt"
 
+	"github.com/iter8-tools/iter8-controller/pkg/analytics/api/v1alpha2"
 	corev1 "k8s.io/api/core/v1"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 )
@@ -32,7 +33,7 @@ func (s *ExperimentStatus) addCondition(conditionType ExperimentConditionType) *
 		Type:   conditionType,
 		Status: corev1.ConditionUnknown,
 	}
-	*condition.LastTransitionTime = metav1.Now()
+	condition.LastTransitionTime = metav1.Now()
 	s.Conditions = append(s.Conditions, condition)
 	return condition
 }
@@ -53,6 +54,9 @@ func (e *Experiment) InitStatus() {
 		Baseline: VersionAssessment{
 			Name:   e.Spec.Baseline,
 			Weight: int32(0),
+			VersionAssessment: v1alpha2.VersionAssessment{
+				CriterionAssessments: make([]v1alpha2.CriterionAssessment, 0),
+			},
 		},
 		Candidates: make([]VersionAssessment, len(e.Spec.Candidates)),
 	}
@@ -60,6 +64,9 @@ func (e *Experiment) InitStatus() {
 		e.Status.Assessment.Candidates[i] = VersionAssessment{
 			Name:   name,
 			Weight: int32(0),
+			VersionAssessment: v1alpha2.VersionAssessment{
+				CriterionAssessments: make([]v1alpha2.CriterionAssessment, 0),
+			},
 		}
 	}
 
@@ -68,22 +75,25 @@ func (e *Experiment) InitStatus() {
 		e.Status.addCondition(c)
 	}
 
-	*e.Status.InitTimestamp = metav1.Now()
+	currentTime := metav1.Now()
+	e.Status.InitTimestamp = &currentTime //metav1.Now()
 
 	if e.Status.AnalysisState.Raw == nil {
 		e.Status.AnalysisState.Raw = []byte("{}")
 	}
 
-	*e.Status.Phase = PhaseProgressing
+	e.Status.Phase = PhaseProgressing
+	currentIteration := int32(0)
+	e.Status.CurrentIteration = &currentIteration
 }
 
 func (c *ExperimentCondition) markCondition(status corev1.ConditionStatus, reason, messageFormat string, messageA ...interface{}) bool {
 	message := fmt.Sprintf(messageFormat, messageA...)
 	updated := status != c.Status || reason != *c.Reason || message != *c.Message
 	c.Status = status
-	*c.Reason = reason
-	*c.Message = fmt.Sprintf(messageFormat, messageA...)
-	*c.LastTransitionTime = metav1.Now()
+	c.Reason = &reason
+	c.Message = &message
+	c.LastTransitionTime = metav1.Now()
 	return updated
 }
 
@@ -104,7 +114,7 @@ func (s *ExperimentStatus) MarkMetricsSynced(messageFormat string, messageA ...i
 // Return true if it's converted from true or unknown
 func (s *ExperimentStatus) MarkMetricsSyncedError(messageFormat string, messageA ...interface{}) (bool, string) {
 	reason := ReasonSyncMetricsError
-	*s.Phase = PhasePause
+	s.Phase = PhasePause
 	*s.Message = composeMessage(reason, messageFormat, messageA...)
 	return s.getCondition(ExperimentConditionMetricsSynced).
 		markCondition(corev1.ConditionFalse, reason, messageFormat, messageA...), reason
@@ -127,7 +137,7 @@ func (s *ExperimentStatus) MarkTargetsFound(messageFormat string, messageA ...in
 // Return true if it's converted from true or unknown
 func (s *ExperimentStatus) MarkTargetsError(messageFormat string, messageA ...interface{}) (bool, string) {
 	reason := ReasonTargetsError
-	*s.Phase = PhasePause
+	s.Phase = PhasePause
 	*s.Message = composeMessage(reason, messageFormat, messageA...)
 	return s.getCondition(ExperimentConditionTargetsProvided).
 		markCondition(corev1.ConditionFalse, reason, messageFormat, messageA...), reason
@@ -137,7 +147,8 @@ func (s *ExperimentStatus) MarkTargetsError(messageFormat string, messageA ...in
 // Return true if it's converted from false or unknown
 func (s *ExperimentStatus) MarkRoutingRulesReady(messageFormat string, messageA ...interface{}) (bool, string) {
 	reason := ReasonRoutingRulesReady
-	*s.Message = composeMessage(reason, messageFormat, messageA...)
+	message := composeMessage(reason, messageFormat, messageA...)
+	s.Message = &message
 	return s.getCondition(ExperimentConditionRoutingRulesReady).
 		markCondition(corev1.ConditionTrue, reason, messageFormat, messageA...), reason
 }
@@ -146,8 +157,9 @@ func (s *ExperimentStatus) MarkRoutingRulesReady(messageFormat string, messageA 
 // Return true if it's converted from true or unknown
 func (s *ExperimentStatus) MarkRoutingRulesError(messageFormat string, messageA ...interface{}) (bool, string) {
 	reason := ReasonRoutingRulesError
-	*s.Phase = PhasePause
-	*s.Message = composeMessage(reason, messageFormat, messageA...)
+	message := composeMessage(reason, messageFormat, messageA...)
+	s.Phase = PhasePause
+	s.Message = &message
 	return s.getCondition(ExperimentConditionRoutingRulesReady).
 		markCondition(corev1.ConditionFalse, reason, messageFormat, messageA...), reason
 }
@@ -164,8 +176,9 @@ func (s *ExperimentStatus) MarkAnalyticsServiceRunning(messageFormat string, mes
 // Return true if it's converted from true or unknown
 func (s *ExperimentStatus) MarkAnalyticsServiceError(messageFormat string, messageA ...interface{}) (bool, string) {
 	reason := ReasonAnalyticsServiceError
-	*s.Message = composeMessage(reason, messageFormat, messageA...)
-	*s.Phase = PhasePause
+	message := composeMessage(reason, messageFormat, messageA...)
+	s.Message = &message
+	s.Phase = PhasePause
 	return s.getCondition(ExperimentConditionAnalyticsServiceNormal).
 		markCondition(corev1.ConditionFalse, reason, messageFormat, messageA...), reason
 }
@@ -177,8 +190,9 @@ func (s *ExperimentStatus) ExperimentCompleted() bool {
 // MarkExperimentCompleted sets the condition that the experiemnt is completed
 func (s *ExperimentStatus) MarkExperimentCompleted(messageFormat string, messageA ...interface{}) (bool, string) {
 	reason := ReasonExperimentCompleted
-	*s.Phase = PhaseCompleted
-	*s.Message = composeMessage(reason, messageFormat, messageA...)
+	message := composeMessage(reason, messageFormat, messageA...)
+	s.Phase = PhaseCompleted
+	s.Message = &message
 	return s.getCondition(ExperimentConditionExperimentCompleted).
 		markCondition(corev1.ConditionTrue, reason, messageFormat, messageA...), reason
 }
@@ -186,8 +200,9 @@ func (s *ExperimentStatus) MarkExperimentCompleted(messageFormat string, message
 // MarkIterationUpdate sets the condition that the iteration updated
 func (s *ExperimentStatus) MarkIterationUpdate(messageFormat string, messageA ...interface{}) (bool, string) {
 	reason := ReasonIterationUpdate
-	*s.Phase = PhaseProgressing
-	*s.Message = composeMessage(reason, messageFormat, messageA...)
+	message := composeMessage(reason, messageFormat, messageA...)
+	s.Phase = PhaseProgressing
+	s.Message = &message
 	return s.getCondition(ExperimentConditionExperimentCompleted).
 		markCondition(corev1.ConditionFalse, reason, messageFormat, messageA...), reason
 }
@@ -195,8 +210,9 @@ func (s *ExperimentStatus) MarkIterationUpdate(messageFormat string, messageA ..
 // MarkTrafficUpdate sets the condition that traffic for target service updated
 func (s *ExperimentStatus) MarkTrafficUpdate(messageFormat string, messageA ...interface{}) (bool, string) {
 	reason := ReasonTrafficUpdate
-	*s.Phase = PhaseProgressing
-	*s.Message = composeMessage(reason, messageFormat, messageA...)
+	message := composeMessage(reason, messageFormat, messageA...)
+	s.Phase = PhaseProgressing
+	s.Message = &message
 	return s.getCondition(ExperimentConditionExperimentCompleted).
 		markCondition(corev1.ConditionFalse, reason, messageFormat, messageA...), reason
 }
@@ -205,8 +221,9 @@ func (s *ExperimentStatus) MarkTrafficUpdate(messageFormat string, messageA ...i
 // returns true if this is a newly-set operation
 func (s *ExperimentStatus) MarkExperimentPause(messageFormat string, messageA ...interface{}) (bool, string) {
 	reason := ReasonActionPause
-	*s.Phase = PhasePause
-	*s.Message = composeMessage(reason, messageFormat, messageA...)
+	message := composeMessage(reason, messageFormat, messageA...)
+	s.Phase = PhasePause
+	s.Message = &message
 	return s.getCondition(ExperimentConditionExperimentCompleted).
 		markCondition(corev1.ConditionFalse, reason, messageFormat, messageA...), reason
 }
@@ -215,8 +232,9 @@ func (s *ExperimentStatus) MarkExperimentPause(messageFormat string, messageA ..
 // returns true if this is a newly-set operation
 func (s *ExperimentStatus) MarkExperimentResume(messageFormat string, messageA ...interface{}) (bool, string) {
 	reason := ReasonActionResume
-	*s.Phase = PhaseProgressing
-	*s.Message = composeMessage(reason, messageFormat, messageA...)
+	message := composeMessage(reason, messageFormat, messageA...)
+	s.Phase = PhaseProgressing
+	s.Message = &message
 	return s.getCondition(ExperimentConditionExperimentCompleted).
 		markCondition(corev1.ConditionFalse, reason, messageFormat, messageA...), reason
 }

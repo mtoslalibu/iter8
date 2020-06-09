@@ -103,8 +103,9 @@ func (r *ReconcileExperiment) markSyncMetricsError(context context.Context, inst
 	}
 }
 
-func (r *ReconcileExperiment) markSyncMetrics(context context.Context, instance *iter8v1alpha2.Experiment) {
-	if updated, reason := instance.Status.MarkMetricsSynced(""); updated {
+func (r *ReconcileExperiment) markSyncMetrics(context context.Context, instance *iter8v1alpha2.Experiment,
+	messageFormat string, messageA ...interface{}) {
+	if updated, reason := instance.Status.MarkMetricsSynced(messageFormat, messageA...); updated {
 		util.Logger(context).Info(reason)
 		r.eventRecorder.Eventf(instance, corev1.EventTypeNormal, reason, "")
 		r.notificationCenter.Notify(instance, reason, "")

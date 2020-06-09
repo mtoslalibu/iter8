@@ -111,7 +111,7 @@ func (c *Impl) RegisterExperiment(ctx context.Context, instance *iter8v1alpha2.E
 	ea := c.experimentAbstractStore[eakey]
 	eas := ea.GetSnapshot()
 	ctx = context.WithValue(ctx, abstract.SnapshotKey, eas)
-	c.logger.Info("ExperimentAbstract", eakey, eas)
+	c.logger.Info("ExperimentAbstract", "key", eakey, "value", eas)
 	return ctx, nil
 }
 

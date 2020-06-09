@@ -35,7 +35,7 @@ type Experiment struct {
 
 	Spec ExperimentSpec `json:"spec"`
 	// +optional
-	Status *ExperimentStatus `json:"status,omitempty"`
+	Status ExperimentStatus `json:"status,omitempty"`
 }
 
 // ExperimentList contains a list of Experiment
@@ -76,7 +76,7 @@ type ExperimentSpec struct {
 
 	// Cleanup indicates whether routing rules and deployment receiving no traffic should be deleted at the end of experiment
 	// +optional
-	Cleanup *bool `json:"cleanup"`
+	Cleanup *bool `json:"cleanup,omitempty"`
 
 	// The metrics used in the experiment
 	// +optional
@@ -276,7 +276,7 @@ type ExperimentStatus struct {
 
 	// Phase marks the Phase the experiment is at
 	// +optional
-	Phase *PhaseType `json:"phase,omitempty"`
+	Phase PhaseType `json:"phase,omitempty"`
 
 	// Message specifies message to show in the kubectl printer
 	// +optional
@@ -284,7 +284,7 @@ type ExperimentStatus struct {
 
 	// AnalysisState is the last recorded analysis state
 	// +optional
-	AnalysisState *runtime.RawExtension `json:"analysisState,omitempty"`
+	AnalysisState runtime.RawExtension `json:"analysisState,omitempty"`
 }
 
 // Conditions is a list of ExperimentConditions
@@ -300,7 +300,7 @@ type ExperimentCondition struct {
 
 	// The time when this condition is last updated
 	// +optional
-	LastTransitionTime *metav1.Time `json:"lastTransitionTime,omitempty"`
+	LastTransitionTime metav1.Time `json:"lastTransitionTime,omitempty"`
 
 	// Reason for the last update
 	// +optional

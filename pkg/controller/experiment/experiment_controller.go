@@ -301,7 +301,7 @@ func (r *ReconcileExperiment) Reconcile(request reconcile.Request) (reconcile.Re
 	if instance.Status.InitTimestamp == nil {
 		instance.InitStatus()
 		if err := r.Status().Update(ctx, instance); err != nil && !validUpdateErr(err) {
-			log.Info("Fail to update status: %v", err)
+			log.Error(err, "Failed to update status")
 			return reconcile.Result{}, nil
 		}
 	}
@@ -359,7 +359,7 @@ func (r *ReconcileExperiment) syncMetrics(ctx context.Context, instance *iter8v1
 
 			return err
 		}
-		r.markSyncMetrics(ctx, instance)
+		r.markSyncMetrics(ctx, instance, "")
 	}
 
 	return nil
@@ -418,7 +418,7 @@ func (r *ReconcileExperiment) syncExperiment(context context.Context, instance *
 			util.Logger(context).Info("phase", "after", instance.Status.Phase)
 		}
 	} else if eas.Resume() {
-		*instance.Status.Phase = iter8v1alpha2.PhaseProgressing
+		instance.Status.Phase = iter8v1alpha2.PhaseProgressing
 	}
 
 	r.initState()
@@ -441,7 +441,7 @@ func (r *ReconcileExperiment) proceed(context context.Context, instance *iter8v1
 		return
 	}
 
-	if *instance.Status.Phase == iter8v1alpha2.PhasePause {
+	if instance.Status.Phase == iter8v1alpha2.PhasePause {
 		// termination request overrides pause phase
 		if instance.Spec.Terminate() {
 			return

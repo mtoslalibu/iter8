@@ -88,7 +88,7 @@ func (c *ConfigStore) UpdateGrafanaURL(instance *iter8v1alpha2.Experiment) {
 	if instance.Status.EndTimestamp != nil {
 		endTsStr = strconv.FormatInt(instance.Status.EndTimestamp.UTC().UnixNano()/int64(time.Millisecond), 10)
 	}
-	*instance.Status.GrafanaURL = c.getEndpoint() +
+	grafanaEndpoint := c.getEndpoint() +
 		"/d/" + defaultBoardUID + "/iter8-application-metrics?" +
 		"var-namespace=" + instance.ServiceNamespace() +
 		"&var-service=" + instance.Spec.Service.Name +
@@ -96,4 +96,5 @@ func (c *ConfigStore) UpdateGrafanaURL(instance *iter8v1alpha2.Experiment) {
 		"&var-candidate=" + candidates[1:] +
 		"&from=" + strconv.FormatInt(instance.Status.StartTimestamp.UTC().UnixNano()/int64(time.Millisecond), 10) +
 		"&to=" + endTsStr
+	instance.Status.GrafanaURL = &grafanaEndpoint
 }

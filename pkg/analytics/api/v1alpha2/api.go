@@ -132,7 +132,7 @@ type Response struct {
 type VersionAssessment struct {
 	WinProbability       float32               `json:"win_probability"`
 	RequestCount         int32                 `json:"request_count"`
-	CriterionAssessments []CriterionAssessment `json:"criterion_assessments"`
+	CriterionAssessments []CriterionAssessment `json:"criterion_assessments,omitempty"`
 }
 
 // CriterionAssessment contains assessment for a version
