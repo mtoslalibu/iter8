@@ -29,7 +29,7 @@ autodetect() {
   echo "Istio version: $ISTIO_VERSION"
   echo "Kubernetes version: $KUBERNETES_VERSION"
 
-  if verlte "$ISTIO_VERSION" "1.5.0"; then
+  if verlt "$ISTIO_VERSION" "1.5"; then
 
     echo "Using Istio telemetry v1"
 
