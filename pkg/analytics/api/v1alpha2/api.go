@@ -22,7 +22,7 @@ type Request struct {
 	ServiceName string `json:"service_name"`
 
 	// Current iteration of the experiment
-	IterationNumber int32 `json:"iteration_number"`
+	IterationNumber *int32 `json:"iteration_number,omitempty"`
 
 	// All metric specification
 	MetricSpecs Metrics `json:"metric_specs"`
@@ -40,7 +40,7 @@ type Request struct {
 	LastState interface{} `json:"last_state"`
 
 	// Parameters controlling the behavior of the analytics
-	TrafficControl TrafficControl `json:"traffic_control"`
+	TrafficControl *TrafficControl `json:"traffic_control,omitempty"`
 }
 
 // Version specifies details of a version
@@ -54,12 +54,32 @@ type Version struct {
 
 // CounterMetric is the definition of Counter Metric
 type CounterMetric struct {
+	// Unique identifier
+	Name string `json:"name"`
+
+	// Direction indicating which values are "better"
+	//+kubebuilder:validation:Enum={lower,higher}
+	PreferredDirection *string `json:"preferred_direction,omitempty"`
+
+	// Descriptive short name
+	DescriptiveShortName *string `json:"descriptive_short_name,omitempty"`
+
 	// Query template of this metric
 	QueryTemplate string `json:"query_template"`
 }
 
 // RatioMetric is the definiton of Ratio Metric
 type RatioMetric struct {
+	// Unique identifier
+	Name string `json:"name"`
+
+	// Direction indicating which values are "better"
+	//+kubebuilder:validation:Enum={lower,higher}
+	PreferredDirection *string `json:"preferred_direction,omitempty"`
+
+	// Descriptive short name
+	DescriptiveShortName *string `json:"descriptive_short_name,omitempty"`
+
 	// Counter metric used in numerator
 	Numerator string `json:"numerator"`
 
@@ -85,10 +105,10 @@ type Threshold struct {
 
 // Criterion includes an assessment details for each version
 type Criterion struct {
-	ID        string    `json:"id"`
-	MetricID  string    `json:"metric_id"`
-	IsReward  bool      `json:"is_reward"`
-	Threshold Threshold `json:"threshold"`
+	ID        string     `json:"id"`
+	MetricID  string     `json:"metric_id"`
+	IsReward  *bool      `json:"is_reward,omitempty"`
+	Threshold *Threshold `json:"threshold,omitempty"`
 }
 
 // TrafficControl details
@@ -119,13 +139,13 @@ type Response struct {
 	WinnerAssessment `json:"winner_assessment"`
 
 	// Status of analytics engine
-	Status []string `json:"status"`
+	Status *[]string `json:"status,omitempty"`
 
 	// Human-readable explanation of the status
-	StatusInterpretations map[string]string `json:"status_interpretations"`
+	StatusInterpretations *map[string]string `json:"status_interpretations,omitempty"`
 
 	// Last recorded state from analytics service
-	LastState interface{} `json:"laste_state"`
+	LastState *interface{} `json:"laste_state,omitempty"`
 }
 
 // VersionAssessment contains assessment details for a version
@@ -148,7 +168,7 @@ type CriterionAssessment struct {
 
 	// Assessment of how well this metric is doing with respect to threshold.
 	// Defined only for metrics with a threshold
-	ThresholdAssessment `json:"threshold_assessment,omitempty"`
+	ThresholdAssessment *ThresholdAssessment `json:"threshold_assessment,omitempty"`
 }
 
 // Statistics for a metric
@@ -191,13 +211,13 @@ type CandidateAssessment struct {
 type WinnerAssessment struct {
 	// Indicates whether or not a clear winner has emerged
 	// This is currently computed based on Bayesian estimation and uses posterior_probability_for_winner from the iteration parameters
-	WinnerFound bool `json:"winning_version_found"`
+	WinnerFound *bool `json:"winning_version_found"`
 
 	// ID of the current winner with the maximum probability of winning.
 	// This is currently computed based on Bayesian estimation
-	Winner string `json:"current_winner,omitempty"`
+	Winner *string `json:"current_winner,omitempty"`
 
 	//Posterior probability of the version declared as the current winner.
 	// This is None if winner is None. This is currently computed based on Bayesian estimation
-	Probability float32 `json:"winning_probability,omitempty"`
+	Probability *float32 `json:"winning_probability,omitempty"`
 }

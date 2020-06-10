@@ -284,7 +284,7 @@ type ExperimentStatus struct {
 
 	// AnalysisState is the last recorded analysis state
 	// +optional
-	AnalysisState runtime.RawExtension `json:"analysisState,omitempty"`
+	AnalysisState *runtime.RawExtension `json:"analysisState,omitempty"`
 }
 
 // Conditions is a list of ExperimentConditions

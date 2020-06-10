@@ -38,7 +38,7 @@ func (in *Assessment) DeepCopyInto(out *Assessment) {
 	if in.Winner != nil {
 		in, out := &in.Winner, &out.Winner
 		*out = new(apiv1alpha2.WinnerAssessment)
-		**out = **in
+		(*in).DeepCopyInto(*out)
 	}
 	return
 }
@@ -354,7 +354,11 @@ func (in *ExperimentStatus) DeepCopyInto(out *ExperimentStatus) {
 		*out = new(string)
 		**out = **in
 	}
-	in.AnalysisState.DeepCopyInto(&out.AnalysisState)
+	if in.AnalysisState != nil {
+		in, out := &in.AnalysisState, &out.AnalysisState
+		*out = new(runtime.RawExtension)
+		(*in).DeepCopyInto(*out)
+	}
 	return
 }
 

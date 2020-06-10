@@ -19,6 +19,7 @@ import (
 	"fmt"
 	"io/ioutil"
 	"net/http"
+	"time"
 
 	"github.com/go-logr/logr"
 
@@ -33,7 +34,93 @@ const (
 
 // MakeRequest generates request payload to analytics
 func MakeRequest(instance *iter8v1alpha2.Experiment) (*v1alpha2.Request, error) {
-	return &v1alpha2.Request{}, nil
+	// identify and define list of candidates
+	candidates := make([]v1alpha2.Version, len(instance.Spec.Service.Candidates))
+	for i, candidate := range instance.Spec.Candidates {
+		candidates[i].ID = candidate
+		candidates[i].VersionLabels = map[string]string{
+			namespaceKey:   instance.ServiceNamespace(),
+			destinationKey: candidate,
+		}
+	}
+
+	// identify and define list of criteria
+	criteria := make([]v1alpha2.Criterion, len(instance.Spec.Criteria))
+	for i, criterion := range instance.Spec.Criteria {
+		isReward := false
+		if nil != criterion.IsReward {
+			isReward = *criterion.IsReward
+		}
+		criteria[i] = v1alpha2.Criterion{
+			ID:       criterion.Metric,
+			MetricID: criterion.Metric,
+			IsReward: &isReward,
+		}
+		if nil != criterion.Threshold {
+			criteria[i].Threshold = &v1alpha2.Threshold{
+				Type:  criterion.Threshold.Type,
+				Value: criterion.Threshold.Value,
+			}
+		}
+	}
+
+	// identify and define metrics
+	counterMetrics := make([]v1alpha2.CounterMetric, len(instance.Spec.Metrics.CounterMetrics))
+	for i, metric := range instance.Spec.Metrics.CounterMetrics {
+		counterMetrics[i] = v1alpha2.CounterMetric{
+			Name:          metric.Name,
+			QueryTemplate: metric.QueryTemplate,
+		}
+		if nil != metric.PreferredDirection {
+			counterMetrics[i].PreferredDirection = metric.PreferredDirection
+		}
+	}
+	ratioMetrics := make([]v1alpha2.RatioMetric, len(instance.Spec.Metrics.RatioMetrics))
+	for i, metric := range instance.Spec.Metrics.RatioMetrics {
+		ratioMetrics[i] = v1alpha2.RatioMetric{
+			Name:        metric.Name,
+			Numerator:   metric.Numerator,
+			Denominator: metric.Denominator,
+		}
+		if nil != metric.PreferredDirection {
+			counterMetrics[i].PreferredDirection = metric.PreferredDirection
+		}
+		if nil != metric.ZeroToOne {
+			ratioMetrics[i].ZeroToOne = metric.ZeroToOne
+		}
+	}
+
+	request := &v1alpha2.Request{
+		StartTime:   instance.Status.StartTimestamp.Format(time.RFC3339),
+		ServiceName: instance.Spec.Service.Name,
+		Baseline: v1alpha2.Version{
+			ID: instance.Spec.Service.Baseline,
+			VersionLabels: map[string]string{
+				namespaceKey:   instance.ServiceNamespace(),
+				destinationKey: instance.Spec.Service.Baseline,
+			},
+		},
+		MetricSpecs: v1alpha2.Metrics{
+			CounterMetrics: counterMetrics,
+			RatioMetrics:   ratioMetrics,
+		},
+		Candidate: candidates,
+		Criteria:  criteria,
+		TrafficControl: &v1alpha2.TrafficControl{
+			MaxIncrement: float32(instance.Spec.GetMaxIncrements()),
+			Strategy:     instance.Spec.GetStrategy(),
+		},
+	}
+
+	if nil != instance.Status.CurrentIteration {
+		request.IterationNumber = instance.Status.CurrentIteration
+	}
+
+	if nil != instance.Status.AnalysisState {
+		request.LastState = instance.Status.AnalysisState
+	}
+
+	return request, nil
 }
 
 // Invoke sends payload to endpoint and gets response back

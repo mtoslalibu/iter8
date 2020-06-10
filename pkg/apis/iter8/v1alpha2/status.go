@@ -18,6 +18,7 @@ import (
 	"github.com/iter8-tools/iter8-controller/pkg/analytics/api/v1alpha2"
 	corev1 "k8s.io/api/core/v1"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
+	"k8s.io/apimachinery/pkg/runtime"
 )
 
 var experimentCondSet = []ExperimentConditionType{
@@ -77,6 +78,12 @@ func (e *Experiment) InitStatus() {
 
 	currentTime := metav1.Now()
 	e.Status.InitTimestamp = &currentTime //metav1.Now()
+
+	if e.Status.AnalysisState == nil {
+		e.Status.AnalysisState = &runtime.RawExtension{
+			Raw: []byte("{}"),
+		}
+	}
 
 	if e.Status.AnalysisState.Raw == nil {
 		e.Status.AnalysisState.Raw = []byte("{}")
