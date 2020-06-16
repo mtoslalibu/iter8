@@ -352,11 +352,15 @@ func (r *ReconcileExperiment) syncMetrics(ctx context.Context, instance *iter8v1
 			r.markSyncMetricsError(ctx, instance, "Fail to read metrics: %v", err)
 
 			if err := r.Status().Update(ctx, instance); err != nil && !validUpdateErr(err) {
-				log.Info("Fail to update status: %v", err)
+				log.Error(err, "Fail to update status")
 				// TODO: need a better way of handling this error
 				return err
 			}
 
+			return err
+		}
+		if err := r.Update(ctx, instance); err != nil && !validUpdateErr(err) {
+			log.Error(err, "Fail to update instance")
 			return err
 		}
 		r.markSyncMetrics(ctx, instance, "")

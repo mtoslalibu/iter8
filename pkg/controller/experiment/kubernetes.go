@@ -65,7 +65,7 @@ func (r *ReconcileExperiment) syncKubernetes(context context.Context, instance *
 	if r.hasProgress() {
 		interval, _ := instance.Spec.GetInterval()
 		r.endRequest(context, instance)
-		log.Info("Requeue for next iteration")
+		log.Info("Requeue for next iteration", "interval", interval)
 		return reconcile.Result{RequeueAfter: interval}, nil
 	}
 
@@ -122,7 +122,7 @@ func (r *ReconcileExperiment) toComplete(context context.Context, instance *iter
 func (r *ReconcileExperiment) endRequest(context context.Context, instance *iter8v1alpha2.Experiment) (reconcile.Result, error) {
 	if r.needStatusUpdate() {
 		if err := r.Status().Update(context, instance); err != nil && !validUpdateErr(err) {
-			log.Info("Fail to update status: %v", err)
+			log.Error(err, "Fail to update status")
 		}
 	}
 	return reconcile.Result{}, nil

@@ -123,7 +123,7 @@ type TrafficControl struct {
 // Response from analytics
 type Response struct {
 	// Timestamp when assessment is made
-	Timestamp int64 `json:"timestamp"`
+	Timestamp string `json:"timestamp"`
 
 	// Assessment for baseline
 	BaselineAssessment VersionAssessment `json:"baseline_assessment"`
@@ -150,6 +150,7 @@ type Response struct {
 
 // VersionAssessment contains assessment details for a version
 type VersionAssessment struct {
+	ID                   string                `json:"id"`
 	WinProbability       float32               `json:"win_probability"`
 	RequestCount         int32                 `json:"request_count"`
 	CriterionAssessments []CriterionAssessment `json:"criterion_assessments,omitempty"`
@@ -164,7 +165,7 @@ type CriterionAssessment struct {
 	MetricID string `json:"metric_id"`
 
 	//Statistics for this metric
-	Statistics `json:"statistics"`
+	Statistics *Statistics `json:"statistics,omitempty"`
 
 	// Assessment of how well this metric is doing with respect to threshold.
 	// Defined only for metrics with a threshold
@@ -173,8 +174,8 @@ type CriterionAssessment struct {
 
 // Statistics for a metric
 type Statistics struct {
-	Value           float32 `json:"value"`
-	RatioStatistics `json:"ratio_statitics"`
+	Value           *float32         `json:"value,omitempty"`
+	RatioStatistics *RatioStatistics `json:"ratio_statitics,omitempty"`
 }
 
 // RatioStatistics is statistics for a ratio metric

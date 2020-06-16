@@ -460,9 +460,6 @@ spec:
                               value:
                                 format: float64
                                 type: number
-                            required:
-                            - ratio_statitics
-                            - value
                             type: object
                           threshold_assessment:
                             description: Assessment of how well this metric is doing
@@ -486,9 +483,10 @@ spec:
                         required:
                         - id
                         - metric_id
-                        - statistics
                         type: object
                       type: array
+                    id:
+                      type: string
                     name:
                       description: name of version
                       type: string
@@ -507,6 +505,7 @@ spec:
                       format: float64
                       type: number
                   required:
+                  - id
                   - name
                   - request_count
                   - weight
@@ -577,9 +576,6 @@ spec:
                                 value:
                                   format: float64
                                   type: number
-                              required:
-                              - ratio_statitics
-                              - value
                               type: object
                             threshold_assessment:
                               description: Assessment of how well this metric is doing
@@ -603,9 +599,10 @@ spec:
                           required:
                           - id
                           - metric_id
-                          - statistics
                           type: object
                         type: array
+                      id:
+                        type: string
                       name:
                         description: name of version
                         type: string
@@ -624,6 +621,7 @@ spec:
                         format: float64
                         type: number
                     required:
+                    - id
                     - name
                     - request_count
                     - weight

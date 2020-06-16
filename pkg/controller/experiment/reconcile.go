@@ -173,7 +173,7 @@ func (r *ReconcileExperiment) updateIteration(context context.Context, instance 
 			instance.Status.Assessment.Candidates[i].Rollback = ca.Rollback
 		}
 
-		*instance.Status.Assessment.Winner = response.WinnerAssessment
+		instance.Status.Assessment.Winner = &response.WinnerAssessment
 
 		strategy := instance.Spec.GetStrategy()
 		trafficSplit, ok := response.TrafficSplitRecommendation[strategy]
@@ -221,7 +221,8 @@ func (r *ReconcileExperiment) updateIteration(context context.Context, instance 
 		r.markAnalyticsServiceRunning(context, instance, "")
 	}
 
-	*instance.Status.LastUpdateTime = metav1.Now()
+	now := metav1.Now()
+	instance.Status.LastUpdateTime = &now
 	*instance.Status.CurrentIteration++
 	r.markIterationUpdate(context, instance, "")
 	return nil
