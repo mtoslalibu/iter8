@@ -195,7 +195,7 @@ func (r *Router) UpdateCandidates(targets *targets.Targets) (err error) {
 
 // Cleanup configures routing rules to set up traffic to desired end state
 func (r *Router) Cleanup(context context.Context, instance *iter8v1alpha2.Experiment) (err error) {
-	if *instance.Spec.Cleanup && r.rules.isInit() {
+	if instance.Spec.Cleanup != nil && *instance.Spec.Cleanup && r.rules.isInit() {
 		if err = r.client.NetworkingV1alpha3().DestinationRules(r.rules.destinationRule.Namespace).
 			Delete(r.rules.destinationRule.Name, &metav1.DeleteOptions{}); err != nil {
 			return
