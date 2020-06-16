@@ -67,8 +67,6 @@ autodetect() {
 # Run auto detection code only if $DASHBOARD_DEFN is not defined
 [ -z $DASHBOARD_DEFN ] && autodetect
 
-exit
-
 DIR="$( cd "$( dirname "${BASH_SOURCE[0]}" )" && pwd )"
 
 DASHBOARD_UID=eXPEaNnZz
