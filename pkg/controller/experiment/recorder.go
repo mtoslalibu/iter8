@@ -72,9 +72,12 @@ func (r *ReconcileExperiment) markIterationUpdate(context context.Context, insta
 		util.Logger(context).Info(reason + ", " + fmt.Sprintf(messageFormat, messageA...))
 		r.eventRecorder.Eventf(instance, corev1.EventTypeNormal, reason, messageFormat, messageA...)
 		r.notificationCenter.Notify(instance, reason, messageFormat, messageA...)
-		r.markProgress()
-		r.markStatusUpdate()
 	}
+	// Unlike other updates, when an iteration is updated the current iteration also changes.
+	// This change is not captured by the variable "updated" so we explicitly record it here.
+	r.markStatusUpdate()
+	// Similarly, we always want to record that progress took place when we complete an iteration.
+	r.markProgress()
 }
 
 func (r *ReconcileExperiment) markExperimentCompleted(context context.Context, instance *iter8v1alpha2.Experiment,
