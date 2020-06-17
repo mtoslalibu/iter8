@@ -4,9 +4,6 @@
 set -e
 
 NAMESPACE=bookinfo-service
-if [[ -z $TELEMETRY_VERSION ]]; then TELEMETRY_VERSION=v1; fi
-TELEMETRY=""
-if [[ $TELEMETRY_VERSION == "v2" ]]; then TELEMETRY=_telemetry-v2; fi
 
 DIR="$( cd "$( dirname "$0" )" >/dev/null 2>&1; pwd -P )"
 source "$DIR/library.sh"
@@ -37,7 +34,7 @@ curl -H "Host: productpage.example.com" -Is "http://$IP:$PORT/productpage"
 watch -n 0.1 "curl -H \"Host: productpage.example.com\" -Is \"http://$IP:$PORT/productpage\"" >/dev/null 2>&1 &
 
 header "Create Iter8 Experiment"
-kubectl apply -n $NAMESPACE -f $DIR/../../doc/tutorials/istio/bookinfo/service/canary_productpage-v1_to_productpage-v2${TELEMETRY}.yaml
+kubectl apply -n $NAMESPACE -f $DIR/../../doc/tutorials/istio/bookinfo/service/canary_productpage-v1_to_productpage-v2.yaml
 kubectl get experiments -n $NAMESPACE
 
 header "Deploy canary version"

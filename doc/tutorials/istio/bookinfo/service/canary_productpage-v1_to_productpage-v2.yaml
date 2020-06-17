@@ -3,10 +3,6 @@ kind: Experiment
 metadata:
   name: productpage-v2-rollout
 spec:
-  routingReference:
-    apiVersion: networking.istio.io/v1alpha3
-    kind: VirtualService
-    name: bookinfo
   targetService:
     kind: Service
     baseline: productpage-v1
