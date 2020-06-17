@@ -16,7 +16,7 @@ verlt() {
 autodetect() {
   echo "Istio namespace: $ISTIO_NAMESPACE"
   MIXER_DISABLED=`kubectl -n $ISTIO_NAMESPACE get cm istio -o json | jq .data.mesh | grep -o 'disableMixerHttpReports: [A-Za-z]\+' | cut -d ' ' -f2`
-  ISTIO_VERSION=`kubectl -n istio-system get pods -o yaml | grep "image:" | grep proxy | head -n 1 | awk -F: '{print $3}'`
+  ISTIO_VERSION=`kubectl -n $ISTIO_NAMESPACE get pods -o yaml | grep "image:" | grep proxy | head -n 1 | awk -F: '{print $3}'`
   KUBERNETES_VERSION=`kubectl version | grep "Server Version"`
   KUBERNETES_VERSION_MAJOR=`echo "$KUBERNETES_VERSION" | awk -F\" '{print $2}'`
   KUBERNETES_VERSION_MINOR=`echo "$KUBERNETES_VERSION" | awk -F\" '{print $4}'`
