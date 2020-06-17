@@ -15,7 +15,8 @@ kubectl create ns $NAMESPACE
 kubectl label ns $NAMESPACE istio-injection=enabled
 
 header "Create $NAMESPACE app"
-kubectl apply -n $NAMESPACE -f $DIR/../../doc/tutorials/istio/bookinfo/service/bookinfo-tutorial.yaml
+kubectl apply -n $NAMESPACE -f $DIR/../../doc/tutorials/istio/bookinfo/bookinfo-tutorial.yaml \
+              -f $DIR/../../doc/tutorials/istio/bookinfo/service/productpage-v1.yaml
 sleep 1
 kubectl wait --for=condition=Ready pods --all -n $NAMESPACE --timeout=600s
 kubectl get pods,services -n $NAMESPACE
@@ -38,7 +39,8 @@ kubectl apply -n $NAMESPACE -f $DIR/../../doc/tutorials/istio/bookinfo/service/c
 kubectl get experiments -n $NAMESPACE
 
 header "Deploy canary version"
-kubectl apply -n $NAMESPACE -f $DIR/../../doc/tutorials/istio/bookinfo/service/productpage-v2.yaml
+kubectl apply -n $NAMESPACE -f $DIR/../../doc/tutorials/istio/bookinfo/productpage-v2.yaml \
+              -f $DIR/../../doc/tutorials/istio/bookinfo/service/productpage-v2.yaml
 sleep 1
 kubectl wait --for=condition=ExperimentCompleted -n $NAMESPACE experiments.iter8.tools productpage-v2-rollout --timeout=600s
 kubectl get experiments -n $NAMESPACE
