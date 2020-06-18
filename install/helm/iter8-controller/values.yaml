@@ -26,6 +26,11 @@ resources:
     cpu: 100m
     memory: 50Mi
 
+
+# Version of Istio telemetry
+ istioTelemetry: v1
+
+ 
 # Optional restrictions on target node(s)
 nodeSelector: {}
 tolerations: []
