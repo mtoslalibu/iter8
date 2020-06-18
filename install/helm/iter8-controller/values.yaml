@@ -28,9 +28,9 @@ resources:
 
 
 # Version of Istio telemetry
- istioTelemetry: v1
+istioTelemetry: v1
 
- 
+
 # Optional restrictions on target node(s)
 nodeSelector: {}
 tolerations: []
