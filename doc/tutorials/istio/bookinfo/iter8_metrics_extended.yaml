@@ -9,7 +9,7 @@ data:
     iter8_latency: "(((sum(increase(istio_request_duration_seconds_sum{job='istio-mesh', reporter='source'}[$interval]$offset_str)) by ($entity_labels)) / (sum(increase(istio_request_duration_seconds_count{job='istio-mesh', reporter='source'}[$interval]$offset_str)) by ($entity_labels))) * 1000)"
     iter8_error_count: "sum(increase(istio_requests_total{job='istio-mesh', response_code=~'5..',reporter='source'}[$interval]$offset_str)) by ($entity_labels)"
     iter8_error_rate: "sum(increase(istio_requests_total{job='istio-mesh', response_code=~'5..',reporter='source'}[$interval]$offset_str)) by ($entity_labels) / sum(increase(istio_requests_total{job='istio-mesh', reporter='source'}[$interval]$offset_str)) by ($entity_labels)"
-    iter8_90_perc_latency: "histogram_quantile(0.90, sum(increase(istio_request_duration_seconds_bucket{job='istio-mesh', reporter='source'}[$interval]$offset_str)) by ($entity_labels, le))"
+    iter8_90_perc_latency: "((histogram_quantile(0.90, sum(increase(istio_request_duration_seconds_bucket{job='istio-mesh', reporter='source'}[$interval]$offset_str)) by ($entity_labels, le))) * 1000)"
   metrics: |-
     - name: iter8_latency
       is_counter: False
