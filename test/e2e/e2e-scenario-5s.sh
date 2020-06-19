@@ -44,7 +44,7 @@ kubectl apply -n $NAMESPACE -f $DIR/../../doc/tutorials/istio/bookinfo/productpa
 sleep 1
 kubectl wait --for=condition=ExperimentCompleted -n $NAMESPACE experiments.iter8.tools productpage-v2-rollout --timeout=600s
 kubectl get experiments -n $NAMESPACE
-kubectl get vs bookinfo -n $NAMESPACE -o yaml
+kubectl get vs -n $NAMESPACE -o yaml
 
 header "Test results"
 kubectl -n $NAMESPACE get experiments.iter8.tools productpage-v2-rollout -o yaml
