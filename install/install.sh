@@ -14,6 +14,9 @@ install() {
   if [ -z "$ISTIO_VERSION" ]; then
     echo "Cannot detect Istio version, aborting..."
     return
+  elif [ -z "$MIXER_DISABLED" ]; then
+    echo "Cannot detect Istio telemetry version, aborting..."
+    return
   fi
 
   echo "Istio version: $ISTIO_VERSION"
