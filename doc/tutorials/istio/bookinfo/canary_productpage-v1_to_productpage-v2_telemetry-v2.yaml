@@ -23,5 +23,5 @@ spec:
     successCriteria:
       - metricName: iter8_latency
         toleranceType: threshold
-        tolerance: 3000
+        tolerance: 3000000
         sampleSize: 5
