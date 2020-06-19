@@ -337,14 +337,7 @@ func (r *ReconcileExperiment) Reconcile(request reconcile.Request) (reconcile.Re
 		return r.endRequest(ctx, instance)
 	}
 
-	switch instance.Spec.TargetService.APIVersion {
-	case KubernetesV1:
-		return r.syncKubernetes(ctx, instance)
-	default:
-		instance.Status.MarkTargetsError("UnsupportedAPIVersion", "")
-		r.Status().Update(ctx, instance)
-		return reconcile.Result{}, nil
-	}
+	return r.syncKubernetes(ctx, instance)
 }
 
 func (r *ReconcileExperiment) syncMetrics(ctx context.Context, instance *iter8v1alpha1.Experiment) error {
