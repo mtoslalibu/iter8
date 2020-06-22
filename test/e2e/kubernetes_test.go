@@ -568,7 +568,8 @@ func getStableVirtualService(serviceName, name, subset string) runtime.Object {
 	host := util.ServiceToFullHostName(serviceName, Flags.Namespace)
 	return routing.NewVirtualService(host, name, Flags.Namespace).
 		WithNewStableSet(host, subset).
-		InitMeshGateway().
+		InitGateways().
+		WithMeshGateway().
 		Build()
 }
 
@@ -586,7 +587,8 @@ func getVirtualServiceWithService(serviceName, name, namespace, stableService st
 			},
 			},
 		}).
-		InitMeshGateway().
+		InitGateways().
+		WithMeshGateway().
 		Build()
 }
 
@@ -595,7 +597,8 @@ func getStableVirtualServiceWithGateway(serviceName, name, subset, host, gw stri
 	return routing.NewVirtualService(internalHost, name, Flags.Namespace).
 		WithNewStableSet(internalHost, subset).
 		WithHosts([]string{host}).
-		InitMeshGateway().
+		InitGateways().
+		WithMeshGateway().
 		WithGateways([]string{gw}).
 		Build()
 }

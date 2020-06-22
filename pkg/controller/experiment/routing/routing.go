@@ -226,13 +226,14 @@ func (r *IstioRoutingRules) Initialize(context context.Context, instance *iter8v
 	vsb := NewVirtualServiceBuilder(r.VirtualService).
 		WithExperimentRegistered(util.FullExperimentName(instance)).
 		WithInitializingLabel().
+		InitGateways().
 		InitHosts().
 		InitHTTPRoutes()
 
 	if targets.Service != nil {
 		vsb = vsb.
 			WithHosts([]string{util.ServiceToFullHostName(targets.Service.Name, targets.Service.Namespace)}).
-			InitMeshGateway()
+			WithMeshGateway()
 	}
 
 	if len(targets.Hosts) > 0 {
