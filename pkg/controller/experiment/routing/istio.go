@@ -296,8 +296,13 @@ func (b *VirtualServiceBuilder) ToStable(stableFilter *networkingv1alpha3.HTTPRo
 	return b
 }
 
-func (b *VirtualServiceBuilder) InitMeshGateway() *VirtualServiceBuilder {
-	b.Spec.Gateways = []string{"mesh"}
+func (b *VirtualServiceBuilder) InitGateways() *VirtualServiceBuilder {
+	b.Spec.Gateways = []string{}
+	return b
+}
+
+func (b *VirtualServiceBuilder) WithMeshGateway() *VirtualServiceBuilder {
+	b.Spec.Gateways = append(b.Spec.Gateways, "mesh")
 	return b
 }
 
