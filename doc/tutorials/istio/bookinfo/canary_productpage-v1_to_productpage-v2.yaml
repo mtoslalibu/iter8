@@ -3,15 +3,14 @@ kind: Experiment
 metadata:
   name: productpage-v2-rollout
 spec:
-  routingReference:
-    apiVersion: networking.istio.io/v1alpha3
-    kind: VirtualService
-    name: bookinfo
   targetService:
     name: productpage
-    apiVersion: v1
     baseline: productpage-v1
     candidate: productpage-v2
+    port: 9080
+    hosts:
+      - name: productpage.deployment.com
+        gateway: productpage-gateway
   trafficControl:
     strategy: check_and_increment
     interval: 30s

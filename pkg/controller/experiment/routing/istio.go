@@ -409,7 +409,9 @@ func (b *HTTPRouteDestinationBuilder) WithSubset(subset string) *HTTPRouteDestin
 }
 
 func (b *HTTPRouteDestinationBuilder) WithPort(port uint32) *HTTPRouteDestinationBuilder {
-	b.Destination.Port.Number = port
+	b.Destination.Port = &networkingv1alpha3.PortSelector{
+		Number: port,
+	}
 	return b
 }
 

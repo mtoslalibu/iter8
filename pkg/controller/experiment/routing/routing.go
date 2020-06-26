@@ -262,7 +262,6 @@ func (r *IstioRoutingRules) Initialize(context context.Context, instance *iter8v
 	}
 
 	vsb = vsb.WithHTTPRoute(NewEmptyHTTPRoute().WithDestination(baselineDestination.Build()).Build())
-	util.Logger(context).Info("ToProgress", "vs", vsb)
 	if _, ok := vsb.GetLabels()[ExperimentInit]; ok {
 		vs, err := ic.NetworkingV1alpha3().
 			VirtualServices(r.VirtualService.GetNamespace()).
@@ -289,7 +288,6 @@ func (r *IstioRoutingRules) Initialize(context context.Context, instance *iter8v
 			WithInitializingLabel().
 			WithExperimentRegistered(util.FullExperimentName(instance))
 
-		util.Logger(context).Info("ToProgress", "dr", drb)
 		if _, ok := drb.GetLabels()[ExperimentInit]; ok {
 			dr, err := ic.NetworkingV1alpha3().
 				DestinationRules(r.DestinationRule.GetNamespace()).
