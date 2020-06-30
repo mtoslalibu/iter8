@@ -16,7 +16,7 @@ metadata:
 data:
   query_templates: |-
     iter8_sample_size: "sum(increase(istio_requests_total{source_workload_namespace!='knative-serving',reporter='source'}[$interval]$offset_str)) by ($entity_labels)"
-    iter8_latency: "(sum(increase(istio_request_duration_seconds_sum{source_workload_namespace!='knative-serving',reporter='source'}[$interval]$offset_str)) by ($entity_labels)) / (sum(increase(istio_request_duration_seconds_count{source_workload_namespace!='knative-serving',reporter='source'}[$interval]$offset_str)) by ($entity_labels))"
+    iter8_latency: "(sum(increase(istio_request_duration_milliseconds_sum{source_workload_namespace!='knative-serving',reporter='source'}[$interval]$offset_str)) by ($entity_labels)) / (sum(increase(istio_request_duration_milliseconds_count{source_workload_namespace!='knative-serving',reporter='source'}[$interval]$offset_str)) by ($entity_labels))"
     iter8_error_count: "sum(increase(istio_requests_total{source_workload_namespace!='knative-serving',response_code=~'5..',reporter='source'}[$interval]$offset_str)) by ($entity_labels)"
     iter8_error_rate: "sum(increase(istio_requests_total{source_workload_namespace!='knative-serving',response_code=~'5..',reporter='source'}[$interval]$offset_str)) by ($entity_labels) / sum(increase(istio_requests_total{source_workload_namespace!='knative-serving',reporter='source'}[$interval]$offset_str)) by ($entity_labels)"
   metrics: |-
@@ -26,9 +26,11 @@ data:
       sample_size_query_template: iter8_sample_size
     - name: iter8_error_count
       is_counter: True
+      absent_value: 0
       sample_size_query_template: iter8_sample_size
     - name: iter8_error_rate
       is_counter: False
+      absent_value: 0
       sample_size_query_template: iter8_sample_size
 
 ---

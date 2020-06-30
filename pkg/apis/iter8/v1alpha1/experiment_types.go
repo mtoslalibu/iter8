@@ -502,8 +502,8 @@ const (
 	ReasonSyncMetricsSucceeded    = "SyncMetricsSucceeded"
 	ReasonRoutingRulesError       = "RoutingRulesError"
 	ReasonRoutingRulesReady       = "RoutingRulesReady"
-	ReasonActionPause             = "ActionPause"
-	ReasonActionResume            = "ActionResume"
+	ReasonActionPause             = "Pause"
+	ReasonActionResume            = "Resume"
 )
 
 // Init initialize status values

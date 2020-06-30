@@ -21,16 +21,21 @@ import (
 	iter8v1alpha2 "github.com/iter8-tools/iter8-controller/pkg/apis/iter8/v1alpha2"
 )
 
+const (
+	keySeparator = "/"
+)
+
 func experimentKey(instance *iter8v1alpha2.Experiment) string {
-	return instance.Name + "." + instance.Namespace
+	return instance.Namespace + keySeparator + instance.Name
 }
 
 func targetKey(name, namespace string) string {
-	return name + "." + namespace
+	return namespace + keySeparator + name
 }
 
+// return namespace, name of experiment
 func resolveExperimentKey(val string) (string, string) {
-	out := strings.Split(val, ".")
+	out := strings.Split(val, keySeparator)
 	if len(out) != 2 {
 		return "", ""
 	}

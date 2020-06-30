@@ -336,7 +336,7 @@ func (r *ReconcileExperiment) Reconcile(request reconcile.Request) (reconcile.Re
 	}
 
 	if err := r.syncMetrics(ctx, instance); err != nil {
-		return reconcile.Result{}, nil
+		return r.endRequest(ctx, instance)
 	}
 
 	return r.syncKubernetes(ctx, instance)
