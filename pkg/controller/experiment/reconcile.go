@@ -57,8 +57,6 @@ func completeStatusMessage(context context.Context, instance *iter8v1alpha2.Expe
 }
 
 func (r *ReconcileExperiment) checkOrInitRules(context context.Context, instance *iter8v1alpha2.Experiment) error {
-	log := util.Logger(context)
-
 	err := r.router.GetRoutingRules(instance)
 	if err != nil {
 		r.markRoutingRulesError(context, instance, "Error in getting routing rules: %s, Experiment Ended.", err.Error())
@@ -73,9 +71,6 @@ func (r *ReconcileExperiment) checkOrInitRules(context context.Context, instance
 // return true if instance status should be updated
 // returns non-nil error if current reconcile request should be terminated right after this function
 func (r *ReconcileExperiment) detectTargets(context context.Context, instance *iter8v1alpha2.Experiment) (err error) {
-	serviceName := instance.Spec.Service.Name
-	serviceNamespace := instance.ServiceNamespace()
-
 	if err = r.targets.GetService(context, instance); err != nil {
 		if instance.Status.TargetsFound() {
 			r.markTargetsError(context, instance, "Service Deleted")

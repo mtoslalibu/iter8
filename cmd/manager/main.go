@@ -19,7 +19,7 @@ import (
 	"flag"
 	"os"
 
-	"github.com/iter8-tools/iter8-controller/pkg/apis"
+	iter8v1alpha2 "github.com/iter8-tools/iter8-controller/pkg/apis/iter8/v1alpha2"
 	"github.com/iter8-tools/iter8-controller/pkg/controller"
 	"github.com/iter8-tools/iter8-controller/pkg/webhook"
 	_ "k8s.io/client-go/plugin/pkg/client/auth/oidc"
@@ -61,7 +61,7 @@ func main() {
 
 	// Setup Scheme for all resources
 	log.Info("setting up scheme")
-	if err := apis.AddToScheme(mgr.GetScheme()); err != nil {
+	if err := iter8v1alpha2.AddToScheme(mgr.GetScheme()); err != nil {
 		log.Error(err, "unable add APIs to scheme")
 		os.Exit(1)
 	}

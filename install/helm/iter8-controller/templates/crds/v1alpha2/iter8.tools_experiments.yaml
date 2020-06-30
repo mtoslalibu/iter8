@@ -112,11 +112,12 @@ spec:
                   - terminate
                   type: string
                 trafficSplit:
+                  additionalProperties:
+                    format: int32
+                    type: integer
                   description: 'Traffic split status specification Applied to action
-                    terminate only example: - reviews-v2:80 - reviews-v3:20'
-                  items:
-                    type: string
-                  type: array
+                    terminate only example:   reviews-v2:80   reviews-v3:20'
+                  type: object
               required:
               - action
               type: object
@@ -128,9 +129,20 @@ spec:
                   items:
                     description: CounterMetric is the definition of Counter Metric
                     properties:
+                      name:
+                        description: Name of metric
+                        type: string
+                      preferred_direction:
+                        description: Preferred direction of the metric value
+                        type: string
                       query_template:
+                        description: Query template of this metric
+                        type: string
+                      unit:
+                        description: Unit of the metric value
                         type: string
                     required:
+                    - name
                     - query_template
                     type: object
                   type: array
@@ -142,8 +154,14 @@ spec:
                       denominator:
                         description: Counter metric used in denominator
                         type: string
+                      name:
+                        description: name of metric
+                        type: string
                       numerator:
                         description: Counter metric used in numerator
+                        type: string
+                      preferred_direction:
+                        description: Preferred direction of the metric value
                         type: string
                       zero_to_one:
                         description: Boolean flag indicating if the value of this
@@ -151,6 +169,7 @@ spec:
                         type: boolean
                     required:
                     - denominator
+                    - name
                     - numerator
                     type: object
                   type: array
@@ -314,7 +333,7 @@ spec:
                             description: Query parameters for matching.
                             type: object
                           scheme:
-                            description: URI Scheme
+                            description: Scheme Scheme
                             properties:
                               exact:
                                 type: string
@@ -380,7 +399,7 @@ spec:
               description: Assessment returned by the last analyis
               properties:
                 baseline:
-                  description: Assessment for baseline
+                  description: Assessment details of baseline
                   properties:
                     criterion_assessments:
                       items:
@@ -470,7 +489,18 @@ spec:
                         - statistics
                         type: object
                       type: array
+                    name:
+                      description: name of version
+                      type: string
                     request_count:
+                      format: int32
+                      type: integer
+                    rollback:
+                      description: A flag indicates whether traffic to this target
+                        should be cutoff
+                      type: boolean
+                    weight:
+                      description: Weight of traffic
                       format: int32
                       type: integer
                     win_probability:
@@ -478,14 +508,16 @@ spec:
                       type: number
                   required:
                   - criterion_assessments
+                  - name
                   - request_count
+                  - weight
                   - win_probability
                   type: object
                 candidates:
-                  description: Assessment for candidates
+                  description: Assessment details of each candidate
                   items:
-                    description: CandidateAssessment contains name of candidate and
-                      assessment details from analytics
+                    description: VersionAssessment contains assessment details for
+                      each version
                     properties:
                       criterion_assessments:
                         items:
@@ -576,15 +608,19 @@ spec:
                           type: object
                         type: array
                       name:
-                        description: name of candidate
+                        description: name of version
                         type: string
                       request_count:
                         format: int32
                         type: integer
                       rollback:
-                        description: A flag indicates whether traffic to this candidate
+                        description: A flag indicates whether traffic to this target
                           should be cutoff
                         type: boolean
+                      weight:
+                        description: Weight of traffic
+                        format: int32
+                        type: integer
                       win_probability:
                         format: float64
                         type: number
@@ -592,7 +628,7 @@ spec:
                     - criterion_assessments
                     - name
                     - request_count
-                    - rollback
+                    - weight
                     - win_probability
                     type: object
                   type: array
@@ -626,7 +662,7 @@ spec:
               items:
                 description: ExperimentCondition describes a condition of an experiment
                 properties:
-                  lastUpdateTime:
+                  lastTransitionTime:
                     description: The time when this condition is last updated
                     format: date-time
                     type: string
@@ -662,9 +698,8 @@ spec:
               description: InitTimestamp is the timestamp when the experiment is initialized
               format: date-time
               type: string
-            lastIncrementTime:
-              description: LastIncrementTime is the last time the traffic has been
-                incremented
+            lastUpdateTime:
+              description: LastUpdateTime is the last time iteration has been updated
               format: date-time
               type: string
             message:
@@ -677,23 +712,6 @@ spec:
               description: StartTimestamp is the timestamp when the experiment starts
               format: date-time
               type: string
-            trafficSplit:
-              description: TrafficSplit tells the current traffic spliting among targets
-              items:
-                description: TrafficSplit shows traffic for a target
-                properties:
-                  name:
-                    description: Name of deployment
-                    type: string
-                  weight:
-                    description: Weight of traffic
-                    format: int32
-                    type: integer
-                required:
-                - name
-                - weight
-                type: object
-              type: array
           type: object
       required:
       - spec

@@ -437,7 +437,7 @@ func (r *ReconcileExperiment) proceed(context context.Context, instance *iter8v1
 				return err
 			}
 		}
-		err = fmt.Errorf("phase: %s, action: %s", instance.Status.Phase, instance.Spec.GetAction())
+		err = fmt.Errorf("phase: %v, action: %s", instance.Status.Phase, instance.Spec.GetAction())
 		return
 	}
 
@@ -456,7 +456,7 @@ func (r *ReconcileExperiment) proceed(context context.Context, instance *iter8v1
 
 			r.markActionResume(context, instance, "")
 		} else {
-			err = fmt.Errorf("phase: %s, action: %s", instance.Status.Phase, instance.Spec.GetAction())
+			err = fmt.Errorf("phase: %v, action: %s", instance.Status.Phase, instance.Spec.GetAction())
 		}
 	}
 

@@ -86,7 +86,7 @@ func overrideAssessment(instance *iter8v1alpha2.Experiment) {
 			instance.Status.Assessment.Baseline.Weight = 0
 		}
 
-		for i, candidate := range instance.Status.Assessment.Candidates {
+		for _, candidate := range instance.Status.Assessment.Candidates {
 			if ts, ok := trafficSplit[candidate.Name]; ok {
 				candidate.Weight = ts
 			} else {

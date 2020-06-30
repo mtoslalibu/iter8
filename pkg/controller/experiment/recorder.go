@@ -20,6 +20,7 @@ import (
 	"fmt"
 
 	corev1 "k8s.io/api/core/v1"
+	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 
 	iter8v1alpha2 "github.com/iter8-tools/iter8-controller/pkg/apis/iter8/v1alpha2"
 	"github.com/iter8-tools/iter8-controller/pkg/controller/experiment/util"
@@ -27,7 +28,7 @@ import (
 
 func (r *ReconcileExperiment) markTargetsError(context context.Context, instance *iter8v1alpha2.Experiment,
 	messageFormat string, messageA ...interface{}) {
-	if updated, reason := instance.Status.MarkTargetsError(reason, messageFormat, messageA...); updated {
+	if updated, reason := instance.Status.MarkTargetsError(messageFormat, messageA...); updated {
 		util.Logger(context).Info(reason + ", " + fmt.Sprintf(messageFormat, messageA...))
 		r.eventRecorder.Eventf(instance, corev1.EventTypeWarning, reason, messageFormat, messageA...)
 		r.notificationCenter.Notify(instance, reason, messageFormat, messageA...)
@@ -37,7 +38,7 @@ func (r *ReconcileExperiment) markTargetsError(context context.Context, instance
 
 func (r *ReconcileExperiment) markTargetsFound(context context.Context, instance *iter8v1alpha2.Experiment,
 	messageFormat string, messageA ...interface{}) {
-	if updated, reason := instance.Status.MarkTargetsFound(); updated {
+	if updated, reason := instance.Status.MarkTargetsFound(messageFormat, messageA...); updated {
 		util.Logger(context).Info(reason + ", " + fmt.Sprintf(messageFormat, messageA...))
 		r.eventRecorder.Eventf(instance, corev1.EventTypeNormal, reason, messageFormat, messageA...)
 		r.notificationCenter.Notify(instance, reason, messageFormat, messageA...)
@@ -47,7 +48,7 @@ func (r *ReconcileExperiment) markTargetsFound(context context.Context, instance
 
 func (r *ReconcileExperiment) markAnalyticsServiceError(context context.Context, instance *iter8v1alpha2.Experiment,
 	messageFormat string, messageA ...interface{}) {
-	if updated, reason := instance.Status.MarkAnalyticsServiceError(reason, messageFormat, messageA...); updated {
+	if updated, reason := instance.Status.MarkAnalyticsServiceError(messageFormat, messageA...); updated {
 		util.Logger(context).Info(reason + ", " + fmt.Sprintf(messageFormat, messageA...))
 		r.eventRecorder.Eventf(instance, corev1.EventTypeWarning, reason, messageFormat, messageA...)
 		r.notificationCenter.Notify(instance, reason, messageFormat, messageA...)
@@ -85,7 +86,8 @@ func (r *ReconcileExperiment) markExperimentCompleted(context context.Context, i
 		// Clear analysis state
 		instance.Status.AnalysisState.Raw = []byte("{}")
 		// Update grafana url
-		*instance.Status.EndTimestamp = metav1.Now()
+		now := metav1.Now()
+		instance.Status.EndTimestamp = &now
 		r.grafanaConfig.UpdateGrafanaURL(instance)
 		r.markStatusUpdate()
 	}
@@ -102,7 +104,7 @@ func (r *ReconcileExperiment) markSyncMetricsError(context context.Context, inst
 }
 
 func (r *ReconcileExperiment) markSyncMetrics(context context.Context, instance *iter8v1alpha2.Experiment) {
-	if updated, reason := instance.Status.MarkMetricsSynced(); updated {
+	if updated, reason := instance.Status.MarkMetricsSynced(""); updated {
 		util.Logger(context).Info(reason)
 		r.eventRecorder.Eventf(instance, corev1.EventTypeNormal, reason, "")
 		r.notificationCenter.Notify(instance, reason, "")
@@ -142,7 +144,7 @@ func (r *ReconcileExperiment) markActionPause(context context.Context, instance 
 
 func (r *ReconcileExperiment) markActionResume(context context.Context, instance *iter8v1alpha2.Experiment,
 	messageFormat string, messageA ...interface{}) {
-	if instance.Status.MarkExperimentResume(messageFormat, messageA...) {
+	if updated, reason := instance.Status.MarkExperimentResume(messageFormat, messageA...); updated {
 		util.Logger(context).Info(reason + ", " + fmt.Sprintf(messageFormat, messageA...))
 		r.eventRecorder.Eventf(instance, corev1.EventTypeNormal, reason, messageFormat, messageA...)
 		r.notificationCenter.Notify(instance, reason, messageFormat, messageA...)
