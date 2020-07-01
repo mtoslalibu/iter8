@@ -16,7 +16,7 @@ kubectl apply -f $DIR/../../doc/tutorials/istio/bookinfo/namespace.yaml
 header "Create bookinfo-iter8 app"
 kubectl apply -n bookinfo-iter8 -f $DIR/../../doc/tutorials/istio/bookinfo/bookinfo-tutorial.yaml
 sleep 1
-kubectl wait --for=condition=Ready pods --all -n bookinfo-iter8 --timeout=600s
+kubectl wait --for=condition=Ready pods --all -n bookinfo-iter8 --timeout=540s
 kubectl get pods,services -n bookinfo-iter8
 
 header "Create bookinfo-iter8 gateway and vs"
@@ -46,7 +46,7 @@ kubectl get experiments -n bookinfo-iter8
 header "Deploy canary version"
 kubectl apply -n bookinfo-iter8 -f $DIR/../../doc/tutorials/istio/bookinfo/reviews-v3.yaml
 sleep 1
-kubectl wait --for=condition=ExperimentCompleted -n bookinfo-iter8 experiments.iter8.tools reviews-v3-rollout --timeout=600s
+kubectl wait --for=condition=ExperimentCompleted -n bookinfo-iter8 experiments.iter8.tools reviews-v3-rollout --timeout=540s
 kubectl get experiments -n bookinfo-iter8
 
 header "Test results"
