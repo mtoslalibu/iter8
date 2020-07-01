@@ -1,7 +1,7 @@
 #!/usr/bin/env bash
 
 # Exit on error
-set -e
+#set -e
 
 DIR="$( cd "$( dirname "$0" )" >/dev/null 2>&1; pwd -P )"
 source "$DIR/library.sh"
@@ -29,3 +29,6 @@ if [ "$conclusion" != "All success criteria were  met" ]; then
   exit 1
 fi
 echo "Experiment succeeded as expected!"
+
+header "Clean up"
+kubectl -n bookinfo-iter8 delete deployment productpage-v1
