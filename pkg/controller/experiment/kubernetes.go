@@ -29,6 +29,8 @@ func (r *ReconcileExperiment) syncKubernetes(context context.Context, instance *
 	log := util.Logger(context)
 
 	// check routing rules for this experiment
+	// initialization will be defered until targets are detected
+	// TODO: consider renaming the method checkOrInitRules
 	err := r.checkOrInitRules(context, instance)
 	if err != nil {
 		return r.endRequest(context, instance)
@@ -36,7 +38,7 @@ func (r *ReconcileExperiment) syncKubernetes(context context.Context, instance *
 
 	// detect targets of this experiment if necessary
 	if r.toDetectTargets(context, instance) {
-		err = r.detectTargets(context, instance)
+		err := r.detectTargets(context, instance)
 		if err != nil {
 			return r.endRequest(context, instance)
 		}
@@ -63,7 +65,7 @@ func (r *ReconcileExperiment) syncKubernetes(context context.Context, instance *
 	if r.hasProgress() {
 		interval, _ := instance.Spec.GetInterval()
 		r.endRequest(context, instance)
-		log.Info("Requeue for next iteration")
+		log.Info("Requeue for next iteration", "interval", interval)
 		return reconcile.Result{RequeueAfter: interval}, nil
 	}
 
@@ -106,9 +108,10 @@ func (r *ReconcileExperiment) toUpdate(context context.Context, instance *iter8v
 	}
 
 	now := time.Now()
+	// traffic := instance.Spec.TrafficControl
 	interval, _ := instance.Spec.GetInterval()
 
-	return instance.Status.LastUpdateTime != nil && now.After(instance.Status.LastUpdateTime.Add(interval))
+	return instance.Status.LastUpdateTime == nil || now.After(instance.Status.LastUpdateTime.Add(interval))
 }
 
 func (r *ReconcileExperiment) toComplete(context context.Context, instance *iter8v1alpha2.Experiment) bool {
@@ -119,7 +122,7 @@ func (r *ReconcileExperiment) toComplete(context context.Context, instance *iter
 func (r *ReconcileExperiment) endRequest(context context.Context, instance *iter8v1alpha2.Experiment) (reconcile.Result, error) {
 	if r.needStatusUpdate() {
 		if err := r.Status().Update(context, instance); err != nil && !validUpdateErr(err) {
-			log.Info("Fail to update status: %v", err)
+			log.Error(err, "Fail to update status")
 		}
 	}
 	return reconcile.Result{}, nil

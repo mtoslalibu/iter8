@@ -31,9 +31,9 @@ import (
 )
 
 const (
-	SubsetBaseline  = "iter8.baseline"
-	SubsetCandidate = "iter8.candidate"
-	SubsetStable    = "iter8.stable"
+	SubsetBaseline  = "iter8-baseline" // use of a '.' is invalid
+	SubsetCandidate = "iter8-candidate"
+	SubsetStable    = "iter8-stable"
 
 	RoleStable      = "stable"
 	RoleProgressing = "progressing"
@@ -81,6 +81,14 @@ func (r *istioRoutingRules) isInit() bool {
 	return drok && vsok
 }
 
+func (r *istioRoutingRules) isDestinationRuleDefined() bool {
+	return "" != r.destinationRule.Name
+}
+
+func (r *istioRoutingRules) isVirtualServiceDefined() bool {
+	return "" != r.virtualService.Name
+}
+
 func (r *istioRoutingRules) isExternalReference() bool {
 	_, vsok := r.virtualService.GetLabels()[ExternalReference]
 
@@ -92,20 +100,41 @@ func (r *Router) ToProgressing(instance *iter8v1alpha2.Experiment, targets *targ
 		return nil
 	}
 
-	drb := NewDestinationRuleBuilder(r.rules.destinationRule).
-		InitSubsets(1+len(targets.Candidates)).
+	drb := (*DestinationRuleBuilder)(nil)
+	if r.rules.isDestinationRuleDefined() {
+		drb = NewDestinationRuleBuilder(r.rules.destinationRule)
+	} else {
+		drb = NewDestinationRule(instance.Spec.Service.Name, instance.GetName(), instance.ServiceNamespace()).
+			WithInitLabel()
+	}
+	drb = drb.
+		InitSubsets(1).
 		WithSubset(targets.Baseline, SubsetBaseline, 0).
 		WithProgressingLabel().
 		WithExperimentRegistered(instance.Name)
 
-	dr, err := r.client.NetworkingV1alpha3().
-		DestinationRules(r.rules.destinationRule.GetNamespace()).
-		Update(drb.Build())
+	dr := (*v1alpha3.DestinationRule)(nil)
+	if r.rules.isDestinationRuleDefined() {
+		dr, err = r.client.NetworkingV1alpha3().
+			DestinationRules(r.rules.destinationRule.GetNamespace()).
+			Update(drb.Build())
+	} else {
+		dr, err = r.client.NetworkingV1alpha3().
+			DestinationRules(instance.ServiceNamespace()).
+			Create(drb.Build())
+	}
 	if err != nil {
 		return
 	}
 
-	vsb := NewVirtualServiceBuilder(r.rules.virtualService).
+	vsb := (*VirtualServiceBuilder)(nil)
+	if r.rules.isVirtualServiceDefined() {
+		vsb = NewVirtualServiceBuilder(r.rules.virtualService)
+	} else {
+		vsb = NewVirtualService(instance.Spec.Service.Name, instance.GetName(), instance.ServiceNamespace()).
+			WithInitLabel()
+	}
+	vsb = vsb.
 		WithProgressingLabel().
 		WithExperimentRegistered(instance.Name)
 
@@ -119,9 +148,16 @@ func (r *Router) ToProgressing(instance *iter8v1alpha2.Experiment, targets *targ
 		}
 	}
 
-	vs, err := r.client.NetworkingV1alpha3().
-		VirtualServices(r.rules.virtualService.GetNamespace()).
-		Update(vsb.Build())
+	vs := (*v1alpha3.VirtualService)(nil)
+	if r.rules.isVirtualServiceDefined() {
+		vs, err = r.client.NetworkingV1alpha3().
+			VirtualServices(r.rules.virtualService.GetNamespace()).
+			Update(vsb.Build())
+	} else {
+		vs, err = r.client.NetworkingV1alpha3().
+			VirtualServices(instance.ServiceNamespace()).
+			Create(vsb.Build())
+	}
 	if err != nil {
 		return err
 	}
@@ -159,7 +195,7 @@ func (r *Router) UpdateCandidates(targets *targets.Targets) (err error) {
 
 // Cleanup configures routing rules to set up traffic to desired end state
 func (r *Router) Cleanup(context context.Context, instance *iter8v1alpha2.Experiment) (err error) {
-	if *instance.Spec.Cleanup && r.rules.isInit() {
+	if instance.Spec.Cleanup != nil && *instance.Spec.Cleanup && r.rules.isInit() {
 		if err = r.client.NetworkingV1alpha3().DestinationRules(r.rules.destinationRule.Namespace).
 			Delete(r.rules.destinationRule.Name, &metav1.DeleteOptions{}); err != nil {
 			return
@@ -178,7 +214,7 @@ func (r *Router) Cleanup(context context.Context, instance *iter8v1alpha2.Experi
 			if assessment != nil && assessment.Winner != nil && assessment.Winner.WinnerFound {
 				// change winner version to stable
 				for i, candidate := range instance.Spec.Candidates {
-					if candidate == assessment.Winner.Winner {
+					if candidate == *assessment.Winner.Winner {
 						toStableSubset[candiateSubsetName(i)] = SubsetStable
 						subsetWeight[SubsetStable] = 100
 						break
@@ -274,10 +310,11 @@ func (r *Router) GetRoutingRules(instance *iter8v1alpha2.Experiment) error {
 	}
 
 	if len(drl.Items) == 0 && len(vsl.Items) == 0 {
+		// Defer initialization of routing rules until targets identified
 		// Initialize routing rules
-		if err = r.InitRoutingRules(instance); err != nil {
-			return err
-		}
+		// if err = r.InitRoutingRules(instance); err != nil {
+		// 	return err
+		// }
 	} else {
 		if err = r.validateDetectedRules(drl, vsl, instance); err != nil {
 			return err

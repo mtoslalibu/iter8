@@ -4,25 +4,35 @@ metadata:
   name: iter8config-metrics
   namespace: {{ .Values.namespace }}
 data:
-  query_templates: |-
-    iter8_sample_size: "sum(increase(istio_requests_total{source_workload_namespace!='knative-serving',reporter='source'}[$interval]$offset_str)) by ($entity_labels)"
-    {{- if eq .Values.istioTelemetry "v1" }}
-    iter8_latency: "(sum(increase(istio_request_duration_seconds_sum{source_workload_namespace!='knative-serving',reporter='source'}[$interval]$offset_str)) by ($entity_labels)) / (sum(increase(istio_request_duration_seconds_count{source_workload_namespace!='knative-serving',reporter='source'}[$interval]$offset_str)) by ($entity_labels))"
-    {{- else }}
-    iter8_latency: "(sum(increase(istio_request_duration_milliseconds_sum{source_workload_namespace!='knative-serving',reporter='source'}[$interval]$offset_str)) by ($entity_labels)) / (sum(increase(istio_request_duration_milliseconds_count{source_workload_namespace!='knative-serving',reporter='source'}[$interval]$offset_str)) by ($entity_labels))"
-    {{- end }}
-    iter8_error_count: "sum(increase(istio_requests_total{source_workload_namespace!='knative-serving',response_code=~'5..',reporter='source'}[$interval]$offset_str)) by ($entity_labels)"
-    iter8_error_rate: "sum(increase(istio_requests_total{source_workload_namespace!='knative-serving',response_code=~'5..',reporter='source'}[$interval]$offset_str)) by ($entity_labels) / sum(increase(istio_requests_total{source_workload_namespace!='knative-serving',reporter='source'}[$interval]$offset_str)) by ($entity_labels)"
-  metrics: |-
-    - name: iter8_latency
-      is_counter: False
-      absent_value: "None"
-      sample_size_query_template: iter8_sample_size
+  counter_metrics.yaml: |-
+    - name: iter8_request_count
+      query_template: sum(increase(istio_requests_total{reporter='source'}[$interval])) by ($version_labels)
+    - name: iter8_total_latency
+      {{- if eq .Values.istioTelemetry "v2" }}
+      query_template: sum(increase(istio_request_duration_milliseconds_sum{reporter='source'}[$interval])) by ($version_labels)
+      units: ms # optional
+      {{- else }}
+      query_template: sum(increase(istio_request_duration_seconds_sum{reporter='source'}[$interval])) by ($version_labels)
+      units: s # optional
+      {{- end }}
     - name: iter8_error_count
-      is_counter: True
-      absent_value: 0
-      sample_size_query_template: iter8_sample_size
+      query_template: sum(increase(istio_requests_total{response_code=~'5..',reporter='source'}[$interval])) by ($version_labels)
+      preferred_direction: lower
+    - name: conversion_count
+      query_template: sum(increase(newsletter_signups[$interval])) by ($version_labels)
+  # the value of a ratio metric equals value of numerator divided by denominator
+  ratio_metrics.yaml: |-
+    - name: iter8_mean_latency
+      numerator: iter8_total_latency
+      denominator: iter8_request_count
+      preferred_direction: lower
     - name: iter8_error_rate
-      is_counter: False
-      absent_value: 0
-      sample_size_query_template: iter8_sample_size
+      numerator: iter8_error_count
+      denominator: iter8_request_count
+      preferred_direction: lower
+      zero_to_one: true
+    - name: conversion_rate
+      numerator: conversion_count
+      denominator: iter8_request_count
+      preferred_direction: higher
+      zero_to_one: true

@@ -29,13 +29,20 @@ import (
 // +k8s:openapi-gen=true
 // +kubebuilder:subresource:status
 // +kubebuilder:categories=all,iter8
+// +kubebuilder:printcolumn:name="phase",type="string",JSONPath=".status.phase",description="Phase of the experiment",format="byte"
+// +kubebuilder:printcolumn:name="status",type="string",JSONPath=".status.message",description="Detailed Status of the experiment",format="byte"
+// +kubebuilder:printcolumn:name="iteration",type="integer",JSONPath=".status.currentIteration",description="Current iteration",format="int32"
+// +kubebuilder:printcolumn:name="baseline",type="string",JSONPath=".spec.service.baseline",description="Name of baseline",format="byte"
+// +kubebuilder:printcolumn:name="percentage",type="integer",JSONPath=".status.assessment.baseline.weight",description="Traffic percentage for baseline",format="int32"
+// +kubebuilder:printcolumn:name="candidates",type="string",JSONPath=".spec.service.candidates",description="Names of candidates",format="byte"
+// +kubebuilder:printcolumn:name="percentage",type="string",JSONPath=".status.assessment.candidates[*].weight",description="Traffic percentage for the candidates",format="int32"
 type Experiment struct {
 	metav1.TypeMeta   `json:",inline"`
 	metav1.ObjectMeta `json:"metadata,omitempty"`
 
 	Spec ExperimentSpec `json:"spec"`
 	// +optional
-	Status *ExperimentStatus `json:"status,omitempty"`
+	Status ExperimentStatus `json:"status,omitempty"`
 }
 
 // ExperimentList contains a list of Experiment
@@ -76,7 +83,7 @@ type ExperimentSpec struct {
 
 	// Cleanup indicates whether routing rules and deployment receiving no traffic should be deleted at the end of experiment
 	// +optional
-	Cleanup *bool `json:"cleanup"`
+	Cleanup *bool `json:"cleanup,omitempty"`
 
 	// The metrics used in the experiment
 	// +optional
@@ -276,7 +283,7 @@ type ExperimentStatus struct {
 
 	// Phase marks the Phase the experiment is at
 	// +optional
-	Phase *PhaseType `json:"phase,omitempty"`
+	Phase PhaseType `json:"phase,omitempty"`
 
 	// Message specifies message to show in the kubectl printer
 	// +optional

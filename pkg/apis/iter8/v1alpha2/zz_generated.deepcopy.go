@@ -38,7 +38,7 @@ func (in *Assessment) DeepCopyInto(out *Assessment) {
 	if in.Winner != nil {
 		in, out := &in.Winner, &out.Winner
 		*out = new(apiv1alpha2.WinnerAssessment)
-		**out = **in
+		(*in).DeepCopyInto(*out)
 	}
 	return
 }
@@ -163,11 +163,7 @@ func (in *Experiment) DeepCopyInto(out *Experiment) {
 	out.TypeMeta = in.TypeMeta
 	in.ObjectMeta.DeepCopyInto(&out.ObjectMeta)
 	in.Spec.DeepCopyInto(&out.Spec)
-	if in.Status != nil {
-		in, out := &in.Status, &out.Status
-		*out = new(ExperimentStatus)
-		(*in).DeepCopyInto(*out)
-	}
+	in.Status.DeepCopyInto(&out.Status)
 	return
 }
 
@@ -355,11 +351,6 @@ func (in *ExperimentStatus) DeepCopyInto(out *ExperimentStatus) {
 		in, out := &in.Assessment, &out.Assessment
 		*out = new(Assessment)
 		(*in).DeepCopyInto(*out)
-	}
-	if in.Phase != nil {
-		in, out := &in.Phase, &out.Phase
-		*out = new(PhaseType)
-		**out = **in
 	}
 	if in.Message != nil {
 		in, out := &in.Message, &out.Message
