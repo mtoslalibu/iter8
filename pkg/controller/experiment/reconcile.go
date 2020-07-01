@@ -225,8 +225,8 @@ func (r *ReconcileExperiment) updateIteration(context context.Context, instance 
 
 	now := metav1.Now()
 	instance.Status.LastUpdateTime = &now
+	r.markIterationUpdate(context, instance, "Iteration %d completed", instance.Status.CurrentIteration)
 	*instance.Status.CurrentIteration++
-	r.markIterationUpdate(context, instance, "")
 	return nil
 }
 

@@ -307,7 +307,7 @@ type ExperimentCondition struct {
 
 	// The time when this condition is last updated
 	// +optional
-	LastTransitionTime metav1.Time `json:"lastTransitionTime,omitempty"`
+	LastTransitionTime *metav1.Time `json:"lastTransitionTime,omitempty"`
 
 	// Reason for the last update
 	// +optional

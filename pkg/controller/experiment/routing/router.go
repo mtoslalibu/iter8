@@ -211,7 +211,7 @@ func (r *Router) Cleanup(context context.Context, instance *iter8v1alpha2.Experi
 		assessment := instance.Status.Assessment
 		switch instance.Spec.GetOnTermination() {
 		case iter8v1alpha2.OnTerminationToWinner:
-			if assessment != nil && assessment.Winner != nil && assessment.Winner.WinnerFound != nil && *assessment.Winner.WinnerFound {
+			if assessment != nil && assessment.Winner != nil && assessment.Winner.WinnerFound {
 				// change winner version to stable
 				for i, candidate := range instance.Spec.Candidates {
 					if candidate == *assessment.Winner.Winner {

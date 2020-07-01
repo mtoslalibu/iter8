@@ -212,7 +212,7 @@ type CandidateAssessment struct {
 type WinnerAssessment struct {
 	// Indicates whether or not a clear winner has emerged
 	// This is currently computed based on Bayesian estimation and uses posterior_probability_for_winner from the iteration parameters
-	WinnerFound *bool `json:"winning_version_found"`
+	WinnerFound bool `json:"winning_version_found"`
 
 	// ID of the current winner with the maximum probability of winning.
 	// This is currently computed based on Bayesian estimation

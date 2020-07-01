@@ -34,7 +34,8 @@ func (s *ExperimentStatus) addCondition(conditionType ExperimentConditionType) *
 		Type:   conditionType,
 		Status: corev1.ConditionUnknown,
 	}
-	condition.LastTransitionTime = metav1.Now()
+	now := metav1.Now()
+	condition.LastTransitionTime = &now
 	s.Conditions = append(s.Conditions, condition)
 	return condition
 }
@@ -100,7 +101,8 @@ func (c *ExperimentCondition) markCondition(status corev1.ConditionStatus, reaso
 	c.Status = status
 	c.Reason = &reason
 	c.Message = &message
-	c.LastTransitionTime = metav1.Now()
+	now := metav1.Now()
+	c.LastTransitionTime = &now
 	return updated
 }
 

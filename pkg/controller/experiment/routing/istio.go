@@ -223,7 +223,7 @@ func (b *VirtualServiceBuilder) WithHTTPMatch(httpMatch []*iter8v1alpha2.HTTPMat
 	for _, match := range httpMatch {
 		b.Spec.Http[0].Match = append(b.Spec.Http[0].Match, convertMatchToIstio(match))
 	}
-	return nil
+	return b
 }
 
 // ExternalToProgressing mark external reference vs as progressing mode
