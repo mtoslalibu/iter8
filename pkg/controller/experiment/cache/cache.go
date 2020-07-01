@@ -22,7 +22,7 @@ import (
 
 	"github.com/go-logr/logr"
 
-	iter8v1alpha1 "github.com/iter8-tools/iter8-controller/pkg/apis/iter8/v1alpha1"
+	iter8v1alpha2 "github.com/iter8-tools/iter8-controller/pkg/apis/iter8/v1alpha2"
 	"github.com/iter8-tools/iter8-controller/pkg/controller/experiment/cache/abstract"
 )
 
@@ -32,8 +32,8 @@ type Interface interface {
 	DeploymentToExperiment(name, namespace string) (experiment, experimentNamespace string, exist bool)
 	// Given name and namespace of the target service, return the experiment key
 	ServiceToExperiment(name, namespace string) (experiment, experimentNamespace string, exist bool)
-	RegisterExperiment(context context.Context, instance *iter8v1alpha1.Experiment) (context.Context, error)
-	RemoveExperiment(instance *iter8v1alpha1.Experiment)
+	RegisterExperiment(context context.Context, instance *iter8v1alpha2.Experiment) (context.Context, error)
+	RemoveExperiment(instance *iter8v1alpha2.Experiment)
 
 	MarkTargetDeploymentFound(name, namespace string) bool
 	MarkTargetServiceFound(name, namespace string) bool
@@ -72,7 +72,7 @@ func New(logger logr.Logger) Interface {
 }
 
 // RegisterExperiment creates new abstracts into the cache and snapshot the abstract into context
-func (c *Impl) RegisterExperiment(ctx context.Context, instance *iter8v1alpha1.Experiment) (context.Context, error) {
+func (c *Impl) RegisterExperiment(ctx context.Context, instance *iter8v1alpha2.Experiment) (context.Context, error) {
 	c.m.Lock()
 	defer c.m.Unlock()
 
@@ -80,29 +80,32 @@ func (c *Impl) RegisterExperiment(ctx context.Context, instance *iter8v1alpha1.E
 	if _, ok := c.experimentAbstractStore[eakey]; !ok {
 		// check duplicate experiment on the same service
 		targetNamespace := instance.ServiceNamespace()
-		service := instance.Spec.TargetService.Name
-		baseline := instance.Spec.TargetService.Baseline
-		candidate := instance.Spec.TargetService.Candidate
-		svcKey := targetKey(service, targetNamespace)
-		baselineKey := targetKey(baseline, targetNamespace)
-		candidateKey := targetKey(candidate, targetNamespace)
 
+		service := instance.Spec.Name
+		svcKey := targetKey(service, targetNamespace)
 		if _, ok := c.service2Experiment[svcKey]; ok {
 			return ctx, fmt.Errorf("Target service is being involved in other experiment")
 		}
 
+		baseline := instance.Spec.Baseline
+		baselineKey := targetKey(baseline, targetNamespace)
 		if _, ok := c.deployment2Experiment[baselineKey]; ok {
 			return ctx, fmt.Errorf("Target baseline is being involved in other experiment")
 		}
 
-		if _, ok := c.deployment2Experiment[baselineKey]; ok {
-			return ctx, fmt.Errorf("Target candidate is being involved in other experiment")
+		for _, candidate := range instance.Spec.Candidates {
+			key := targetKey(candidate, targetNamespace)
+			if _, ok := c.deployment2Experiment[key]; ok {
+				return ctx, fmt.Errorf("Target candidate is being involved in other experiment")
+			}
 		}
 
 		c.experimentAbstractStore[eakey] = abstract.NewExperiment(instance, targetNamespace)
 		c.service2Experiment[svcKey] = eakey
 		c.deployment2Experiment[baselineKey] = eakey
-		c.deployment2Experiment[candidateKey] = eakey
+		for _, candidate := range instance.Spec.Candidates {
+			c.deployment2Experiment[targetKey(candidate, targetNamespace)] = eakey
+		}
 	}
 
 	ea := c.experimentAbstractStore[eakey]
@@ -121,7 +124,7 @@ func (c *Impl) DeploymentToExperiment(targetName, targetNamespace string) (strin
 	if _, ok := c.deployment2Experiment[tKey]; !ok {
 		return "", "", false
 	}
-	name, namespace := resolveExperimentKey(c.deployment2Experiment[tKey])
+	namespace, name := resolveExperimentKey(c.deployment2Experiment[tKey])
 
 	return name, namespace, true
 }
@@ -166,7 +169,7 @@ func (c *Impl) ServiceToExperiment(targetName, targetNamespace string) (string, 
 		return "", "", false
 	}
 
-	name, namespace := resolveExperimentKey(c.service2Experiment[tKey])
+	namespace, name := resolveExperimentKey(c.service2Experiment[tKey])
 
 	return name, namespace, true
 }
@@ -202,7 +205,7 @@ func (c *Impl) MarkTargetServiceMissing(targetName, targetNamespace string) bool
 }
 
 // RemoveExperiment removes the experiment abstract from the cache
-func (c *Impl) RemoveExperiment(instance *iter8v1alpha1.Experiment) {
+func (c *Impl) RemoveExperiment(instance *iter8v1alpha2.Experiment) {
 	c.m.Lock()
 	defer c.m.Unlock()
 

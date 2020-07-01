@@ -19,13 +19,11 @@ import (
 	"fmt"
 	"io/ioutil"
 	"net/http"
-	"time"
 
 	"github.com/go-logr/logr"
 
-	"github.com/iter8-tools/iter8-controller/pkg/analytics/algorithm"
-	"github.com/iter8-tools/iter8-controller/pkg/analytics/api"
-	iter8v1alpha1 "github.com/iter8-tools/iter8-controller/pkg/apis/iter8/v1alpha1"
+	"github.com/iter8-tools/iter8-controller/pkg/analytics/api/v1alpha2"
+	iter8v1alpha2 "github.com/iter8-tools/iter8-controller/pkg/apis/iter8/v1alpha2"
 )
 
 const (
@@ -34,100 +32,20 @@ const (
 )
 
 // MakeRequest generates request payload to analytics
-func MakeRequest(instance *iter8v1alpha1.Experiment, impl algorithm.Interface) (*api.Request, error) {
-	spec := instance.Spec
-
-	criteria := make([]api.SuccessCriterion, len(spec.Analysis.SuccessCriteria))
-	for i, criterion := range spec.Analysis.SuccessCriteria {
-		iter8metric, ok := instance.Metrics[criterion.MetricName]
-		if !ok {
-			// Metric template not found
-			return nil, fmt.Errorf("Metric %s Not Available", criterion.MetricName)
-		}
-		apiSC := api.SuccessCriterion{
-			api.SCKeyMetricName:         criterion.MetricName,
-			api.SCKeyType:               criterion.ToleranceType,
-			api.SCKeyValue:              criterion.Tolerance,
-			api.SCKeyTemplate:           iter8metric.QueryTemplate,
-			api.SCKeySampleSizeTemplate: iter8metric.SampleSizeTemplate,
-			api.SCKeyIsCounter:          iter8metric.IsCounter,
-			api.SCKeyAbsentValue:        iter8metric.AbsentValue,
-			api.SCKeyStopOnFailure:      criterion.GetStopOnFailure(),
-		}
-
-		var err error
-		if apiSC, err = impl.SupplementSuccessCriteria(criterion, apiSC); err != nil {
-			return nil, err
-		}
-		criteria[i] = apiSC
-	}
-
-	now := time.Now().Format(time.RFC3339)
-
-	tc := api.TrafficControl{
-		api.TCKeyMaxTrafficPercent: instance.Spec.TrafficControl.GetMaxTrafficPercentage(),
-		api.TCKeySuccessCriteria:   criteria,
-	}
-
-	tc = impl.SupplementTrafficControl(instance, tc)
-
-	if rw := instance.Spec.Analysis.Reward; rw != nil {
-		iter8metric, ok := instance.Metrics[rw.MetricName]
-		if !ok {
-			// Metric template not found
-			return nil, fmt.Errorf("Metric %s Not Available", rw.MetricName)
-		}
-		reward := api.SuccessCriterion{
-			api.SCKeyMetricName:         rw.MetricName,
-			api.SCKeyTemplate:           iter8metric.QueryTemplate,
-			api.SCKeySampleSizeTemplate: iter8metric.SampleSizeTemplate,
-			api.SCKeyIsCounter:          iter8metric.IsCounter,
-			api.SCKeyAbsentValue:        iter8metric.AbsentValue,
-		}
-
-		if rw.MinMax != nil {
-			reward[api.SCKeyMinMax] = rw.MinMax
-		}
-
-		tc[api.TCKeyReward] = reward
-	}
-
-	serviceNamespace := instance.ServiceNamespace()
-	return &api.Request{
-		Name: instance.Name,
-		Baseline: api.Window{
-			StartTime: time.Unix(0, instance.Status.StartTimestamp).Format(time.RFC3339),
-			EndTime:   now,
-			Tags: map[string]string{
-				destinationKey: instance.Spec.TargetService.Baseline,
-				namespaceKey:   serviceNamespace,
-			},
-		},
-		Candidate: api.Window{
-			StartTime: time.Unix(0, instance.Status.StartTimestamp).Format(time.RFC3339),
-			EndTime:   now,
-			Tags: map[string]string{
-				destinationKey: instance.Spec.TargetService.Candidate,
-				namespaceKey:   serviceNamespace,
-			},
-		},
-		LastState:      instance.Status.AnalysisState,
-		TrafficControl: tc,
-	}, nil
+func MakeRequest(instance *iter8v1alpha2.Experiment) (*v1alpha2.Request, error) {
+	return &v1alpha2.Request{}, nil
 }
 
 // Invoke sends payload to endpoint and gets response back
-func Invoke(log logr.Logger, endpoint string, payload interface{}, impl algorithm.Interface) (*api.Response, error) {
-	path := impl.GetPath()
-
+func Invoke(log logr.Logger, endpoint string, payload interface{}) (*v1alpha2.Response, error) {
 	data, err := json.Marshal(payload)
 	if err != nil {
 		return nil, err
 	}
 
-	log.Info("post", "URL", endpoint+path, "request", string(data))
+	log.Info("post", "URL", endpoint, "request", string(data))
 
-	raw, err := http.Post(endpoint+path, "application/json", bytes.NewBuffer(data))
+	raw, err := http.Post(endpoint, "application/json", bytes.NewBuffer(data))
 	if err != nil {
 		return nil, err
 	}
@@ -135,13 +53,13 @@ func Invoke(log logr.Logger, endpoint string, payload interface{}, impl algorith
 	defer raw.Body.Close()
 	body, err := ioutil.ReadAll(raw.Body)
 
-	log.Info("post", "URL", endpoint+path, "response", string(body))
+	log.Info("post", "URL", endpoint, "response", string(body))
 
 	if raw.StatusCode >= 400 {
 		return nil, fmt.Errorf("%v", string(body))
 	}
 
-	var response api.Response
+	var response v1alpha2.Response
 	err = json.Unmarshal(body, &response)
 	if err != nil {
 		return nil, err

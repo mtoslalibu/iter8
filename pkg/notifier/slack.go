@@ -17,12 +17,10 @@ package notifier
 
 import (
 	"fmt"
-	"strconv"
 	"strings"
-	"time"
 
 	"github.com/fatih/camelcase"
-	iter8v1alpha1 "github.com/iter8-tools/iter8-controller/pkg/apis/iter8/v1alpha1"
+	iter8v1alpha2 "github.com/iter8-tools/iter8-controller/pkg/apis/iter8/v1alpha2"
 )
 
 const (
@@ -72,7 +70,7 @@ type SlackRequest struct {
 }
 
 // MakeRequest implements Notifier MakeRequest function
-func (s *SlackWebhook) MakeRequest(instance *iter8v1alpha1.Experiment, reason string, messageFormat string, messageA ...interface{}) interface{} {
+func (s *SlackWebhook) MakeRequest(instance *iter8v1alpha2.Experiment, reason string, messageFormat string, messageA ...interface{}) interface{} {
 	splittedReason := splitString(reason)
 	expName := instance.GetName() + "." + instance.GetNamespace()
 
@@ -100,50 +98,47 @@ func (s *SlackWebhook) MakeRequest(instance *iter8v1alpha1.Experiment, reason st
 		})
 	}
 
-	color := "good"
+	// color := "good"
 
-	if reasonSeverity(reason) >= 3 {
-		switch reason {
-		case iter8v1alpha1.ReasonIterationFailed:
-			color = "warning"
-		case iter8v1alpha1.ReasonExperimentSucceeded:
-			//do nothing
-		default:
-			color = "danger"
-		}
-	}
+	// if reasonSeverity(reason) >= 3 {
+	// 	switch reason {
+	// 	case iter8v1alpha2.ReasonExperimentCompleted:
+	// 		//do nothing
+	// 	default:
+	// 		color = "danger"
+	// 	}
+	// }
 
-	progress := ""
-	if instance.Status.CurrentIteration > instance.Spec.TrafficControl.GetMaxIterations() ||
-		reason == iter8v1alpha1.ReasonExperimentFailed ||
-		reason == iter8v1alpha1.ReasonExperimentSucceeded {
-		progress = "Experiment Completed"
-	} else {
-		progress = "Current Iteration: " + strconv.Itoa(instance.Status.CurrentIteration) + "/" + strconv.Itoa(instance.Spec.TrafficControl.GetMaxIterations())
-	}
+	// progress := ""
+	// if *instance.Status.CurrentIteration > instance.Spec.GetMaxIterations() ||
+	// 	reason == iter8v1alpha2.ReasonExperimentCompleted {
+	// 	progress = "Experiment Completed"
+	// } else {
+	// 	progress = "Current Iteration: " + strconv.Itoa(int(*instance.Status.CurrentIteration)) + "/" + strconv.Itoa(int(instance.Spec.GetMaxIterations()))
+	// }
 
-	sr.Attachments = []Attachment{{
-		Fields: []Field{
-			{
-				Title: "Traffic",
-				Value: "Baseline: " + strconv.Itoa(instance.Status.TrafficSplit.Baseline) +
-					"  Candidate: " + strconv.Itoa(instance.Status.TrafficSplit.Candidate),
-				Short: false,
-			},
-			{
-				Title: "Progress",
-				Value: progress,
-				Short: true,
-			},
-			{
-				Title: "Analytics Assessment Summary",
-				Value: instance.Status.AssessmentSummary.Assessment2String(),
-				Short: false,
-			},
-		},
-		Color: color,
-		Ts:    time.Now().Unix(),
-	}}
+	// sr.Attachments = []Attachment{{
+	// 	Fields: []Field{
+	// 		{
+	// 			Title: "Traffic",
+	// 			Value: "Baseline: " + strconv.Itoa(instance.Status.TrafficSplit.Baseline) +
+	// 				"  Candidate: " + strconv.Itoa(instance.Status.TrafficSplit.Candidate),
+	// 			Short: false,
+	// 		},
+	// 		{
+	// 			Title: "Progress",
+	// 			Value: progress,
+	// 			Short: true,
+	// 		},
+	// 		{
+	// 			Title: "Analytics Assessment Summary",
+	// 			Value: instance.Status.AssessmentSummary.Assessment2String(),
+	// 			Short: false,
+	// 		},
+	// 	},
+	// 	Color: color,
+	// 	Ts:    time.Now().Unix(),
+	// }}
 
 	return sr
 }

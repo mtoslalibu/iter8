@@ -20,23 +20,15 @@ import (
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	runtime "k8s.io/apimachinery/pkg/runtime"
 
-	"github.com/iter8-tools/iter8-controller/pkg/controller/experiment/util"
 	networkingv1alpha3 "istio.io/api/networking/v1alpha3"
 	"istio.io/client-go/pkg/apis/networking/v1alpha3"
+
+	iter8v1alpha2 "github.com/iter8-tools/iter8-controller/pkg/apis/iter8/v1alpha2"
+	"github.com/iter8-tools/iter8-controller/pkg/controller/experiment/util"
 )
 
 const (
 	IstioRuleSuffix = ".iter8-experiment"
-
-	Baseline    = "baseline"
-	Candidate   = "candidate"
-	Stable      = "stable"
-	Progressing = "progressing"
-
-	ExperimentInit  = "iter8-tools/init"
-	ExperimentRole  = "iter8-tools/role"
-	ExperimentLabel = "iter8-tools/experiment"
-	ExperimentHost  = "iter8-tools/host"
 )
 
 type DestinationRuleBuilder v1alpha3.DestinationRule
@@ -73,18 +65,13 @@ func NewDestinationRule(serviceName, name, namespace string) *DestinationRuleBui
 	return (*DestinationRuleBuilder)(dr)
 }
 
-func (b *DestinationRuleBuilder) WithStableDeployment(d *appsv1.Deployment) *DestinationRuleBuilder {
-	b.ObjectMeta.Labels[ExperimentRole] = Stable
-	b.Spec.Subsets = append(b.Spec.Subsets, &networkingv1alpha3.Subset{
-		Name:   Stable,
-		Labels: d.Spec.Template.Labels,
-	})
-
+func (b *DestinationRuleBuilder) WithStableLabel() *DestinationRuleBuilder {
+	b.ObjectMeta.Labels[ExperimentRole] = RoleStable
 	return b
 }
 
-func (b *DestinationRuleBuilder) WithStableLabel() *DestinationRuleBuilder {
-	b.ObjectMeta.Labels[ExperimentRole] = Stable
+func (b *DestinationRuleBuilder) WithProgressingLabel() *DestinationRuleBuilder {
+	b.ObjectMeta.Labels[ExperimentRole] = RoleProgressing
 	return b
 }
 
@@ -104,66 +91,46 @@ func (b *DestinationRuleBuilder) RemoveExperimentLabel() *DestinationRuleBuilder
 	return b
 }
 
-func (b *DestinationRuleBuilder) WithExperimentRegisterd(exp string) *DestinationRuleBuilder {
+func (b *DestinationRuleBuilder) WithExperimentRegistered(exp string) *DestinationRuleBuilder {
 	b.ObjectMeta.Labels[ExperimentLabel] = exp
 	return b
 }
 
-func (b *DestinationRuleBuilder) WithStableToProgressing(baseline *appsv1.Deployment) *DestinationRuleBuilder {
-	b.ObjectMeta.Labels[ExperimentRole] = Progressing
-	// Remove the Stable Entry
-	stableIndex := -1
-	for idx := range b.Spec.Subsets {
-		if b.Spec.Subsets[idx].Name == Stable {
-			stableIndex = idx
-			break
-		}
-	}
-	if stableIndex >= 0 {
-		b.Spec.Subsets[stableIndex] = b.Spec.Subsets[0]
-		b.Spec.Subsets = b.Spec.Subsets[1:]
-	}
-
-	// Add Baseline entry
-	return b.WithSubset(Baseline, baseline)
-}
-
-func (b *DestinationRuleBuilder) WithProgressingToStable(stableSubset string) *DestinationRuleBuilder {
-	b = b.WithStableLabel()
-
-	for _, subset := range b.Spec.Subsets {
-		if subset.Name == stableSubset {
-			subset.Name = Stable
-			b.Spec.Subsets[0] = subset
-			break
-		}
-	}
-	// Remove old entries
-	b.Spec.Subsets = b.Spec.Subsets[:1]
+func (b *DestinationRuleBuilder) WithHostRegistered(host string) *DestinationRuleBuilder {
+	b.ObjectMeta.Labels[ExperimentHost] = host
 	return b
 }
 
-// WithSubset adds subset to the rule if not existed(will not compare subset labels)
-func (b *DestinationRuleBuilder) WithSubset(name string, d *appsv1.Deployment) *DestinationRuleBuilder {
-	// Omit update if subset already exists
-	if b.Spec.Subsets != nil || len(b.Spec.Subsets) > 0 {
-		for _, subset := range b.Spec.Subsets {
-			if subset.Name == name {
-				return b
-			}
-		}
-	}
+func (b *DestinationRuleBuilder) InitSubsets(count int) *DestinationRuleBuilder {
+	b.Spec.Subsets = make([]*networkingv1alpha3.Subset, count)
+	return b
+}
 
-	// Add new subset to the slice
-	b.Spec.Subsets = append(b.Spec.Subsets, &networkingv1alpha3.Subset{
-		Name:   name,
+// WithSubset converts stable dr to progressing dr
+func (b *DestinationRuleBuilder) WithSubset(d *appsv1.Deployment, subsetName string, idx int) *DestinationRuleBuilder {
+	for idx >= len(b.Spec.Subsets) {
+		b.Spec.Subsets = append(b.Spec.Subsets, &networkingv1alpha3.Subset{})
+	}
+	b.Spec.Subsets[idx] = &networkingv1alpha3.Subset{
+		Name:   subsetName,
 		Labels: d.Spec.Template.Labels,
-	})
+	}
+
 	return b
 }
 
-func (b *DestinationRuleBuilder) WithProgressingLabel() *DestinationRuleBuilder {
-	b.ObjectMeta.Labels[ExperimentRole] = Progressing
+func (b *DestinationRuleBuilder) ProgressingToStable(stableSubsets map[string]string) *DestinationRuleBuilder {
+	cnt := 0
+	for i := 0; i < len(b.Spec.Subsets); i++ {
+		if stableName, ok := stableSubsets[b.Spec.Subsets[i].Name]; ok {
+			subset := b.Spec.Subsets[i]
+			subset.Name = stableName
+			b.Spec.Subsets[cnt] = subset
+			cnt++
+		}
+	}
+
+	b.Spec.Subsets = b.Spec.Subsets[:cnt]
 	return b
 }
 
@@ -198,13 +165,23 @@ func NewVirtualService(serviceName, name, namespace string) *VirtualServiceBuild
 	return (*VirtualServiceBuilder)(vs)
 }
 
+func (b *VirtualServiceBuilder) WithInitLabel() *VirtualServiceBuilder {
+	b.ObjectMeta.Labels[ExperimentInit] = "True"
+	return b
+}
+
 func (b *VirtualServiceBuilder) WithProgressingLabel() *VirtualServiceBuilder {
-	b.ObjectMeta.Labels[ExperimentRole] = Progressing
+	b.ObjectMeta.Labels[ExperimentRole] = RoleProgressing
 	return b
 }
 
 func (b *VirtualServiceBuilder) WithStableLabel() *VirtualServiceBuilder {
-	b.ObjectMeta.Labels[ExperimentRole] = Stable
+	b.ObjectMeta.Labels[ExperimentRole] = RoleStable
+	return b
+}
+
+func (b *VirtualServiceBuilder) WithExperimentRegistered(exp string) *VirtualServiceBuilder {
+	b.ObjectMeta.Labels[ExperimentLabel] = exp
 	return b
 }
 
@@ -219,36 +196,18 @@ func (b *VirtualServiceBuilder) RemoveExperimentLabel() *VirtualServiceBuilder {
 	return b
 }
 
-func (b *VirtualServiceBuilder) WithRolloutPercent(service, ns string, rolloutPercent int32) *VirtualServiceBuilder {
-	if b.Spec.Http != nil || len(b.Spec.Http) > 0 {
-		for i, http := range b.Spec.Http {
-			for j, route := range http.Route {
-				if util.EqualHost(route.Destination.Host, ns, service, ns) {
-					if route.Destination.Subset == Baseline {
-						b.Spec.Http[i].Route[j].Weight = 100 - rolloutPercent
-					} else if route.Destination.Subset == Candidate {
-						b.Spec.Http[i].Route[j].Weight = rolloutPercent
-					}
-				}
-			}
-		}
-	} else {
-		b.Spec.Hosts = []string{service}
+// WithTrafficSplit will update http route with specified traffic split
+func (b *VirtualServiceBuilder) WithTrafficSplit(host string, trafficSplit map[string]int32) *VirtualServiceBuilder {
+	b.Spec.Http = make([]*networkingv1alpha3.HTTPRoute, 0)
+	for name, traffic := range trafficSplit {
 		b.Spec.Http = append(b.Spec.Http, &networkingv1alpha3.HTTPRoute{
 			Route: []*networkingv1alpha3.HTTPRouteDestination{
 				{
 					Destination: &networkingv1alpha3.Destination{
-						Host:   service,
-						Subset: Baseline,
+						Host:   host,
+						Subset: name,
 					},
-					Weight: 100 - rolloutPercent,
-				},
-				{
-					Destination: &networkingv1alpha3.Destination{
-						Host:   service,
-						Subset: Candidate,
-					},
-					Weight: rolloutPercent,
+					Weight: traffic,
 				},
 			},
 		})
@@ -257,122 +216,121 @@ func (b *VirtualServiceBuilder) WithRolloutPercent(service, ns string, rolloutPe
 	return b
 }
 
-func (b *VirtualServiceBuilder) AppendStableSubset(service, ns string) *VirtualServiceBuilder {
-	for i, http := range b.Spec.Http {
-		for j, route := range http.Route {
-			if util.EqualHost(route.Destination.Host, ns, service, ns) {
-				b.Spec.Http[i].Route[j].Destination.Subset = Stable
-				break
-			}
-		}
+func (b *VirtualServiceBuilder) WithHTTPMatch(httpMatch []*iter8v1alpha2.HTTPMatchRequest) *VirtualServiceBuilder {
+	if b.Spec.Http == nil || len(b.Spec.Http) == 0 {
+		b.Spec.Http = append(b.Spec.Http, &networkingv1alpha3.HTTPRoute{})
 	}
-	return b
-}
-
-func (b *VirtualServiceBuilder) WithNewStableSet(service string) *VirtualServiceBuilder {
-	b.ObjectMeta.Labels[ExperimentRole] = Stable
-	b.Spec = networkingv1alpha3.VirtualService{
-		Hosts: []string{service},
-		Http: []*networkingv1alpha3.HTTPRoute{
-			{
-				Route: []*networkingv1alpha3.HTTPRouteDestination{
-					{
-						Destination: &networkingv1alpha3.Destination{
-							Host:   service,
-							Subset: Stable,
-						},
-						Weight: 100,
-					},
-				},
-			},
-		},
+	for _, match := range httpMatch {
+		b.Spec.Http[0].Match = append(b.Spec.Http[0].Match, convertMatchToIstio(match))
 	}
 
 	return b
 }
 
-func (b *VirtualServiceBuilder) WithInitLabel() *VirtualServiceBuilder {
-	b.ObjectMeta.Labels[ExperimentInit] = "True"
-	return b
-}
-
-func (b *VirtualServiceBuilder) WithExperimentRegisterd(exp string) *VirtualServiceBuilder {
-	b.ObjectMeta.Labels[ExperimentLabel] = exp
-	return b
-}
-
-// WithStableToProgressing removes Stable subset while adds Baseline and Candidate subsets to the route
-func (b *VirtualServiceBuilder) WithStableToProgressing(service, ns string) *VirtualServiceBuilder {
-	b = b.WithProgressingLabel()
-	for i, http := range b.Spec.Http {
-		stableIndex := -1
-		for j, route := range http.Route {
+// ExternalToProgressing mark external reference vs as progressing mode
+func (b *VirtualServiceBuilder) ExternalToProgressing(service, ns string, candidateCount int) *VirtualServiceBuilder {
+	for _, http := range b.Spec.Http {
+		match := false
+		var port *networkingv1alpha3.PortSelector
+		for _, route := range http.Route {
 			if util.EqualHost(route.Destination.Host, ns, service, ns) {
-				stableIndex = j
+				port = route.Destination.Port
+				match = true
 				break
 			}
 		}
-		if stableIndex >= 0 {
-			stablePort := b.Spec.Http[i].Route[stableIndex].Destination.Port
-			// Add Baseline and Candidate entries in this HTTP section
-			b.Spec.Http[i].Route = append(b.Spec.Http[i].Route, []*networkingv1alpha3.HTTPRouteDestination{
-				{
-					Destination: &networkingv1alpha3.Destination{
-						Host:   service,
-						Subset: Baseline,
-						Port:   stablePort,
-					},
-					Weight: 100,
+		if match {
+			http.Route = make([]*networkingv1alpha3.HTTPRouteDestination, candidateCount+1)
+			http.Route[0] = &networkingv1alpha3.HTTPRouteDestination{
+				Destination: &networkingv1alpha3.Destination{
+					Host:   service,
+					Subset: SubsetBaseline,
+					Port:   port,
 				},
-				{
+				Weight: 100,
+			}
+
+			for i := 0; i < candidateCount; i++ {
+				http.Route[i+1] = &networkingv1alpha3.HTTPRouteDestination{
 					Destination: &networkingv1alpha3.Destination{
 						Host:   service,
-						Subset: Candidate,
-						Port:   stablePort,
+						Subset: candiateSubsetName(i),
+						Port:   port,
 					},
 					Weight: 0,
-				},
-			}...)
-			// Remove Stable entry
-			b.Spec.Http[i].Route[stableIndex] = b.Spec.Http[i].Route[0]
-			b.Spec.Http[i].Route = b.Spec.Http[i].Route[1:]
+				}
+			}
 			break
 		}
 	}
 	return b
 }
 
-func (b *VirtualServiceBuilder) WithProgressingToStable(service, ns string, subset string) *VirtualServiceBuilder {
-	b = b.WithStableLabel()
-	for i, http := range b.Spec.Http {
-		stableIndex := -1
-		for j, route := range http.Route {
-			if util.EqualHost(route.Destination.Host, ns, service, ns) && route.Destination.Subset == subset {
-				stableIndex = j
+func (b *VirtualServiceBuilder) ToProgressing(service string, candidateCount int) *VirtualServiceBuilder {
+	if b.Spec.Http == nil || len(b.Spec.Http) == 0 {
+		b.Spec.Http = append(b.Spec.Http, &networkingv1alpha3.HTTPRoute{})
+	}
+
+	b.Spec.Http[0].Route = make([]*networkingv1alpha3.HTTPRouteDestination, candidateCount+1)
+	b.Spec.Http[0].Route[0] = &networkingv1alpha3.HTTPRouteDestination{
+		Destination: &networkingv1alpha3.Destination{
+			Host:   service,
+			Subset: SubsetBaseline,
+		},
+		Weight: 100,
+	}
+
+	for i := 0; i < candidateCount; i++ {
+		b.Spec.Http[0].Route[i+1] = &networkingv1alpha3.HTTPRouteDestination{
+			Destination: &networkingv1alpha3.Destination{
+				Host:   service,
+				Subset: candiateSubsetName(i),
+			},
+			Weight: 0,
+		}
+	}
+
+	return b
+}
+
+func (b *VirtualServiceBuilder) ProgressingToStable(weight map[string]int32, service, ns string) *VirtualServiceBuilder {
+	for _, http := range b.Spec.Http {
+		match := false
+		var port *networkingv1alpha3.PortSelector
+		for _, route := range http.Route {
+			if util.EqualHost(route.Destination.Host, ns, service, ns) {
+				port = route.Destination.Port
+				match = true
 				break
 			}
 		}
-		if stableIndex >= 0 {
-			// Convert this to stable
-			b.Spec.Http[i].Route[stableIndex].Destination.Subset = Stable
-			b.Spec.Http[i].Route[stableIndex].Weight = 100
-			// Remove other entries
-			b.Spec.Http[i].Route[0] = b.Spec.Http[i].Route[stableIndex]
-			b.Spec.Http[i].Route = b.Spec.Http[i].Route[:1]
-
+		if match {
+			http.Route = make([]*networkingv1alpha3.HTTPRouteDestination, len(weight))
+			i := 0
+			for name, w := range weight {
+				http.Route[i] = &networkingv1alpha3.HTTPRouteDestination{
+					Destination: &networkingv1alpha3.Destination{
+						Host:   service,
+						Subset: name,
+						Port:   port,
+					},
+					Weight: w,
+				}
+				i++
+			}
 			break
 		}
 	}
 	return b
 }
 
-func (b *VirtualServiceBuilder) WithResourceVersion(rv string) *VirtualServiceBuilder {
-	b.ObjectMeta.ResourceVersion = rv
+func (b *VirtualServiceBuilder) WithHostRegistered(host string) *VirtualServiceBuilder {
+	b.ObjectMeta.Labels[ExperimentHost] = host
 	return b
 }
 
-func (b *VirtualServiceBuilder) WithName(name string) *VirtualServiceBuilder {
-	b.ObjectMeta.Name = name + IstioRuleSuffix
+func (b *VirtualServiceBuilder) WithExternalLabel() *VirtualServiceBuilder {
+	b.ObjectMeta.Labels[ExternalReference] = "True"
 	return b
 }
 
@@ -404,4 +362,38 @@ func removeExperimentLabel(objs ...runtime.Object) (err error) {
 	}
 
 	return nil
+}
+
+func convertMatchToIstio(m *iter8v1alpha2.HTTPMatchRequest) *networkingv1alpha3.HTTPMatchRequest {
+	out := &networkingv1alpha3.HTTPMatchRequest{
+		Name:          m.Name,
+		Port:          m.Port,
+		IgnoreUriCase: m.IgnoreURICase,
+	}
+
+	if m.URI != nil && m.URI.IsValid() {
+		out.Uri = toStringMatchExact(m.URI)
+	}
+
+	return out
+}
+
+func toStringMatchExact(s *iter8v1alpha2.StringMatch) *networkingv1alpha3.StringMatch {
+	if s.Exact != nil {
+		return &networkingv1alpha3.StringMatch{
+			MatchType: &networkingv1alpha3.StringMatch_Exact{
+				Exact: *(s.Exact)},
+		}
+	}
+	if s.Prefix != nil {
+		return &networkingv1alpha3.StringMatch{
+			MatchType: &networkingv1alpha3.StringMatch_Prefix{
+				Prefix: *(s.Prefix)},
+		}
+	}
+
+	return &networkingv1alpha3.StringMatch{
+		MatchType: &networkingv1alpha3.StringMatch_Regex{
+			Regex: *(s.Regex)},
+	}
 }

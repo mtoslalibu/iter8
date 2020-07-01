@@ -16,7 +16,7 @@ limitations under the License.
 package abstract
 
 import (
-	iter8v1alpha1 "github.com/iter8-tools/iter8-controller/pkg/apis/iter8/v1alpha1"
+	iter8v1alpha2 "github.com/iter8-tools/iter8-controller/pkg/apis/iter8/v1alpha2"
 	"github.com/iter8-tools/iter8-controller/pkg/controller/experiment/targets"
 )
 
@@ -55,7 +55,7 @@ type Experiment struct {
 	deletedRole     targets.Role
 }
 
-func NewExperiment(instance *iter8v1alpha1.Experiment, targetNamespace string) *Experiment {
+func NewExperiment(instance *iter8v1alpha2.Experiment, targetNamespace string) *Experiment {
 	return &Experiment{
 		Namespace:       instance.Namespace,
 		TargetsAbstract: NewTargets(instance, targetNamespace),

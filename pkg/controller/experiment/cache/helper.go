@@ -18,21 +18,22 @@ package cache
 import (
 	"strings"
 
-	iter8v1alpha1 "github.com/iter8-tools/iter8-controller/pkg/apis/iter8/v1alpha1"
+	iter8v1alpha2 "github.com/iter8-tools/iter8-controller/pkg/apis/iter8/v1alpha2"
 )
 
 const (
 	keySeparator = "/"
 )
 
-func experimentKey(instance *iter8v1alpha1.Experiment) string {
-	return instance.Name + keySeparator + instance.Namespace
+func experimentKey(instance *iter8v1alpha2.Experiment) string {
+	return instance.Namespace + keySeparator + instance.Name
 }
 
 func targetKey(name, namespace string) string {
-	return name + keySeparator + namespace
+	return namespace + keySeparator + name
 }
 
+// return namespace, name of experiment
 func resolveExperimentKey(val string) (string, string) {
 	out := strings.Split(val, keySeparator)
 	if len(out) != 2 {
