@@ -95,7 +95,7 @@ func (r *istioRoutingRules) isExternalReference() bool {
 	return vsok
 }
 
-func (r *Router) ToProgressing(instance *iter8v1alpha2.Experiment, targets *targets.Targets) (err error) {
+func (r *Router) UpdateBaseline(instance *iter8v1alpha2.Experiment, targets *targets.Targets) (err error) {
 	if r.rules.isProgressing() {
 		return nil
 	}
@@ -110,7 +110,6 @@ func (r *Router) ToProgressing(instance *iter8v1alpha2.Experiment, targets *targ
 	drb = drb.
 		InitSubsets(1).
 		WithSubset(targets.Baseline, SubsetBaseline, 0).
-		WithProgressingLabel().
 		WithExperimentRegistered(instance.Name)
 
 	dr := (*v1alpha3.DestinationRule)(nil)
@@ -175,13 +174,15 @@ func candiateSubsetName(idx int) string {
 
 func (r *Router) UpdateCandidates(targets *targets.Targets) (err error) {
 	if r.rules.isProgressing() {
-		return
+		return nil
 	}
 
 	drb := NewDestinationRuleBuilder(r.rules.destinationRule)
 	for i, candidate := range targets.Candidates {
 		drb = drb.WithSubset(candidate, candiateSubsetName(i), i+1)
 	}
+	drb = drb.WithProgressingLabel()
+
 	if dr, err := r.client.NetworkingV1alpha3().
 		DestinationRules(r.rules.destinationRule.GetNamespace()).
 		Update(drb.Build()); err != nil {
