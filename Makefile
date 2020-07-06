@@ -71,6 +71,10 @@ build-default: manifests
 			--set istioTelemetry=v2 \
  	>> install/iter8-controller-telemetry-v2.yaml
 
+.PHONY: changelog
+changelog:
+	@sed -n '/$(ver)/,/=====/p' CHANGELOG | grep -v $(ver) | grep -v "====="
+
 tests:
 	go test ./test/.
 	test/e2e/e2e.sh --skip-setup
