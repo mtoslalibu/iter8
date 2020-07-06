@@ -3,7 +3,7 @@
 # Exit on error
 set -e
 
-CRD_VERSION=v1alpha1
+CRD_VERSION=v1alpha2
 ISTIO_NAMESPACE=istio-system
 
 DIR="$( cd "$( dirname "$0" )" >/dev/null 2>&1; pwd -P )"
