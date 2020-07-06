@@ -83,12 +83,12 @@ func (t *Targets) GetCandidates(context context.Context, instance *iter8v1alpha2
 		return fmt.Errorf("Mismatch of candidate list length, %d in targets while %d in instance",
 			len(instance.Spec.Candidates), len(t.Candidates))
 	}
-	for i, candidate := range t.Candidates {
-		candidate = &appsv1.Deployment{}
+	for i := range t.Candidates {
+		t.Candidates[i] = &appsv1.Deployment{}
 		err = t.client.Get(context, types.NamespacedName{
 			Name:      instance.Spec.Candidates[i],
 			Namespace: t.namespace},
-			candidate)
+			t.Candidates[i])
 		if err != nil {
 			return
 		}

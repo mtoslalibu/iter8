@@ -92,8 +92,8 @@ func (r *ReconcileExperiment) detectTargets(context context.Context, instance *i
 			return err
 		}
 	} else {
-		// ToProgressing will create DestinationRule and VirtualService if needed
-		if err = r.router.ToProgressing(instance, r.targets); err != nil {
+		// UpdateBaseline will create DestinationRule and VirtualService if needed
+		if err = r.router.UpdateBaseline(instance, r.targets); err != nil {
 			r.markRoutingRulesError(context, instance, "Fail in updating routing rule: %v", err)
 			return err
 		}
@@ -109,6 +109,8 @@ func (r *ReconcileExperiment) detectTargets(context context.Context, instance *i
 			return err
 		}
 	} else {
+		// Update DestinationRule for candidates
+		// If baseline is also configured (see above), we move set rule to progressing
 		if err = r.router.UpdateCandidates(r.targets); err != nil {
 			r.markRoutingRulesError(context, instance, "Fail in updating routing rule: %v", err)
 			return err
@@ -196,15 +198,15 @@ func (r *ReconcileExperiment) updateIteration(context context.Context, instance 
 				return err
 			}
 
-			for _, candidate := range instance.Status.Assessment.Candidates {
+			for i, candidate := range instance.Status.Assessment.Candidates {
 				if candidate.Rollback {
 					trafficUpdated = true
-					candidate.Weight = int32(0)
+					instance.Status.Assessment.Candidates[i].Weight = int32(0)
 				} else if weight, ok := trafficSplit[candidate.Name]; ok {
 					if candidate.Weight != weight {
 						trafficUpdated = true
 					}
-					candidate.Weight = weight
+					instance.Status.Assessment.Candidates[i].Weight = weight
 				} else {
 					err := fmt.Errorf("trafficSplitRecommendation for candidate %s not found", candidate.Name)
 					r.markAnalyticsServiceError(context, instance, "%v", err)
@@ -225,7 +227,7 @@ func (r *ReconcileExperiment) updateIteration(context context.Context, instance 
 
 	now := metav1.Now()
 	instance.Status.LastUpdateTime = &now
-	r.markIterationUpdate(context, instance, "Iteration %d completed", instance.Status.CurrentIteration)
+	r.markIterationUpdate(context, instance, "Iteration %d completed", *instance.Status.CurrentIteration)
 	*instance.Status.CurrentIteration++
 	return nil
 }
