@@ -113,7 +113,7 @@ func (b *DestinationRuleBuilder) WithSubset(d *appsv1.Deployment, subsetName str
 	}
 	b.Spec.Subsets[idx] = &networkingv1alpha3.Subset{
 		Name:   subsetName,
-		Labels: d.Spec.Template.Labels,
+		Labels: d.Spec.Template.ObjectMeta.Labels,
 	}
 
 	return b
