@@ -6,6 +6,7 @@ stages:
   - "unit tests"
   - "end-to-end tests"
   - "build image"
+  - "release"
 
 # Define yaml anchor to be reused across testing matrix
 _end_to_end_script: &end_to_end_script
@@ -36,6 +37,26 @@ jobs:
     - env: KUBE_VERSION=v1.16.0 ISTIO_VERSION=1.4.6
       <<: *end_to_end_script
     - stage: "build image"
-      if: (type = push) AND (branch = master OR branch =~ /^v[0-9]+\.[0-9]+$/)
+      # only build images for master and release branches + tagged releases
+      if: (type = push) AND (branch = master OR branch =~ /^v[0-9]+\.[0-9]+(\.[0-9]+)*$/)
       script:
         - test/e2e/build-image.sh
+    - stage: "release"
+      script: skip
+      # only do release for tagged releases
+      if: (type = push) AND (branch =~ /^v[0-9]+\.[0-9]+\.[0-9]+$/)
+      before_deploy:
+        - make ver=${TRAVIS_BRANCH} changelog > release.note
+        - tar cvzf iter8-controller.tgz install/helm/iter8-controller/
+      deploy:
+        provider: releases
+        # use developer preview version as 'body' doesn't work with multiple lines
+        edge: true
+        api_key: ${GITHUB_TOKEN}
+        file: iter8-controller.tgz
+        release_notes_file: release.note
+        name: ${TRAVIS_BRANCH}
+        draft: false
+        skip_cleanup: true
+        on:
+          tags: true
