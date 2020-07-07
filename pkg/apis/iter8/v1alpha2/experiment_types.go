@@ -300,7 +300,7 @@ type Conditions []*ExperimentCondition
 // ExperimentCondition describes a condition of an experiment
 type ExperimentCondition struct {
 	// Type of the condition
-	Type ExperimentConditionType `json:"name"`
+	Type ExperimentConditionType `json:"type"`
 
 	// Status of the condition
 	Status corev1.ConditionStatus `json:"status"`
