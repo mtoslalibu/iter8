@@ -1265,18 +1265,18 @@ spec:
                   message:
                     description: Detailed explanation on the update
                     type: string
-                  name:
-                    description: Type of the condition
-                    type: string
                   reason:
                     description: Reason for the last update
                     type: string
                   status:
                     description: Status of the condition
                     type: string
+                  type:
+                    description: Type of the condition
+                    type: string
                 required:
-                - name
                 - status
+                - type
                 type: object
               type: array
             currentIteration:
