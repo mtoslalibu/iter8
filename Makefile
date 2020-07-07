@@ -1,6 +1,6 @@
 # Image URL to use all building/pushing image targets
 IMG ?= iter8-controller:latest
-CRD_VERSION ?= v1alpha1
+CRD_VERSION ?= v1alpha2
 
 all: manager
 
@@ -37,9 +37,13 @@ deploy: manifests
 	  --set image.repository=`echo ${IMG} | cut -f1 -d':'` \
 	  --set image.tag=`echo ${IMG} | cut -f2 -d':'` \
 	  -x templates/default/namespace.yaml \
+	  -x templates/default/serviceaccount.yaml \
+	  -x templates/default/manager.yaml \
 	  -x templates/crds/${CRD_VERSION}/iter8.tools_experiments.yaml \
 	  -x templates/metrics/iter8_metrics.yaml \
-	  -x templates/notifier/iter8_notifiers.yaml\
+	  -x templates/notifier/iter8_notifiers.yaml \
+	  -x templates/rbac/role.yaml \
+	  -x templates/rbac/role_binding.yaml \
 	| kubectl apply -f -
 
 # Run go fmt against code
@@ -75,6 +79,10 @@ build-default: manifests
    		--name iter8-controller \
         --set istioTelemetry=v2 \
 	>> install/iter8-controller-telemetry-v2.yaml
+
+.PHONY: changelog
+changelog:
+	@sed -n '/$(ver)/,/=====/p' CHANGELOG | grep -v $(ver) | grep -v "====="
 
 tests:
 	go test ./test/.
