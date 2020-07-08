@@ -22,7 +22,7 @@ type HTTPMatchRequest struct {
 	// URI to match
 	URI *StringMatch `json:"uri,omitempty"`
 
-	// URI Scheme
+	// Scheme Scheme
 	Scheme *StringMatch `json:"scheme,omitempty"`
 
 	// HTTP Method
@@ -51,7 +51,11 @@ type HTTPMatchRequest struct {
 }
 
 type StringMatch struct {
-	Exact  string `json:"exact,omitempty"`
-	Prefix string `json:"prefix,omitempty"`
-	Regex  string `json:"regex,omitempty"`
+	Exact  *string `json:"exact,omitempty"`
+	Prefix *string `json:"prefix,omitempty"`
+	Regex  *string `json:"regex,omitempty"`
+}
+
+func (s *StringMatch) IsValid() bool {
+	return s.Exact != nil || s.Prefix != nil || s.Regex != nil
 }

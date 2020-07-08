@@ -37,12 +37,13 @@ import (
 	logf "sigs.k8s.io/controller-runtime/pkg/runtime/log"
 	"sigs.k8s.io/controller-runtime/pkg/source"
 
-	"github.com/iter8-tools/iter8-controller/pkg/analytics/metrics"
-	iter8v1alpha1 "github.com/iter8-tools/iter8-controller/pkg/apis/iter8/v1alpha1"
+	metricsv1alpha2 "github.com/iter8-tools/iter8-controller/pkg/analytics/metrics/v1alpha2"
+	iter8v1alpha2 "github.com/iter8-tools/iter8-controller/pkg/apis/iter8/v1alpha2"
 	iter8cache "github.com/iter8-tools/iter8-controller/pkg/controller/experiment/cache"
 	"github.com/iter8-tools/iter8-controller/pkg/controller/experiment/routing"
 	"github.com/iter8-tools/iter8-controller/pkg/controller/experiment/targets"
 	"github.com/iter8-tools/iter8-controller/pkg/controller/experiment/util"
+	"github.com/iter8-tools/iter8-controller/pkg/grafana"
 	iter8notifier "github.com/iter8-tools/iter8-controller/pkg/notifier"
 )
 
@@ -89,6 +90,8 @@ func newReconciler(mgr manager.Manager) (*ReconcileExperiment, error) {
 		return nil, err
 	}
 
+	grafanaConfig := grafana.NewConfigStore(log, mgr.GetClient())
+
 	iter8Cache := iter8cache.New(log)
 
 	return &ReconcileExperiment{
@@ -98,6 +101,7 @@ func newReconciler(mgr manager.Manager) (*ReconcileExperiment, error) {
 		eventRecorder:      mgr.GetEventRecorderFor(Iter8Controller),
 		notificationCenter: nc,
 		iter8Cache:         iter8Cache,
+		grafanaConfig:      grafanaConfig,
 	}, nil
 }
 
@@ -209,13 +213,13 @@ func add(mgr manager.Manager, r *ReconcileExperiment) error {
 		servicePredicate)
 
 	// Watch for changes to Experiment
-	err = c.Watch(&source.Kind{Type: &iter8v1alpha1.Experiment{}}, &handler.EnqueueRequestForObject{},
+	err = c.Watch(&source.Kind{Type: &iter8v1alpha2.Experiment{}}, &handler.EnqueueRequestForObject{},
 		// Ignore status update event
 		predicate.GenerationChangedPredicate{},
 		predicate.Funcs{
 			UpdateFunc: func(e event.UpdateEvent) bool {
-				oldInstance, _ := e.ObjectOld.(*iter8v1alpha1.Experiment)
-				newInstance, _ := e.ObjectNew.(*iter8v1alpha1.Experiment)
+				oldInstance, _ := e.ObjectOld.(*iter8v1alpha2.Experiment)
+				newInstance, _ := e.ObjectNew.(*iter8v1alpha2.Experiment)
 				// Ignore finalizer update
 				if len(oldInstance.Finalizers) == 0 && len(newInstance.Finalizers) > 0 {
 					log.Info("UpdateRequestDetected", "FinalizerChanged", "Reject")
@@ -223,13 +227,13 @@ func add(mgr manager.Manager, r *ReconcileExperiment) error {
 				}
 
 				// Ignore event of revert changes in action field
-				if len(oldInstance.Action) > 0 && len(newInstance.Action) == 0 {
-					log.Info("UpdateRequestDetected", "ActionReverted", "Reject")
+				if oldInstance.Spec.ManualOverride != nil && newInstance.Spec.ManualOverride == nil {
+					log.Info("UpdateRequestDetected", "ManualOverride", "Reject")
 					return false
 				}
 
 				// Ignore event of metrics load
-				if len(oldInstance.Metrics) == 0 && len(newInstance.Metrics) > 0 {
+				if oldInstance.Spec.Metrics == nil && newInstance.Spec.Metrics != nil {
 					log.Info("UpdateRequestDetected", "MetrcisLoad", "Reject")
 					return false
 				}
@@ -254,9 +258,10 @@ type ReconcileExperiment struct {
 	notificationCenter *iter8notifier.NotificationCenter
 	istioClient        istioclient.Interface
 	iter8Cache         iter8cache.Interface
+	grafanaConfig      grafana.Interface
 
 	targets *targets.Targets
-	rules   *routing.IstioRoutingRules
+	router  *routing.Router
 	interState
 }
 
@@ -276,7 +281,7 @@ func (r *ReconcileExperiment) Reconcile(request reconcile.Request) (reconcile.Re
 	ctx := context.Background()
 
 	// Fetch the Experiment instance
-	instance := &iter8v1alpha1.Experiment{}
+	instance := &iter8v1alpha2.Experiment{}
 	err := r.Get(ctx, request.NamespacedName, instance)
 	if err != nil {
 		if errors.IsNotFound(err) {
@@ -293,10 +298,10 @@ func (r *ReconcileExperiment) Reconcile(request reconcile.Request) (reconcile.Re
 	log.Info("reconciling")
 
 	// Init metadata of experiment instance
-	if instance.Status.CreateTimestamp == 0 {
-		instance.Status.Init()
+	if instance.Status.InitTimestamp == nil {
+		instance.InitStatus()
 		if err := r.Status().Update(ctx, instance); err != nil && !validUpdateErr(err) {
-			log.Info("Fail to update status: %v", err)
+			log.Error(err, "Failed to update status")
 			return reconcile.Result{}, nil
 		}
 	}
@@ -311,18 +316,19 @@ func (r *ReconcileExperiment) Reconcile(request reconcile.Request) (reconcile.Re
 		return r.finalize(ctx, instance)
 	}
 
-	if instance.Status.Phase == iter8v1alpha1.PhaseCompleted {
+	if instance.Status.ExperimentCompleted() {
 		log.Info("NotToProceed", "phase", instance.Status.Phase)
 		return reconcile.Result{}, nil
 	}
 
 	ctx, err = r.iter8Cache.RegisterExperiment(ctx, instance)
 	if err != nil {
-		r.MarkTargetsError(ctx, instance, "%v", err)
-		return reconcile.Result{}, r.Status().Update(ctx, instance)
+		r.markTargetsError(ctx, instance, "%v", err)
+		return r.endRequest(ctx, instance)
 	}
-
-	r.syncExperiment(ctx, instance)
+	if err = r.syncExperiment(ctx, instance); err != nil {
+		return r.endRequest(ctx, instance)
+	}
 
 	if err := r.proceed(ctx, instance); err != nil {
 		log.Info("NotToProceed", "status", err.Error())
@@ -333,34 +339,37 @@ func (r *ReconcileExperiment) Reconcile(request reconcile.Request) (reconcile.Re
 		return r.endRequest(ctx, instance)
 	}
 
-	switch instance.Spec.TargetService.APIVersion {
-	case KubernetesV1:
-		return r.syncKubernetes(ctx, instance)
-	default:
-		instance.Status.MarkTargetsError("UnsupportedAPIVersion", "")
-		r.Status().Update(ctx, instance)
-		return reconcile.Result{}, nil
-	}
+	return r.syncKubernetes(ctx, instance)
 }
 
-func (r *ReconcileExperiment) syncMetrics(ctx context.Context, instance *iter8v1alpha1.Experiment) error {
-	if len(instance.Spec.Analysis.SuccessCriteria) == 0 {
+func (r *ReconcileExperiment) syncMetrics(ctx context.Context, instance *iter8v1alpha2.Experiment) error {
+	if instance.Spec.Criteria == nil {
 		return nil
 	}
 	// Sync metric definitions from the config map
-	metricsSycned := instance.Status.GetCondition(iter8v1alpha1.ExperimentConditionMetricsSynced)
-	if metricsSycned == nil || metricsSycned.Status != corev1.ConditionTrue {
-		if err := metrics.Read(ctx, r, instance); err != nil && !validUpdateErr(err) {
-			r.MarkSyncMetricsError(ctx, instance, "Fail to read metrics: %v", err)
+	if !instance.Status.MetricsSynced() {
+		if err := metricsv1alpha2.Read(ctx, r, instance); err != nil && !validUpdateErr(err) {
+			r.markSyncMetricsError(ctx, instance, "Fail to read metrics: %v", err)
+
+			if err := r.Status().Update(ctx, instance); err != nil && !validUpdateErr(err) {
+				log.Error(err, "Fail to update status")
+				// TODO: need a better way of handling this error
+				return err
+			}
+
 			return err
 		}
-		r.MarkSyncMetrics(ctx, instance)
+		if err := r.Update(ctx, instance); err != nil && !validUpdateErr(err) {
+			log.Error(err, "Fail to update instance")
+			return err
+		}
+		r.markSyncMetrics(ctx, instance, "")
 	}
 
 	return nil
 }
 
-func addFinalizerIfAbsent(context context.Context, c client.Client, instance *iter8v1alpha1.Experiment, fName string) (err error) {
+func addFinalizerIfAbsent(context context.Context, c client.Client, instance *iter8v1alpha2.Experiment, fName string) (err error) {
 	for _, finalizer := range instance.ObjectMeta.GetFinalizers() {
 		if finalizer == fName {
 			return
@@ -375,7 +384,7 @@ func addFinalizerIfAbsent(context context.Context, c client.Client, instance *it
 	return
 }
 
-func removeFinalizer(context context.Context, c client.Client, instance *iter8v1alpha1.Experiment, fName string) (err error) {
+func removeFinalizer(context context.Context, c client.Client, instance *iter8v1alpha2.Experiment, fName string) (err error) {
 	finalizers := make([]string, 0)
 	for _, f := range instance.GetFinalizers() {
 		if f != fName {
@@ -391,64 +400,67 @@ func removeFinalizer(context context.Context, c client.Client, instance *iter8v1
 	return
 }
 
-func (r *ReconcileExperiment) finalize(context context.Context, instance *iter8v1alpha1.Experiment) (reconcile.Result, error) {
+func (r *ReconcileExperiment) finalize(context context.Context, instance *iter8v1alpha2.Experiment) (reconcile.Result, error) {
 	log := util.Logger(context)
 	log.Info("finalizing")
 
-	apiVersion := instance.Spec.TargetService.APIVersion
-	switch apiVersion {
-	case KubernetesV1:
-		return r.finalizeIstio(context, instance)
-	}
-
-	return reconcile.Result{}, removeFinalizer(context, r, instance, Finalizer)
+	return r.finalizeIstio(context, instance)
 }
 
-func (r *ReconcileExperiment) syncExperiment(context context.Context, instance *iter8v1alpha1.Experiment) {
+func (r *ReconcileExperiment) syncExperiment(context context.Context, instance *iter8v1alpha2.Experiment) (err error) {
 	eas := experimentAbstract(context)
 	// Abort Experiment by setting action flag
-	if eas.Terminate() {
+	util.Logger(context).Info("phase", "before", instance.Status.Phase)
+	if instance.Spec.Terminate() {
+		// map traffic split to assessment
+		overrideAssessment(instance)
+	} else if eas.Terminate() {
 		if eas.GetDeletedRole() != "" {
 			onDeletedTarget(instance, eas.GetDeletedRole())
-			r.MarkTargetsError(context, instance, "%s", eas.GetTerminateStatus())
+			overrideAssessment(instance)
+			r.markTargetsError(context, instance, "%s", eas.GetTerminateStatus())
+			util.Logger(context).Info("phase", "after", instance.Status.Phase)
 		}
 	} else if eas.Resume() {
-		instance.Status.Phase = iter8v1alpha1.PhaseProgressing
+		instance.Status.Phase = iter8v1alpha2.PhaseProgressing
 	}
 
 	r.initState()
+	r.targets = targets.Init(instance, r.Client)
+	r.router = routing.Init(r.istioClient)
+	return
 }
 
-func (r *ReconcileExperiment) proceed(context context.Context, instance *iter8v1alpha1.Experiment) (err error) {
+func (r *ReconcileExperiment) proceed(context context.Context, instance *iter8v1alpha2.Experiment) (err error) {
 	// Pause action rejects all other resume mechanisms except resume action
-	if instance.Action == iter8v1alpha1.ActionPause {
-		r.MarkActionPause(context, instance)
+	if instance.Spec.Pause() {
+		r.markActionPause(context, instance, "")
 		if r.needStatusUpdate() {
 			if err := r.Status().Update(context, instance); err != nil && !validUpdateErr(err) {
 				log.Error(err, "Fail to update status")
 				return err
 			}
 		}
-		err = fmt.Errorf("phase: %s, action: %s", instance.Status.Phase, instance.Action)
+		err = fmt.Errorf("phase: %v, action: %s", instance.Status.Phase, instance.Spec.GetAction())
 		return
 	}
 
-	if instance.Status.Phase == iter8v1alpha1.PhasePause {
+	if instance.Status.Phase == iter8v1alpha2.PhasePause {
 		// termination request overrides pause phase
-		if instance.Action.TerminateExperiment() {
+		if instance.Spec.Terminate() {
 			return
 		}
-		if instance.Action == iter8v1alpha1.ActionResume {
-			// revert action field
-			instance.Action = ""
+		if instance.Spec.Resume() {
+			// clear
+			instance.Spec.ManualOverride = nil
 			if err := r.Update(context, instance); err != nil && !validUpdateErr(err) {
 				log.Error(err, "Fail to update instance")
 				return err
 			}
 
-			r.MarkActionResume(context, instance)
+			r.markActionResume(context, instance, "")
 		} else {
-			err = fmt.Errorf("phase: %s, action: %s", instance.Status.Phase, instance.Action)
+			err = fmt.Errorf("phase: %v, action: %s", instance.Status.Phase, instance.Spec.GetAction())
 		}
 	}
 

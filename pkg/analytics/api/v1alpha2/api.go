@@ -13,10 +13,117 @@ limitations under the License.
 */
 package v1alpha2
 
+// Request defines payload to analytics service
+type Request struct {
+	// ISO8601 timestamp for the beginning of the time range of interest
+	StartTime string `json:"start_time"`
+
+	// Name of the service
+	ServiceName string `json:"service_name"`
+
+	// Current iteration of the experiment
+	IterationNumber *int32 `json:"iteration_number,omitempty"`
+
+	// All metric specification
+	MetricSpecs Metrics `json:"metric_specs"`
+
+	// Criteria to be assessed for each version in this experiment
+	Criteria []Criterion `json:"criteria"`
+
+	// Baseline verison details
+	Baseline Version `json:"baseline"`
+
+	// Candidate versions details
+	Candidate []Version `json:"candidates"`
+
+	// State returned by the server on the previous call
+	LastState interface{} `json:"last_state,omitempty"`
+
+	// Parameters controlling the behavior of the analytics
+	TrafficControl *TrafficControl `json:"traffic_control,omitempty"`
+}
+
+// Version specifies details of a version
+type Version struct {
+	// Name of the version
+	ID string `json:"id"`
+
+	// labels for the version
+	VersionLabels map[string]string `json:"version_labels"`
+}
+
+// CounterMetric is the definition of Counter Metric
+type CounterMetric struct {
+	// Unique identifier
+	Name string `json:"name"`
+
+	// Direction indicating which values are "better"
+	//+kubebuilder:validation:Enum={lower,higher}
+	PreferredDirection *string `json:"preferred_direction,omitempty"`
+
+	// Descriptive short name
+	DescriptiveShortName *string `json:"descriptive_short_name,omitempty"`
+
+	// Query template of this metric
+	QueryTemplate string `json:"query_template"`
+}
+
+// RatioMetric is the definiton of Ratio Metric
+type RatioMetric struct {
+	// Unique identifier
+	Name string `json:"name"`
+
+	// Direction indicating which values are "better"
+	//+kubebuilder:validation:Enum={lower,higher}
+	PreferredDirection *string `json:"preferred_direction,omitempty"`
+
+	// Descriptive short name
+	DescriptiveShortName *string `json:"descriptive_short_name,omitempty"`
+
+	// Counter metric used in numerator
+	Numerator string `json:"numerator"`
+
+	// Counter metric used in denominator
+	Denominator string `json:"denominator"`
+
+	// Boolean flag indicating if the value of this metric is always in the range 0 to 1
+	// +optional
+	ZeroToOne *bool `json:"zero_to_one,omitempty"`
+}
+
+// Metrics details
+type Metrics struct {
+	CounterMetrics []CounterMetric `json:"counter_metrics"`
+	RatioMetrics   []RatioMetric   `json:"ratio_metrics"`
+}
+
+// Threshold details
+type Threshold struct {
+	Type  string  `json:"threshold_type"`
+	Value float32 `json:"value"`
+}
+
+// Criterion includes an assessment details for each version
+type Criterion struct {
+	ID        string     `json:"id"`
+	MetricID  string     `json:"metric_id"`
+	IsReward  *bool      `json:"is_reward,omitempty"`
+	Threshold *Threshold `json:"threshold,omitempty"`
+}
+
+// TrafficControl details
+type TrafficControl struct {
+	// Maximum possible increment in a candidate's traffic during the initial phase of the experiment
+	MaxIncrement float32 `json:"max_increment"`
+
+	// Traffic split algorithm to use during the experiment
+	Strategy string `json:"strategy"`
+}
+
 // Response from analytics
 type Response struct {
 	// Timestamp when assessment is made
-	Timestamp int64 `json:"timestamp"`
+	Timestamp string `json:"timestamp"`
 
 	// Assessment for baseline
 	BaselineAssessment VersionAssessment `json:"baseline_assessment"`
@@ -32,20 +139,21 @@ type Response struct {
 	WinnerAssessment `json:"winner_assessment"`
 
 	// Status of analytics engine
-	Status []string `json:"status"`
+	Status *[]string `json:"status,omitempty"`
 
 	// Human-readable explanation of the status
-	StatusInterpretations map[string]string `json:"status_interpretations"`
+	StatusInterpretations *map[string]string `json:"status_interpretations,omitempty"`
 
 	// Last recorded state from analytics service
-	LastState interface{} `json:"laste_state"`
+	LastState *interface{} `json:"laste_state,omitempty"`
 }
 
 // VersionAssessment contains assessment details for a version
 type VersionAssessment struct {
+	ID                   string                `json:"id"`
 	WinProbability       float32               `json:"win_probability"`
 	RequestCount         int32                 `json:"request_count"`
-	CriterionAssessments []CriterionAssessment `json:"criterion_assessments"`
+	CriterionAssessments []CriterionAssessment `json:"criterion_assessments,omitempty"`
 }
 
 // CriterionAssessment contains assessment for a version
@@ -57,17 +165,17 @@ type CriterionAssessment struct {
 	MetricID string `json:"metric_id"`
 
 	//Statistics for this metric
-	Statistics `json:"statistics"`
+	Statistics *Statistics `json:"statistics,omitempty"`
 
 	// Assessment of how well this metric is doing with respect to threshold.
 	// Defined only for metrics with a threshold
-	ThresholdAssessment `json:"threshold_assessment,omitempty"`
+	ThresholdAssessment *ThresholdAssessment `json:"threshold_assessment,omitempty"`
 }
 
 // Statistics for a metric
 type Statistics struct {
-	Value           float32 `json:"value"`
-	RatioStatistics `json:"ratio_statitics"`
+	Value           *float32         `json:"value,omitempty"`
+	RatioStatistics *RatioStatistics `json:"ratio_statitics,omitempty"`
 }
 
 // RatioStatistics is statistics for a ratio metric
@@ -108,9 +216,9 @@ type WinnerAssessment struct {
 
 	// ID of the current winner with the maximum probability of winning.
 	// This is currently computed based on Bayesian estimation
-	Winner string `json:"current_winner,omitempty"`
+	Winner *string `json:"current_winner,omitempty"`
 
 	//Posterior probability of the version declared as the current winner.
 	// This is None if winner is None. This is currently computed based on Bayesian estimation
-	Probability float32 `json:"winning_probability,omitempty"`
+	Probability *float32 `json:"winning_probability,omitempty"`
 }

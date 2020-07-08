@@ -16,7 +16,7 @@ limitations under the License.
 package abstract
 
 import (
-	iter8v1alpha1 "github.com/iter8-tools/iter8-controller/pkg/apis/iter8/v1alpha1"
+	iter8v1alpha2 "github.com/iter8-tools/iter8-controller/pkg/apis/iter8/v1alpha2"
 	"github.com/iter8-tools/iter8-controller/pkg/controller/experiment/targets"
 )
 
@@ -44,19 +44,22 @@ type Targets struct {
 }
 
 // NewTargets returns a new abstract for targets of an experiment
-func NewTargets(instance *iter8v1alpha1.Experiment, namespace string) *Targets {
+func NewTargets(instance *iter8v1alpha2.Experiment, namespace string) *Targets {
 	ts := make(map[string]*Status)
-	ts[instance.Spec.TargetService.Baseline] = &Status{
+	ts[instance.Spec.Baseline] = &Status{
 		role:      targets.RoleBaseline,
 		condition: conditionUnknown,
 	}
-	ts[instance.Spec.TargetService.Candidate] = &Status{
-		role:      targets.RoleCandidate,
-		condition: conditionUnknown,
+	for _, candidate := range instance.Spec.Candidates {
+		ts[candidate] = &Status{
+			role:      targets.RoleCandidate,
+			condition: conditionUnknown,
+		}
 	}
+
 	return &Targets{
 		Namespace:        namespace,
-		ServiceName:      instance.Spec.TargetService.Name,
+		ServiceName:      instance.Spec.Name,
 		serviceCondition: conditionUnknown,
 		Status:           ts,
 	}

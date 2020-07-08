@@ -29,13 +29,20 @@ import (
 // +k8s:openapi-gen=true
 // +kubebuilder:subresource:status
 // +kubebuilder:categories=all,iter8
+// +kubebuilder:printcolumn:name="phase",type="string",JSONPath=".status.phase",description="Phase of the experiment",format="byte"
+// +kubebuilder:printcolumn:name="status",type="string",JSONPath=".status.message",description="Detailed Status of the experiment",format="byte"
+// +kubebuilder:printcolumn:name="iteration",type="integer",JSONPath=".status.currentIteration",description="Current iteration",format="int32"
+// +kubebuilder:printcolumn:name="baseline",type="string",JSONPath=".spec.service.baseline",description="Name of baseline",format="byte"
+// +kubebuilder:printcolumn:name="percentage",type="integer",JSONPath=".status.assessment.baseline.weight",description="Traffic percentage for baseline",format="int32"
+// +kubebuilder:printcolumn:name="candidates",type="string",JSONPath=".spec.service.candidates",description="Names of candidates",format="byte"
+// +kubebuilder:printcolumn:name="percentage",type="string",JSONPath=".status.assessment.candidates[*].weight",description="Traffic percentage for the candidates",format="int32"
 type Experiment struct {
 	metav1.TypeMeta   `json:",inline"`
 	metav1.ObjectMeta `json:"metadata,omitempty"`
 
 	Spec ExperimentSpec `json:"spec"`
 	// +optional
-	Status *ExperimentStatus `json:"status,omitempty"`
+	Status ExperimentStatus `json:"status,omitempty"`
 }
 
 // ExperimentList contains a list of Experiment
@@ -76,7 +83,7 @@ type ExperimentSpec struct {
 
 	// Cleanup indicates whether routing rules and deployment receiving no traffic should be deleted at the end of experiment
 	// +optional
-	Cleanup *bool `json:"cleanup"`
+	Cleanup *bool `json:"cleanup,omitempty"`
 
 	// The metrics used in the experiment
 	// +optional
@@ -142,27 +149,13 @@ type Duration struct {
 	MaxIterations *int32 `json:"maxIterations,omitempty"`
 }
 
-// OnTerminationType is type of onTermination field
-type OnTerminationType string
-
-const (
-	// OnTerminationToWinner indicates all traffic should go to winner candidate when experiment is terminated
-	OnTerminationToWinner OnTerminationType = "to_winner"
-
-	// OnTerminationToBaseline indicates all traffic should go to baseline when experiment is terminated
-	OnTerminationToBaseline OnTerminationType = "to_baseline"
-
-	// OnTerminationKeepLast keeps the last traffic status when experiment is terminated
-	OnTerminationKeepLast OnTerminationType = "keep_last"
-)
-
 // TrafficControl specifies constrains on traffic and stratgy used to update the traffic
 type TrafficControl struct {
 	// Strategy used to shift traffic
 	// default is progressive
 	// +kubebuilder:validation:Enum={progressive, top_2, uniform}
 	// +optional
-	Strategy *string `json:"strategy,omitempty"`
+	Strategy *StrategyType `json:"strategy,omitempty"`
 
 	// OnTermination determines traffic split status at the end of experiment
 	// +kubebuilder:validation:Enum={to_winner,to_baseline,keep_last}
@@ -192,20 +185,6 @@ type Match struct {
 	HTTP []*HTTPMatchRequest `json:"http,omitempty"`
 }
 
-// ActionType is type of an Action
-type ActionType string
-
-const (
-	// ActionPause is an action to pause the experiment
-	ActionPause ActionType = "pause"
-
-	// ActionResume is an action to resume the experiment
-	ActionResume ActionType = "resume"
-
-	// ActionTerminate is an action to terminate the experiment
-	ActionTerminate ActionType = "terminate"
-)
-
 // ManualOverride defines actions that the user can perform to an experiment
 type ManualOverride struct {
 	// Action to perform
@@ -214,10 +193,10 @@ type ManualOverride struct {
 	// Traffic split status specification
 	// Applied to action terminate only
 	// example:
-	// - reviews-v2:80
-	// - reviews-v3:20
+	//   reviews-v2:80
+	//   reviews-v3:20
 	// +optional
-	TrafficSplit []string `json:"trafficSplit,omitempty"`
+	TrafficSplit map[string]int32 `json:"trafficSplit,omitempty"`
 }
 
 // Metrics contains definitions for metrics used in the experiment
@@ -233,20 +212,39 @@ type Metrics struct {
 
 // CounterMetric is the definition of Counter Metric
 type CounterMetric struct {
-	QueryTemplate string `json:"query_template"`
+	// Name of metric
+	Name string `json:"name" yaml:"name"`
+
+	// Query template of this metric
+	QueryTemplate string `json:"query_template" yaml:"query_template"`
+
+	// Preferred direction of the metric value
+	// +optional
+	PreferredDirection *string `json:"preferred_direction,omitempty" yaml:"preferred_direction,omitempty"`
+
+	// Unit of the metric value
+	// +optional
+	Unit *string `json:"unit,omitempty" yaml:"unit,omitempty"`
 }
 
 // RatioMetric is the definiton of Ratio Metric
 type RatioMetric struct {
+	// name of metric
+	Name string `json:"name" yaml:"name"`
+
 	// Counter metric used in numerator
-	Numerator string `json:"numerator"`
+	Numerator string `json:"numerator" yaml:"numerator"`
 
 	// Counter metric used in denominator
-	Denominator string `json:"denominator"`
+	Denominator string `json:"denominator" yaml:"denominator"`
 
 	// Boolean flag indicating if the value of this metric is always in the range 0 to 1
 	// +optional
-	ZeroToOne *bool `json:"zero_to_one,omitempty"`
+	ZeroToOne *bool `json:"zero_to_one,omitempty" yaml:"zero_to_one,omitempty"`
+
+	// Preferred direction of the metric value
+	// +optional
+	PreferredDirection *string `json:"preferred_direction,omitempty" yaml:"preferred_direction,omitempty"`
 }
 
 // ExperimentStatus defines the observed state of Experiment
@@ -267,9 +265,9 @@ type ExperimentStatus struct {
 	// +optional
 	EndTimestamp *metav1.Time `json:"endTimestamp,omitempty"`
 
-	// LastIncrementTime is the last time the traffic has been incremented
+	// LastUpdateTime is the last time iteration has been updated
 	// +optional
-	LastIncrementTime *metav1.Time `json:"lastIncrementTime,omitempty"`
+	LastUpdateTime *metav1.Time `json:"lastUpdateTime,omitempty"`
 
 	// CurrentIteration is the current iteration number
 	// +optional
@@ -283,13 +281,9 @@ type ExperimentStatus struct {
 	// +optional
 	Assessment *Assessment `json:"assessment,omitempty"`
 
-	// TrafficSplit tells the current traffic spliting among targets
-	// +optional
-	TrafficSplit []TrafficSplit `json:"trafficSplit,omitempty"`
-
 	// Phase marks the Phase the experiment is at
 	// +optional
-	Phase *Phase `json:"phase,omitempty"`
+	Phase PhaseType `json:"phase,omitempty"`
 
 	// Message specifies message to show in the kubectl printer
 	// +optional
@@ -301,19 +295,19 @@ type ExperimentStatus struct {
 }
 
 // Conditions is a list of ExperimentConditions
-type Conditions []ExperimentCondition
+type Conditions []*ExperimentCondition
 
 // ExperimentCondition describes a condition of an experiment
 type ExperimentCondition struct {
 	// Type of the condition
-	Type ExperimentConditionType `json:"name"`
+	Type ExperimentConditionType `json:"type"`
 
 	// Status of the condition
 	Status corev1.ConditionStatus `json:"status"`
 
 	// The time when this condition is last updated
 	// +optional
-	LastUpdateTime *metav1.Time `json:"lastUpdateTime,omitempty"`
+	LastTransitionTime *metav1.Time `json:"lastTransitionTime,omitempty"`
 
 	// Reason for the last update
 	// +optional
@@ -324,65 +318,31 @@ type ExperimentCondition struct {
 	Message *string `json:"message,omitempty"`
 }
 
-// ExperimentConditionType is type of ExperimentCondition
-type ExperimentConditionType string
-
-const (
-	// ExperimentConditionTargetsProvided has status True when the Experiment detects all elements specified in targetService
-	ExperimentConditionTargetsProvided ExperimentConditionType = "TargetsProvided"
-
-	// ExperimentConditionAnalyticsServiceNormal has status True when the analytics service is operating normally
-	ExperimentConditionAnalyticsServiceNormal ExperimentConditionType = "AnalyticsServiceNormal"
-
-	// ExperimentConditionMetricsSynced has status True when metrics are successfully synced with config map
-	ExperimentConditionMetricsSynced ExperimentConditionType = "MetricsSynced"
-
-	// ExperimentConditionExperimentCompleted has status True when the experiment is completed
-	ExperimentConditionExperimentCompleted ExperimentConditionType = "ExperimentCompleted"
-
-	// ExperimentConditionRoutingRulesReady has status True when routing rules are ready
-	ExperimentConditionRoutingRulesReady ExperimentConditionType = "RoutingRulesReady"
-)
-
-// Phase the experiment is in
-type Phase string
-
-const (
-	// PhasePause indicates experiment is paused
-	PhasePause Phase = "Pause"
-	// PhaseProgressing indicates experiment is progressing
-	PhaseProgressing Phase = "Progressing"
-	// PhaseCompleted indicates experiment has competed (successfully or not)
-	PhaseCompleted Phase = "Completed"
-)
-
 // Assessment details for the each target
 type Assessment struct {
-	// Assessment for baseline
-	Baseline analyticsv1alpha2.VersionAssessment `json:"baseline"`
+	// Assessment details of baseline
+	Baseline VersionAssessment `json:"baseline"`
 
-	// Assessment for candidates
-	Candidates []CandidateAssessment `json:"candidates"`
+	// Assessment details of each candidate
+	Candidates []VersionAssessment `json:"candidates"`
 
 	// Assessment for winner target if exists
 	// +optional
 	Winner *analyticsv1alpha2.WinnerAssessment `json:"winner,omitempty"`
 }
 
-// CandidateAssessment contains name of candidate and assessment details from analytics
-type CandidateAssessment struct {
-	// name of candidate
-	Name string `json:"name"`
-
-	// Assessment details from analytics
-	analyticsv1alpha2.CandidateAssessment `json:",inline"`
-}
-
-// TrafficSplit shows traffic for a target
-type TrafficSplit struct {
-	// Name of deployment
+// VersionAssessment contains assessment details for each version
+type VersionAssessment struct {
+	// name of version
 	Name string `json:"name"`
 
 	// Weight of traffic
 	Weight int32 `json:"weight"`
+
+	// Assessment details from analytics
+	analyticsv1alpha2.VersionAssessment `json:",inline"`
+
+	// A flag indicates whether traffic to this target should be cutoff
+	// +optional
+	Rollback bool `json:"rollback,omitempty"`
 }

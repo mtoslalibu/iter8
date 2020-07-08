@@ -24,7 +24,7 @@ import (
 	"sync"
 
 	"github.com/go-logr/logr"
-	iter8v1alpha1 "github.com/iter8-tools/iter8-controller/pkg/apis/iter8/v1alpha1"
+	iter8v1alpha2 "github.com/iter8-tools/iter8-controller/pkg/apis/iter8/v1alpha2"
 )
 
 const (
@@ -50,7 +50,7 @@ type ConfiguredNotifier struct {
 // Notifier is the interface for notifier implementations
 type Notifier interface {
 	// MakeRequest returns the platform-specific request instance
-	MakeRequest(instance *iter8v1alpha1.Experiment, reason string, messageFormat string, messageA ...interface{}) interface{}
+	MakeRequest(instance *iter8v1alpha2.Experiment, reason string, messageFormat string, messageA ...interface{}) interface{}
 }
 
 // NewNotificationCenter returns a new NotificationCenter
@@ -141,7 +141,7 @@ func matchLabels(nLabels, eLabels map[string]string) bool {
 
 // Notify will generate notifications to all the matched notifier specified in the configs
 // Errors occured will only be logged
-func (nc *NotificationCenter) Notify(instance *iter8v1alpha1.Experiment, reason string, messageFormat string, messageA ...interface{}) {
+func (nc *NotificationCenter) Notify(instance *iter8v1alpha2.Experiment, reason string, messageFormat string, messageA ...interface{}) {
 	if len(nc.Notifiers) == 0 {
 		return
 	}
@@ -209,24 +209,20 @@ func level2Int(level string) int {
 // returns hardcoded severity value
 func reasonSeverity(r string) int {
 	switch r {
-	case iter8v1alpha1.ReasonExperimentSucceeded,
-		iter8v1alpha1.ReasonExperimentFailed:
+	case iter8v1alpha2.ReasonExperimentCompleted:
 		return 5
-	case iter8v1alpha1.ReasonTargetsNotFound,
-		iter8v1alpha1.ReasonSyncMetricsError,
-		iter8v1alpha1.ReasonRoutingRulesError,
-		iter8v1alpha1.ReasonAnalyticsServiceError,
-		iter8v1alpha1.ReasonActionPause:
+	case iter8v1alpha2.ReasonTargetsError,
+		iter8v1alpha2.ReasonSyncMetricsError,
+		iter8v1alpha2.ReasonRoutingRulesError,
+		iter8v1alpha2.ReasonAnalyticsServiceError,
+		iter8v1alpha2.ReasonActionPause:
 		return 4
-	case iter8v1alpha1.ReasonIterationFailed:
-		return 3
-	case iter8v1alpha1.ReasonIterationSucceeded:
-		return 2
-	case iter8v1alpha1.ReasonTargetsFound,
-		iter8v1alpha1.ReasonAnalyticsServiceRunning,
-		iter8v1alpha1.ReasonIterationUpdate,
-		iter8v1alpha1.ReasonSyncMetricsSucceeded,
-		iter8v1alpha1.ReasonRoutingRulesReady:
+
+	case iter8v1alpha2.ReasonTargetsFound,
+		iter8v1alpha2.ReasonAnalyticsServiceRunning,
+		iter8v1alpha2.ReasonIterationUpdate,
+		iter8v1alpha2.ReasonSyncMetricsSucceeded,
+		iter8v1alpha2.ReasonRoutingRulesReady:
 		return 1
 	}
 
