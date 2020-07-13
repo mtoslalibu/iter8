@@ -22,17 +22,17 @@ import (
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/apimachinery/pkg/runtime"
 
-	"github.com/iter8-tools/iter8-controller/pkg/apis/iter8/v1alpha1"
+	"github.com/iter8-tools/iter8-controller/pkg/apis/iter8/v1alpha2"
 )
 
 // ExperimentBuilder builds experiment object
-type ExperimentBuilder v1alpha1.Experiment
+type ExperimentBuilder v1alpha2.Experiment
 
 // NewExperiment create a new miminal experiment object
 func NewExperiment(name string, namespace string) *ExperimentBuilder {
-	experiment := &v1alpha1.Experiment{
+	experiment := &v1alpha2.Experiment{
 		TypeMeta: metav1.TypeMeta{
-			APIVersion: v1alpha1.SchemeGroupVersion.String(),
+			APIVersion: v1alpha2.SchemeGroupVersion.String(),
 			Kind:       "Experiment",
 		},
 		ObjectMeta: metav1.ObjectMeta{
@@ -40,118 +40,91 @@ func NewExperiment(name string, namespace string) *ExperimentBuilder {
 			Namespace: namespace,
 		},
 	}
-	experiment.Status.Init()
+	experiment.InitStatus()
 	return (*ExperimentBuilder)(experiment)
 }
 
 // Build the experiment object
-func (b *ExperimentBuilder) Build() *v1alpha1.Experiment {
-	return (*v1alpha1.Experiment)(b)
-}
-
-// WithKNativeService adds KNative target service
-func (b *ExperimentBuilder) WithKNativeService(name string) *ExperimentBuilder {
-	b.Spec.TargetService = v1alpha1.TargetService{
-		ObjectReference: &corev1.ObjectReference{
-			APIVersion: "serving.knative.dev/v1alpha1",
-			Name:       name,
-		},
-	}
-	return b
+func (b *ExperimentBuilder) Build() *v1alpha2.Experiment {
+	return (*v1alpha2.Experiment)(b)
 }
 
 // WithKubernetesTargetService adds Kubernetes targetService
-func (b *ExperimentBuilder) WithKubernetesTargetService(name, baseline, candidate string) *ExperimentBuilder {
-	b.Spec.TargetService = v1alpha1.TargetService{
+func (b *ExperimentBuilder) WithKubernetesTargetService(name, baseline string, candidates []string) *ExperimentBuilder {
+	b.Spec.Service = v1alpha2.Service{
 		ObjectReference: &corev1.ObjectReference{
-			APIVersion: "v1",
-			Name:       name,
+			Name: name,
 		},
-		Baseline:  baseline,
-		Candidate: candidate,
+		Baseline:   baseline,
+		Candidates: candidates,
 	}
 	return b
 }
 
-// WithDummySuccessCriterion adds a dummy success criterion
-func (b *ExperimentBuilder) WithDummySuccessCriterion() *ExperimentBuilder {
-	return b.WithSuccessCriterion(v1alpha1.SuccessCriterion{
-		MetricName:    "iter8_latency",
-		ToleranceType: v1alpha1.ToleranceTypeDelta,
-		Tolerance:     0.02,
-	})
+// WithDummyCriterion adds a dummy criterion
+func (b *ExperimentBuilder) WithDummyCriterion() *ExperimentBuilder {
+	return b.WithCriterion(v1alpha2.Criterion{
+		Metric: "iter8_latency",
+		Threshold: &v1alpha2.Threshold{
+			Type:  "relative",
+			Value: 3000,
+		}})
 }
 
-func (b *ExperimentBuilder) WithAnalyticsHost(host string) *ExperimentBuilder {
-	b.Spec.Analysis.AnalyticsService = host
+func (b *ExperimentBuilder) WithAnalyticsEndpoint(host string) *ExperimentBuilder {
+	b.Spec.AnalyticsEndpoint = &host
 	return b
 }
 
-// WithSuccessCriterion adds a success criterion
-func (b *ExperimentBuilder) WithSuccessCriterion(sc v1alpha1.SuccessCriterion) *ExperimentBuilder {
-	b.Spec.Analysis.SuccessCriteria = append(b.Spec.Analysis.SuccessCriteria, sc)
+// WithCriterion adds a criterion
+func (b *ExperimentBuilder) WithCriterion(c v1alpha2.Criterion) *ExperimentBuilder {
+	b.Spec.Criteria = append(b.Spec.Criteria, c)
 	return b
 }
 
 func (b *ExperimentBuilder) WithResumeAction() *ExperimentBuilder {
-	b.Action = v1alpha1.ActionResume
+	b.Spec.ManualOverride = &v1alpha2.ManualOverride{
+		Action: v1alpha2.ActionResume,
+	}
 	return b
 }
 
 func CheckExperimentPause(obj runtime.Object) (bool, error) {
-	exp, ok := obj.(*v1alpha1.Experiment)
+	exp, ok := obj.(*v1alpha2.Experiment)
 	if !ok {
 		return false, fmt.Errorf("Expected an experiment instance (got: %v)", obj)
 	}
 
-	return exp.Status.Phase == v1alpha1.PhasePause, nil
+	return exp.Status.Phase == v1alpha2.PhasePause, nil
 }
 
-func CheckExperimentFinished(obj runtime.Object) (bool, error) {
-	exp, ok := obj.(*v1alpha1.Experiment)
+func CheckExperimentCompleted(obj runtime.Object) (bool, error) {
+	exp, ok := obj.(*v1alpha2.Experiment)
 	if !ok {
 		return false, fmt.Errorf("Expected an experiment instance (got: %v)", obj)
 	}
 
-	return exp.Status.GetCondition(v1alpha1.ExperimentConditionExperimentCompleted).IsTrue(), nil
-}
-
-func CheckExperimentSuccess(obj runtime.Object) (bool, error) {
-	exp, ok := obj.(*v1alpha1.Experiment)
-	if !ok {
-		return false, fmt.Errorf("Expected an experiment instance (got: %v)", obj)
-	}
-
-	return exp.Status.GetCondition(v1alpha1.ExperimentConditionExperimentSucceeded).IsTrue(), nil
-}
-
-func CheckExperimentFailure(obj runtime.Object) (bool, error) {
-	exp, ok := obj.(*v1alpha1.Experiment)
-	if !ok {
-		return false, fmt.Errorf("Expected an experiment service (got: %v)", obj)
-	}
-
-	return exp.Status.GetCondition(v1alpha1.ExperimentConditionExperimentSucceeded).IsFalse(), nil
+	return exp.Status.GetCondition(v1alpha2.ExperimentConditionExperimentCompleted).IsTrue(), nil
 }
 
 func CheckServiceFound(obj runtime.Object) (bool, error) {
-	exp, ok := obj.(*v1alpha1.Experiment)
+	exp, ok := obj.(*v1alpha2.Experiment)
 	if !ok {
 		return false, fmt.Errorf("Expected an experiment service (got: %v)", obj)
 	}
 
-	return exp.Status.GetCondition(v1alpha1.ExperimentConditionTargetsProvided).IsTrue(), nil
+	return exp.Status.GetCondition(v1alpha2.ExperimentConditionTargetsProvided).IsTrue(), nil
 }
 
 func CheckServiceNotFound(reason string) func(obj runtime.Object) (bool, error) {
 	return func(obj runtime.Object) (bool, error) {
-		exp, ok := obj.(*v1alpha1.Experiment)
+		exp, ok := obj.(*v1alpha2.Experiment)
 		if !ok {
 			return false, fmt.Errorf("Expected an experiment service (got: %v)", obj)
 		}
-		cond := exp.Status.GetCondition(v1alpha1.ExperimentConditionTargetsProvided)
+		cond := exp.Status.GetCondition(v1alpha2.ExperimentConditionTargetsProvided)
 
-		return cond.IsFalse() && cond.Reason == reason, nil
+		return cond.IsFalse() && *cond.Reason == reason, nil
 	}
 }
 
@@ -159,7 +132,7 @@ func DeleteExperiment(name string, namespace string) Hook {
 	return DeleteObject(NewExperiment(name, namespace).Build())
 }
 
-func ResumeExperiment(exp *v1alpha1.Experiment) Hook {
+func ResumeExperiment(exp *v1alpha2.Experiment) Hook {
 	exp = (*ExperimentBuilder)(exp).
 		WithResumeAction().
 		Build()

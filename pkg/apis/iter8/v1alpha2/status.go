@@ -40,7 +40,8 @@ func (s *ExperimentStatus) addCondition(conditionType ExperimentConditionType) *
 	return condition
 }
 
-func (s *ExperimentStatus) getCondition(condition ExperimentConditionType) *ExperimentCondition {
+// GetCondition returns condition of given conditionType
+func (s *ExperimentStatus) GetCondition(condition ExperimentConditionType) *ExperimentCondition {
 	for _, c := range s.Conditions {
 		if c.Type == condition {
 			return c
@@ -50,7 +51,17 @@ func (s *ExperimentStatus) getCondition(condition ExperimentConditionType) *Expe
 	return s.addCondition(condition)
 }
 
-// Init initialize status value of an experiment
+// IsTrue tells whether the experiment condition is true or not
+func (c *ExperimentCondition) IsTrue() bool {
+	return c.Status == corev1.ConditionTrue
+}
+
+// IsFalse tells whether the experiment condition is false or not
+func (c *ExperimentCondition) IsFalse() bool {
+	return c.Status == corev1.ConditionFalse
+}
+
+// InitStatus initialize status value of an experiment
 func (e *Experiment) InitStatus() {
 	e.Status.Assessment = &Assessment{
 		Baseline: VersionAssessment{
@@ -108,14 +119,14 @@ func (c *ExperimentCondition) markCondition(status corev1.ConditionStatus, reaso
 
 // MetricsSynced returns whether status of ExperimentConditionMetricsSynced is true or not
 func (s *ExperimentStatus) MetricsSynced() bool {
-	return s.getCondition(ExperimentConditionMetricsSynced).Status == corev1.ConditionTrue
+	return s.GetCondition(ExperimentConditionMetricsSynced).Status == corev1.ConditionTrue
 }
 
 // MarkMetricsSynced sets the condition that the metrics are synced with config map
 // Return true if it's converted from false or unknown
 func (s *ExperimentStatus) MarkMetricsSynced(messageFormat string, messageA ...interface{}) (bool, string) {
 	reason := ReasonSyncMetricsSucceeded
-	return s.getCondition(ExperimentConditionMetricsSynced).
+	return s.GetCondition(ExperimentConditionMetricsSynced).
 		markCondition(corev1.ConditionTrue, reason, messageFormat, messageA...), reason
 }
 
@@ -125,20 +136,20 @@ func (s *ExperimentStatus) MarkMetricsSyncedError(messageFormat string, messageA
 	reason := ReasonSyncMetricsError
 	s.Phase = PhasePause
 	*s.Message = composeMessage(reason, messageFormat, messageA...)
-	return s.getCondition(ExperimentConditionMetricsSynced).
+	return s.GetCondition(ExperimentConditionMetricsSynced).
 		markCondition(corev1.ConditionFalse, reason, messageFormat, messageA...), reason
 }
 
 // TargetsFound returns whether status of ExperimentConditionTargetsProvided is true or not
 func (s *ExperimentStatus) TargetsFound() bool {
-	return s.getCondition(ExperimentConditionTargetsProvided).Status == corev1.ConditionTrue
+	return s.GetCondition(ExperimentConditionTargetsProvided).Status == corev1.ConditionTrue
 }
 
 // MarkTargetsFound sets the condition that the all target have been found
 // Return true if it's converted from false or unknown
 func (s *ExperimentStatus) MarkTargetsFound(messageFormat string, messageA ...interface{}) (bool, string) {
 	reason := ReasonTargetsFound
-	return s.getCondition(ExperimentConditionTargetsProvided).
+	return s.GetCondition(ExperimentConditionTargetsProvided).
 		markCondition(corev1.ConditionTrue, reason, messageFormat, messageA...), reason
 }
 
@@ -148,7 +159,7 @@ func (s *ExperimentStatus) MarkTargetsError(messageFormat string, messageA ...in
 	reason := ReasonTargetsError
 	s.Phase = PhasePause
 	*s.Message = composeMessage(reason, messageFormat, messageA...)
-	return s.getCondition(ExperimentConditionTargetsProvided).
+	return s.GetCondition(ExperimentConditionTargetsProvided).
 		markCondition(corev1.ConditionFalse, reason, messageFormat, messageA...), reason
 }
 
@@ -158,7 +169,7 @@ func (s *ExperimentStatus) MarkRoutingRulesReady(messageFormat string, messageA 
 	reason := ReasonRoutingRulesReady
 	message := composeMessage(reason, messageFormat, messageA...)
 	s.Message = &message
-	return s.getCondition(ExperimentConditionRoutingRulesReady).
+	return s.GetCondition(ExperimentConditionRoutingRulesReady).
 		markCondition(corev1.ConditionTrue, reason, messageFormat, messageA...), reason
 }
 
@@ -169,7 +180,7 @@ func (s *ExperimentStatus) MarkRoutingRulesError(messageFormat string, messageA 
 	message := composeMessage(reason, messageFormat, messageA...)
 	s.Phase = PhasePause
 	s.Message = &message
-	return s.getCondition(ExperimentConditionRoutingRulesReady).
+	return s.GetCondition(ExperimentConditionRoutingRulesReady).
 		markCondition(corev1.ConditionFalse, reason, messageFormat, messageA...), reason
 }
 
@@ -177,7 +188,7 @@ func (s *ExperimentStatus) MarkRoutingRulesError(messageFormat string, messageA 
 // Return true if it's converted from false or unknown
 func (s *ExperimentStatus) MarkAnalyticsServiceRunning(messageFormat string, messageA ...interface{}) (bool, string) {
 	reason := ReasonAnalyticsServiceRunning
-	return s.getCondition(ExperimentConditionAnalyticsServiceNormal).
+	return s.GetCondition(ExperimentConditionAnalyticsServiceNormal).
 		markCondition(corev1.ConditionTrue, reason, messageFormat, messageA...), reason
 }
 
@@ -188,12 +199,13 @@ func (s *ExperimentStatus) MarkAnalyticsServiceError(messageFormat string, messa
 	message := composeMessage(reason, messageFormat, messageA...)
 	s.Message = &message
 	s.Phase = PhasePause
-	return s.getCondition(ExperimentConditionAnalyticsServiceNormal).
+	return s.GetCondition(ExperimentConditionAnalyticsServiceNormal).
 		markCondition(corev1.ConditionFalse, reason, messageFormat, messageA...), reason
 }
 
+// ExperimentCompleted returns whether experiment is completed or not
 func (s *ExperimentStatus) ExperimentCompleted() bool {
-	return s.getCondition(ExperimentConditionExperimentCompleted).Status == corev1.ConditionTrue
+	return s.GetCondition(ExperimentConditionExperimentCompleted).Status == corev1.ConditionTrue
 }
 
 // MarkExperimentCompleted sets the condition that the experiemnt is completed
@@ -202,7 +214,7 @@ func (s *ExperimentStatus) MarkExperimentCompleted(messageFormat string, message
 	message := composeMessage(reason, messageFormat, messageA...)
 	s.Phase = PhaseCompleted
 	s.Message = &message
-	return s.getCondition(ExperimentConditionExperimentCompleted).
+	return s.GetCondition(ExperimentConditionExperimentCompleted).
 		markCondition(corev1.ConditionTrue, reason, messageFormat, messageA...), reason
 }
 
@@ -212,8 +224,9 @@ func (s *ExperimentStatus) MarkIterationUpdate(messageFormat string, messageA ..
 	message := composeMessage(reason, messageFormat, messageA...)
 	s.Phase = PhaseProgressing
 	s.Message = &message
-	return s.getCondition(ExperimentConditionExperimentCompleted).
-		markCondition(corev1.ConditionFalse, reason, messageFormat, messageA...), reason
+	s.GetCondition(ExperimentConditionExperimentCompleted).
+		markCondition(corev1.ConditionFalse, reason, messageFormat, messageA...)
+	return true, reason
 }
 
 // MarkTrafficUpdate sets the condition that traffic for target service updated
@@ -222,7 +235,7 @@ func (s *ExperimentStatus) MarkTrafficUpdate(messageFormat string, messageA ...i
 	message := composeMessage(reason, messageFormat, messageA...)
 	s.Phase = PhaseProgressing
 	s.Message = &message
-	return s.getCondition(ExperimentConditionExperimentCompleted).
+	return s.GetCondition(ExperimentConditionExperimentCompleted).
 		markCondition(corev1.ConditionFalse, reason, messageFormat, messageA...), reason
 }
 
@@ -233,7 +246,7 @@ func (s *ExperimentStatus) MarkExperimentPause(messageFormat string, messageA ..
 	message := composeMessage(reason, messageFormat, messageA...)
 	s.Phase = PhasePause
 	s.Message = &message
-	return s.getCondition(ExperimentConditionExperimentCompleted).
+	return s.GetCondition(ExperimentConditionExperimentCompleted).
 		markCondition(corev1.ConditionFalse, reason, messageFormat, messageA...), reason
 }
 
@@ -244,7 +257,7 @@ func (s *ExperimentStatus) MarkExperimentResume(messageFormat string, messageA .
 	message := composeMessage(reason, messageFormat, messageA...)
 	s.Phase = PhaseProgressing
 	s.Message = &message
-	return s.getCondition(ExperimentConditionExperimentCompleted).
+	return s.GetCondition(ExperimentConditionExperimentCompleted).
 		markCondition(corev1.ConditionFalse, reason, messageFormat, messageA...), reason
 }
 

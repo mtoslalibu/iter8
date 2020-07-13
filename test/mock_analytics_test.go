@@ -17,46 +17,36 @@ package test
 import (
 	"testing"
 
-	_ "github.com/google/go-cmp/cmp"
-	_ "github.com/iter8-tools/iter8-controller/pkg/analytics"
-	analyticsapi "github.com/iter8-tools/iter8-controller/pkg/analytics/api"
-	iter8v1alpha1 "github.com/iter8-tools/iter8-controller/pkg/apis/iter8/v1alpha1"
+	"github.com/google/go-cmp/cmp"
+	"github.com/iter8-tools/iter8-controller/pkg/analytics"
+	analyticsapi "github.com/iter8-tools/iter8-controller/pkg/analytics/api/v1alpha2"
 )
 
 func TestMockAnalytics(t *testing.T) {
-	// logger := Logger(t)
-	// service := StartAnalytics()
-	// defer service.Close()
-	// want := dummyResponse()
-	// service.AddMock("test-0", want)
+	logger := Logger(t)
+	service := StartAnalytics()
+	defer service.Close()
 
-	// got, err := analytics.Invoke(logger, service.GetURL(), dummyRequest())
-	// if err != nil {
-	// 	t.Fatalf("%v", err)
-	// }
+	name, namespace := "test-0", "test-ns"
+	experiment := NewExperiment(name, namespace).
+		WithKubernetesTargetService("", "baseline", []string{"candiate1, candidate2"}).
+		Build()
 
-	// if diff := cmp.Diff(want, *got); diff != "" {
-	// 	t.Errorf("unexpected reponse diff (-want, +got) = %v", diff)
-	// }
+	want := GetRollToWinnerMockResponse(experiment, 0)
+	service.AddMock(name, want)
+
+	got, err := analytics.Invoke(logger, service.GetURL(), dummyRequest())
+	if err != nil {
+		t.Fatalf("%v", err)
+	}
+
+	if diff := cmp.Diff(want, *got); diff != "" {
+		t.Errorf("unexpected reponse diff (-want, +got) = %v", diff)
+	}
 }
 
 func dummyRequest() *analyticsapi.Request {
 	return &analyticsapi.Request{
 		Name: "test-0",
-	}
-}
-func dummyResponse() analyticsapi.Response {
-	return analyticsapi.Response{
-		Baseline: analyticsapi.MetricsTraffic{
-			TrafficPercentage: 95,
-		},
-		Candidate: analyticsapi.MetricsTraffic{
-			TrafficPercentage: 5,
-		},
-		Assessment: analyticsapi.Assessment{
-			Summary: iter8v1alpha1.Summary{
-				AbortExperiment: false,
-			},
-		},
 	}
 }

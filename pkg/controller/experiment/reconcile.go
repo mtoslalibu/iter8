@@ -93,7 +93,7 @@ func (r *ReconcileExperiment) detectTargets(context context.Context, instance *i
 		}
 	} else {
 		// UpdateBaseline will create DestinationRule and VirtualService if needed
-		if err = r.router.UpdateBaseline(instance, r.targets); err != nil {
+		if err = r.router.UpdateBaseline(context, instance, r.targets); err != nil {
 			r.markRoutingRulesError(context, instance, "Fail in updating routing rule: %v", err)
 			return err
 		}
@@ -111,7 +111,7 @@ func (r *ReconcileExperiment) detectTargets(context context.Context, instance *i
 	} else {
 		// Update DestinationRule for candidates
 		// If baseline is also configured (see above), we move set rule to progressing
-		if err = r.router.UpdateCandidates(r.targets); err != nil {
+		if err = r.router.UpdateCandidates(context, r.targets); err != nil {
 			r.markRoutingRulesError(context, instance, "Fail in updating routing rule: %v", err)
 			return err
 		}
@@ -125,109 +125,108 @@ func (r *ReconcileExperiment) detectTargets(context context.Context, instance *i
 // returns non-nil error if reconcile process should be terminated right after this function
 func (r *ReconcileExperiment) updateIteration(context context.Context, instance *iter8v1alpha2.Experiment) error {
 	log := util.Logger(context)
+	trafficUpdated := false
 	// mark experiment begin
 	if instance.Status.StartTimestamp == nil {
 		startTime := metav1.Now()
 		instance.Status.StartTimestamp = &startTime
 		r.grafanaConfig.UpdateGrafanaURL(instance)
 		r.markStatusUpdate()
-		// TODO rethink the else wrapper. Added to prevent immediate call to
-		// analytics engine who can't deal with an interval of 0s
+	}
+
+	if len(instance.Spec.Criteria) == 0 {
+		// each candidate gets maxincrement traffic at each interval
+		// until no more traffic can be deducted from baseline
+		basetraffic := instance.Status.Assessment.Baseline.Weight
+		diff := instance.Spec.GetMaxIncrements() * int32(len(instance.Spec.Candidates))
+		if basetraffic-diff >= 0 {
+			instance.Status.Assessment.Baseline.Weight = basetraffic - diff
+			for i := range instance.Status.Assessment.Candidates {
+				instance.Status.Assessment.Candidates[i].Weight += instance.Spec.GetMaxIncrements()
+			}
+			trafficUpdated = true
+		}
 	} else {
-		if len(instance.Spec.Criteria) == 0 {
-			// each candidate gets maxincrement traffic at each interval
-			// until no more traffic can be deducted from baseline
-			basetraffic := instance.Status.Assessment.Baseline.Weight
-			diff := instance.Spec.GetMaxIncrements() * int32(len(instance.Spec.Candidates))
-			if basetraffic-diff >= 0 {
-				instance.Status.Assessment.Baseline.Weight = basetraffic - diff
-				for _, candidate := range instance.Status.Assessment.Candidates {
-					candidate.Weight += instance.Spec.GetMaxIncrements()
-				}
-			}
+		// Get latest analysis
+		payload, err := analytics.MakeRequest(instance)
+		if err != nil {
+			r.markAnalyticsServiceError(context, instance, "%s", err.Error())
+			return err
+		}
+
+		response, err := analytics.Invoke(log, instance.Spec.GetAnalyticsEndpoint(), payload)
+		if err != nil {
+			r.markAnalyticsServiceError(context, instance, "%s", err.Error())
+			return err
+		}
+
+		if response.LastState == nil {
+			instance.Status.AnalysisState.Raw = []byte("{}")
 		} else {
-			// Get latest analysis
-			payload, err := analytics.MakeRequest(instance)
+			lastState, err := json.Marshal(response.LastState)
 			if err != nil {
 				r.markAnalyticsServiceError(context, instance, "%s", err.Error())
 				return err
 			}
+			instance.Status.AnalysisState = &runtime.RawExtension{Raw: lastState}
+		}
 
-			response, err := analytics.Invoke(log, instance.Spec.GetAnalyticsEndpoint(), payload)
-			if err != nil {
-				r.markAnalyticsServiceError(context, instance, "%s", err.Error())
-				return err
+		instance.Status.Assessment.Baseline.VersionAssessment = response.BaselineAssessment
+		for i, ca := range response.CandidateAssessments {
+			instance.Status.Assessment.Candidates[i].VersionAssessment = ca.VersionAssessment
+			instance.Status.Assessment.Candidates[i].Rollback = ca.Rollback
+		}
+
+		instance.Status.Assessment.Winner = &response.WinnerAssessment
+
+		strategy := instance.Spec.GetStrategy()
+		trafficSplit, ok := response.TrafficSplitRecommendation[strategy]
+		if !ok {
+			err := fmt.Errorf("Missing trafficSplitRecommendation for strategy %s", strategy)
+			r.markAnalyticsServiceError(context, instance, "%v", err)
+			return err
+		}
+
+		if baselineWeight, ok := trafficSplit[instance.Spec.Baseline]; ok {
+			if instance.Status.Assessment.Baseline.Weight != baselineWeight {
+				trafficUpdated = true
 			}
+			instance.Status.Assessment.Baseline.Weight = baselineWeight
+		} else {
+			err := fmt.Errorf("trafficSplitRecommendation for baseline not found")
+			r.markAnalyticsServiceError(context, instance, "%v", err)
+			return err
+		}
 
-			if response.LastState == nil {
-				instance.Status.AnalysisState.Raw = []byte("{}")
-			} else {
-				lastState, err := json.Marshal(response.LastState)
-				if err != nil {
-					r.markAnalyticsServiceError(context, instance, "%s", err.Error())
-					return err
+		for i, candidate := range instance.Status.Assessment.Candidates {
+			if candidate.Rollback {
+				trafficUpdated = true
+				instance.Status.Assessment.Candidates[i].Weight = int32(0)
+			} else if weight, ok := trafficSplit[candidate.Name]; ok {
+				if candidate.Weight != weight {
+					trafficUpdated = true
 				}
-				instance.Status.AnalysisState = &runtime.RawExtension{Raw: lastState}
-			}
-
-			instance.Status.Assessment.Baseline.VersionAssessment = response.BaselineAssessment
-			for i, ca := range response.CandidateAssessments {
-				instance.Status.Assessment.Candidates[i].VersionAssessment = ca.VersionAssessment
-				instance.Status.Assessment.Candidates[i].Rollback = ca.Rollback
-			}
-
-			instance.Status.Assessment.Winner = &response.WinnerAssessment
-
-			strategy := instance.Spec.GetStrategy()
-			trafficSplit, ok := response.TrafficSplitRecommendation[strategy]
-			if !ok {
-				err := fmt.Errorf("Missing trafficSplitRecommendation for strategy %s", strategy)
+				instance.Status.Assessment.Candidates[i].Weight = weight
+			} else {
+				err := fmt.Errorf("trafficSplitRecommendation for candidate %s not found", candidate.Name)
 				r.markAnalyticsServiceError(context, instance, "%v", err)
 				return err
 			}
+		}
 
-			trafficUpdated := false
-			if baselineWeight, ok := trafficSplit[instance.Spec.Baseline]; ok {
-				if instance.Status.Assessment.Baseline.Weight != baselineWeight {
-					trafficUpdated = true
-				}
-				instance.Status.Assessment.Baseline.Weight = baselineWeight
-			} else {
-				err := fmt.Errorf("trafficSplitRecommendation for baseline not found")
-				r.markAnalyticsServiceError(context, instance, "%v", err)
-				return err
-			}
+		r.markAnalyticsServiceRunning(context, instance, "")
+	}
 
-			for i, candidate := range instance.Status.Assessment.Candidates {
-				if candidate.Rollback {
-					trafficUpdated = true
-					instance.Status.Assessment.Candidates[i].Weight = int32(0)
-				} else if weight, ok := trafficSplit[candidate.Name]; ok {
-					if candidate.Weight != weight {
-						trafficUpdated = true
-					}
-					instance.Status.Assessment.Candidates[i].Weight = weight
-				} else {
-					err := fmt.Errorf("trafficSplitRecommendation for candidate %s not found", candidate.Name)
-					r.markAnalyticsServiceError(context, instance, "%v", err)
-					return err
-				}
-			}
-
-			if trafficUpdated {
-				if err := r.router.UpdateTrafficSplit(instance); err != nil {
-					r.markRoutingRulesError(context, instance, "%v", err)
-					return err
-				}
-			}
-
-			r.markAnalyticsServiceRunning(context, instance, "")
+	if trafficUpdated {
+		if err := r.router.UpdateTrafficSplit(instance); err != nil {
+			r.markRoutingRulesError(context, instance, "%v", err)
+			return err
 		}
 	}
 
+	r.markIterationUpdate(context, instance, "Iteration %d completed", *instance.Status.CurrentIteration)
 	now := metav1.Now()
 	instance.Status.LastUpdateTime = &now
-	r.markIterationUpdate(context, instance, "Iteration %d completed", *instance.Status.CurrentIteration)
 	*instance.Status.CurrentIteration++
 	return nil
 }
