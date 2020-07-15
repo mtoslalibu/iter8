@@ -15,13 +15,10 @@ limitations under the License.
 package routing
 
 import (
-	appsv1 "k8s.io/api/apps/v1"
-	"k8s.io/apimachinery/pkg/api/meta"
-	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
-	runtime "k8s.io/apimachinery/pkg/runtime"
-
 	networkingv1alpha3 "istio.io/api/networking/v1alpha3"
 	"istio.io/client-go/pkg/apis/networking/v1alpha3"
+	appsv1 "k8s.io/api/apps/v1"
+	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 
 	iter8v1alpha2 "github.com/iter8-tools/iter8-controller/pkg/apis/iter8/v1alpha2"
 )
@@ -65,16 +62,25 @@ func NewDestinationRule(serviceName, name, namespace string) *DestinationRuleBui
 }
 
 func (b *DestinationRuleBuilder) WithStableLabel() *DestinationRuleBuilder {
+	if b.ObjectMeta.GetLabels() == nil {
+		b.ObjectMeta.SetLabels(map[string]string{})
+	}
 	b.ObjectMeta.Labels[ExperimentRole] = RoleStable
 	return b
 }
 
 func (b *DestinationRuleBuilder) WithProgressingLabel() *DestinationRuleBuilder {
+	if b.ObjectMeta.GetLabels() == nil {
+		b.ObjectMeta.SetLabels(map[string]string{})
+	}
 	b.ObjectMeta.Labels[ExperimentRole] = RoleProgressing
 	return b
 }
 
 func (b *DestinationRuleBuilder) WithInitLabel() *DestinationRuleBuilder {
+	if b.ObjectMeta.GetLabels() == nil {
+		b.ObjectMeta.SetLabels(map[string]string{})
+	}
 	b.ObjectMeta.Labels[ExperimentInit] = "True"
 	return b
 }
@@ -91,11 +97,17 @@ func (b *DestinationRuleBuilder) RemoveExperimentLabel() *DestinationRuleBuilder
 }
 
 func (b *DestinationRuleBuilder) WithExperimentRegistered(exp string) *DestinationRuleBuilder {
+	if b.ObjectMeta.GetLabels() == nil {
+		b.ObjectMeta.SetLabels(map[string]string{})
+	}
 	b.ObjectMeta.Labels[ExperimentLabel] = exp
 	return b
 }
 
 func (b *DestinationRuleBuilder) WithHostRegistered(host string) *DestinationRuleBuilder {
+	if b.ObjectMeta.GetLabels() == nil {
+		b.ObjectMeta.SetLabels(map[string]string{})
+	}
 	b.ObjectMeta.Labels[ExperimentHost] = host
 	return b
 }
@@ -165,21 +177,33 @@ func NewVirtualService(serviceName, name, namespace string) *VirtualServiceBuild
 }
 
 func (b *VirtualServiceBuilder) WithInitLabel() *VirtualServiceBuilder {
+	if b.ObjectMeta.GetLabels() == nil {
+		b.ObjectMeta.SetLabels(map[string]string{})
+	}
 	b.ObjectMeta.Labels[ExperimentInit] = "True"
 	return b
 }
 
 func (b *VirtualServiceBuilder) WithProgressingLabel() *VirtualServiceBuilder {
+	if b.ObjectMeta.GetLabels() == nil {
+		b.ObjectMeta.SetLabels(map[string]string{})
+	}
 	b.ObjectMeta.Labels[ExperimentRole] = RoleProgressing
 	return b
 }
 
 func (b *VirtualServiceBuilder) WithStableLabel() *VirtualServiceBuilder {
+	if b.ObjectMeta.GetLabels() == nil {
+		b.ObjectMeta.SetLabels(map[string]string{})
+	}
 	b.ObjectMeta.Labels[ExperimentRole] = RoleStable
 	return b
 }
 
 func (b *VirtualServiceBuilder) WithExperimentRegistered(exp string) *VirtualServiceBuilder {
+	if b.ObjectMeta.GetLabels() == nil {
+		b.ObjectMeta.SetLabels(map[string]string{})
+	}
 	b.ObjectMeta.Labels[ExperimentLabel] = exp
 	return b
 }
@@ -287,11 +311,17 @@ func (b *VirtualServiceBuilder) ProgressingToStable(weight map[string]int32, hos
 }
 
 func (b *VirtualServiceBuilder) WithHostRegistered(host string) *VirtualServiceBuilder {
+	if b.ObjectMeta.GetLabels() == nil {
+		b.ObjectMeta.SetLabels(map[string]string{})
+	}
 	b.ObjectMeta.Labels[ExperimentHost] = host
 	return b
 }
 
 func (b *VirtualServiceBuilder) WithExternalLabel() *VirtualServiceBuilder {
+	if b.ObjectMeta.GetLabels() == nil {
+		b.ObjectMeta.SetLabels(map[string]string{})
+	}
 	b.ObjectMeta.Labels[ExternalReference] = "True"
 	return b
 }
@@ -307,23 +337,6 @@ func getWeight(subset string, vs *v1alpha3.VirtualService) int32 {
 		}
 	}
 	return 0
-}
-
-func removeExperimentLabel(objs ...runtime.Object) (err error) {
-	for _, obj := range objs {
-		accessor, err := meta.Accessor(obj)
-		if err != nil {
-			return err
-		}
-		labels := accessor.GetLabels()
-		delete(labels, ExperimentLabel)
-		if _, ok := labels[ExperimentInit]; ok {
-			delete(labels, ExperimentInit)
-		}
-		accessor.SetLabels(labels)
-	}
-
-	return nil
 }
 
 func convertMatchToIstio(m *iter8v1alpha2.HTTPMatchRequest) *networkingv1alpha3.HTTPMatchRequest {

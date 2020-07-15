@@ -74,28 +74,29 @@ func validUpdateErr(err error) bool {
 
 // overrideAssessment sets the assessment as what had has specified in manual override traffic split
 func overrideAssessment(instance *iter8v1alpha2.Experiment) {
-	if len(instance.Spec.ManualOverride.TrafficSplit) == 0 {
-		// set all to baseline
-		instance.Spec.TrafficControl = &iter8v1alpha2.TrafficControl{}
-		*instance.Spec.TrafficControl.OnTermination = iter8v1alpha2.OnTerminationToBaseline
-	} else {
-		trafficSplit := instance.Spec.ManualOverride.TrafficSplit
-		if ts, ok := trafficSplit[instance.Status.Assessment.Baseline.Name]; ok {
-			instance.Status.Assessment.Baseline.Weight = ts
-		} else {
-			instance.Status.Assessment.Baseline.Weight = 0
-		}
-
-		for _, candidate := range instance.Status.Assessment.Candidates {
-			if ts, ok := trafficSplit[candidate.Name]; ok {
-				candidate.Weight = ts
+	if instance.Spec.ManualOverride != nil {
+		onTermination := iter8v1alpha2.OnTerminationToBaseline
+		if len(instance.Spec.ManualOverride.TrafficSplit) > 0 {
+			trafficSplit := instance.Spec.ManualOverride.TrafficSplit
+			if ts, ok := trafficSplit[instance.Status.Assessment.Baseline.Name]; ok {
+				instance.Status.Assessment.Baseline.Weight = ts
 			} else {
-				candidate.Weight = 0
+				instance.Status.Assessment.Baseline.Weight = 0
 			}
+
+			for _, candidate := range instance.Status.Assessment.Candidates {
+				if ts, ok := trafficSplit[candidate.Name]; ok {
+					candidate.Weight = ts
+				} else {
+					candidate.Weight = 0
+				}
+			}
+
+			onTermination = iter8v1alpha2.OnTerminationKeepLast
 		}
 
-		instance.Spec.TrafficControl = &iter8v1alpha2.TrafficControl{}
-		*instance.Spec.TrafficControl.OnTermination = iter8v1alpha2.OnTerminationKeepLast
-
+		instance.Spec.TrafficControl = &iter8v1alpha2.TrafficControl{
+			OnTermination: &onTermination,
+		}
 	}
 }

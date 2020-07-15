@@ -171,10 +171,21 @@ func (r *ReconcileExperiment) updateIteration(context context.Context, instance 
 			instance.Status.AnalysisState = &runtime.RawExtension{Raw: lastState}
 		}
 
+		abort := true
 		instance.Status.Assessment.Baseline.VersionAssessment = response.BaselineAssessment
 		for i, ca := range response.CandidateAssessments {
 			instance.Status.Assessment.Candidates[i].VersionAssessment = ca.VersionAssessment
 			instance.Status.Assessment.Candidates[i].Rollback = ca.Rollback
+			if !ca.Rollback {
+				abort = false
+			}
+		}
+
+		if abort {
+			instance.Spec.TerminateExperiment()
+			overrideAssessment(instance)
+			log.Info("AbortExperiment", "All candidates fail assessment")
+			return nil
 		}
 
 		instance.Status.Assessment.Winner = &response.WinnerAssessment

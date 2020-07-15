@@ -78,6 +78,7 @@ func (r *ReconcileExperiment) finalizeIstio(context context.Context, instance *i
 		instance.Spec.ManualOverride = &iter8v1alpha2.ManualOverride{
 			Action: iter8v1alpha2.ActionTerminate,
 		}
+		overrideAssessment(instance)
 		if _, err := r.syncKubernetes(context, instance); err != nil {
 			util.Logger(context).Error(err, "Fail to execute finalize sync process")
 		}
