@@ -286,7 +286,7 @@ func runTestCases(t *testing.T, service *test.AnalyticsService, testCases map[st
 			}
 
 			// TODO: This shouldn't be hard coded
-			time.Sleep(time.Second * 15)
+			time.Sleep(time.Second * 3)
 		})
 	}
 }

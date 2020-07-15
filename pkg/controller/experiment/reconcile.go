@@ -184,7 +184,7 @@ func (r *ReconcileExperiment) updateIteration(context context.Context, instance 
 		if abort {
 			instance.Spec.TerminateExperiment()
 			overrideAssessment(instance)
-			log.Info("AbortExperiment", "All candidates fail assessment")
+			log.Info("AbortExperiment", "All candidates fail assessment", "")
 			return nil
 		}
 
