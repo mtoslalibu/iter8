@@ -82,6 +82,9 @@ func (b *DestinationRuleBuilder) WithInitLabel() *DestinationRuleBuilder {
 		b.ObjectMeta.SetLabels(map[string]string{})
 	}
 	b.ObjectMeta.Labels[ExperimentInit] = "True"
+	if _, ok := b.ObjectMeta.Labels[ExperimentRole]; !ok {
+		b.ObjectMeta.Labels[ExperimentRole] = RoleInitializing
+	}
 	return b
 }
 
@@ -181,6 +184,9 @@ func (b *VirtualServiceBuilder) WithInitLabel() *VirtualServiceBuilder {
 		b.ObjectMeta.SetLabels(map[string]string{})
 	}
 	b.ObjectMeta.Labels[ExperimentInit] = "True"
+	if _, ok := b.ObjectMeta.Labels[ExperimentRole]; !ok {
+		b.ObjectMeta.Labels[ExperimentRole] = RoleInitializing
+	}
 	return b
 }
 

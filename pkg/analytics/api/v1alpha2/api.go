@@ -148,7 +148,7 @@ type Response struct {
 	StatusInterpretations *map[string]string `json:"status_interpretations,omitempty"`
 
 	// Last recorded state from analytics service
-	LastState *interface{} `json:"laste_state,omitempty"`
+	LastState *interface{} `json:"last_state,omitempty"`
 }
 
 // VersionAssessment contains assessment details for a version
