@@ -246,8 +246,9 @@ func (s *ExperimentStatus) MarkExperimentPause(messageFormat string, messageA ..
 	message := composeMessage(reason, messageFormat, messageA...)
 	s.Phase = PhasePause
 	s.Message = &message
-	return s.GetCondition(ExperimentConditionExperimentCompleted).
-		markCondition(corev1.ConditionFalse, reason, messageFormat, messageA...), reason
+	s.GetCondition(ExperimentConditionExperimentCompleted).
+		markCondition(corev1.ConditionFalse, reason, messageFormat, messageA...)
+	return true, reason
 }
 
 // MarkExperimentResume sets the phase and status that experiment is resmued by manualOverrides
@@ -257,8 +258,9 @@ func (s *ExperimentStatus) MarkExperimentResume(messageFormat string, messageA .
 	message := composeMessage(reason, messageFormat, messageA...)
 	s.Phase = PhaseProgressing
 	s.Message = &message
-	return s.GetCondition(ExperimentConditionExperimentCompleted).
-		markCondition(corev1.ConditionFalse, reason, messageFormat, messageA...), reason
+	s.GetCondition(ExperimentConditionExperimentCompleted).
+		markCondition(corev1.ConditionFalse, reason, messageFormat, messageA...)
+	return true, reason
 }
 
 func composeMessage(reason, messageFormat string, messageA ...interface{}) string {
