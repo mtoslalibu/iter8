@@ -35,8 +35,8 @@ import (
 	"sigs.k8s.io/controller-runtime/pkg/client"
 	"sigs.k8s.io/controller-runtime/pkg/client/config"
 
-	"github.com/iter8-tools/iter8-controller/pkg/analytics/api"
-	"github.com/iter8-tools/iter8-controller/pkg/apis/iter8/v1alpha1"
+	analyticsv1alpha2 "github.com/iter8-tools/iter8-controller/pkg/analytics/api/v1alpha2"
+	iter8v1alpha2 "github.com/iter8-tools/iter8-controller/pkg/apis/iter8/v1alpha2"
 	"github.com/iter8-tools/iter8-controller/test"
 )
 
@@ -73,7 +73,7 @@ func GetClient() client.Client {
 	}
 
 	sch := scheme.Scheme
-	if err := v1alpha1.AddToScheme(sch); err != nil {
+	if err := iter8v1alpha2.AddToScheme(sch); err != nil {
 		panic(fmt.Errorf("unable to add scheme (%v)", err))
 	}
 	if err := servingalpha1.AddToScheme(sch); err != nil {
@@ -95,7 +95,7 @@ func GetClient() client.Client {
 }
 
 type testCase struct {
-	mocks map[string]api.Response
+	mocks map[string]analyticsv1alpha2.Response
 
 	// Initial set of objects,
 	initObjects []runtime.Object
@@ -286,7 +286,7 @@ func runTestCases(t *testing.T, service *test.AnalyticsService, testCases map[st
 			}
 
 			// TODO: This shouldn't be hard coded
-			time.Sleep(time.Second * 15)
+			time.Sleep(time.Second * 3)
 		})
 	}
 }

@@ -15,6 +15,9 @@ package v1alpha2
 
 // Request defines payload to analytics service
 type Request struct {
+	// Name of experiment
+	Name string `json:"name"`
+
 	// ISO8601 timestamp for the beginning of the time range of interest
 	StartTime string `json:"start_time"`
 

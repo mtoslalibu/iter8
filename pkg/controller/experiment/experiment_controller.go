@@ -295,7 +295,7 @@ func (r *ReconcileExperiment) Reconcile(request reconcile.Request) (reconcile.Re
 
 	log := log.WithValues("namespace", instance.Namespace, "name", instance.Name)
 	ctx = context.WithValue(ctx, util.LoggerKey, log)
-	log.Info("reconciling")
+	log.Info("reconciling", "experiment", instance)
 
 	// Init metadata of experiment instance
 	if instance.Status.InitTimestamp == nil {
@@ -326,9 +326,7 @@ func (r *ReconcileExperiment) Reconcile(request reconcile.Request) (reconcile.Re
 		r.markTargetsError(ctx, instance, "%v", err)
 		return r.endRequest(ctx, instance)
 	}
-	if err = r.syncExperiment(ctx, instance); err != nil {
-		return r.endRequest(ctx, instance)
-	}
+	r.syncExperiment(ctx, instance)
 
 	if err := r.proceed(ctx, instance); err != nil {
 		log.Info("NotToProceed", "status", err.Error())
@@ -407,7 +405,7 @@ func (r *ReconcileExperiment) finalize(context context.Context, instance *iter8v
 	return r.finalizeIstio(context, instance)
 }
 
-func (r *ReconcileExperiment) syncExperiment(context context.Context, instance *iter8v1alpha2.Experiment) (err error) {
+func (r *ReconcileExperiment) syncExperiment(context context.Context, instance *iter8v1alpha2.Experiment) {
 	eas := experimentAbstract(context)
 	// Abort Experiment by setting action flag
 	util.Logger(context).Info("phase", "before", instance.Status.Phase)
@@ -428,11 +426,14 @@ func (r *ReconcileExperiment) syncExperiment(context context.Context, instance *
 	r.initState()
 	r.targets = targets.Init(instance, r.Client)
 	r.router = routing.Init(r.istioClient)
-	return
 }
 
 func (r *ReconcileExperiment) proceed(context context.Context, instance *iter8v1alpha2.Experiment) (err error) {
 	// Pause action rejects all other resume mechanisms except resume action
+	util.Logger(context).Info("Action", "pause", instance.Spec.Pause())
+	if instance.Spec.ManualOverride != nil {
+		util.Logger(context).Info("MO", "value", instance.Spec.ManualOverride)
+	}
 	if instance.Spec.Pause() {
 		r.markActionPause(context, instance, "")
 		if r.needStatusUpdate() {
@@ -445,7 +446,12 @@ func (r *ReconcileExperiment) proceed(context context.Context, instance *iter8v1
 		return
 	}
 
+	if r.needRefresh() {
+		return
+	}
+
 	if instance.Status.Phase == iter8v1alpha2.PhasePause {
+		r.markActionResume(context, instance, "")
 		// termination request overrides pause phase
 		if instance.Spec.Terminate() {
 			return
@@ -458,7 +464,6 @@ func (r *ReconcileExperiment) proceed(context context.Context, instance *iter8v1
 				return err
 			}
 
-			r.markActionResume(context, instance, "")
 		} else {
 			err = fmt.Errorf("phase: %v, action: %s", instance.Status.Phase, instance.Spec.GetAction())
 		}

@@ -22,8 +22,8 @@ import (
 	"net/http"
 	"net/http/httptest"
 
-	"github.com/iter8-tools/iter8-controller/pkg/analytics/api"
-	iter8v1alpha1 "github.com/iter8-tools/iter8-controller/pkg/apis/iter8/v1alpha1"
+	analyticsv1alpha2 "github.com/iter8-tools/iter8-controller/pkg/analytics/api/v1alpha2"
+	iter8v1alpha2 "github.com/iter8-tools/iter8-controller/pkg/apis/iter8/v1alpha2"
 )
 
 const (
@@ -37,13 +37,13 @@ type AnalyticsService struct {
 	server *httptest.Server
 
 	// Mock maps request to response. The key maps to request.name
-	Mock map[string]api.Response
+	Mock map[string]analyticsv1alpha2.Response
 }
 
 // StartAnalytics starts fake analytics service
 func StartAnalytics() *AnalyticsService {
 	service := &AnalyticsService{
-		Mock: make(map[string]api.Response),
+		Mock: make(map[string]analyticsv1alpha2.Response),
 	}
 	service.server = httptest.NewServer(service)
 	return service
@@ -67,7 +67,7 @@ func (s *AnalyticsService) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	var request api.Request
+	var request analyticsv1alpha2.Request
 	err = json.Unmarshal(b, &request)
 	if err != nil {
 		w.Write([]byte(err.Error()))
@@ -99,66 +99,135 @@ func (s *AnalyticsService) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 	w.Write(raw)
 }
 
-// Mock adds response for testid
-func (s *AnalyticsService) AddMock(name string, response api.Response) {
+// AddMock adds response for testid
+func (s *AnalyticsService) AddMock(name string, response analyticsv1alpha2.Response) {
 	s.Mock[name] = response
 }
 
-func GetDefaultMockResponse() api.Response {
-	return api.Response{
-		Baseline: api.MetricsTraffic{
-			TrafficPercentage: 50,
-		},
-		Candidate: api.MetricsTraffic{
-			TrafficPercentage: 50,
-		},
-		Assessment: api.Assessment{
-			Summary: iter8v1alpha1.Summary{
-				AbortExperiment: false,
+func GetRollToWinnerMockResponse(instance *iter8v1alpha2.Experiment, winIdx int) analyticsv1alpha2.Response {
+	candidates := instance.Spec.Candidates
+	cas := make([]analyticsv1alpha2.CandidateAssessment, len(candidates))
+
+	for i := range cas {
+		ca := analyticsv1alpha2.CandidateAssessment{
+			VersionAssessment: analyticsv1alpha2.VersionAssessment{
+				ID:             candidates[i],
+				WinProbability: 0,
+				RequestCount:   10,
 			},
+			Rollback: false,
+		}
+		if i == winIdx {
+			ca.VersionAssessment.WinProbability = 100
+		}
+		cas[i] = ca
+	}
+
+	strategy := instance.Spec.GetStrategy()
+	tsr := map[string]map[string]int32{
+		strategy: map[string]int32{
+			instance.Spec.Baseline: 20,
 		},
 	}
+
+	for i, name := range candidates {
+		if i == winIdx {
+			tsr[strategy][name] = 80
+		} else {
+			tsr[strategy][name] = 0
+		}
+	}
+
+	res := analyticsv1alpha2.Response{
+		BaselineAssessment: analyticsv1alpha2.VersionAssessment{
+			ID:             instance.Spec.Baseline,
+			WinProbability: 0,
+			RequestCount:   10,
+		},
+		CandidateAssessments: cas,
+		WinnerAssessment: analyticsv1alpha2.WinnerAssessment{
+			WinnerFound: true,
+			Winner:      &candidates[winIdx],
+		},
+		TrafficSplitRecommendation: tsr,
+	}
+	return res
 }
 
-func GetSuccessMockResponse() api.Response {
-	return api.Response{
-		Baseline: api.MetricsTraffic{
-			TrafficPercentage: 50,
-		},
-		Candidate: api.MetricsTraffic{
-			TrafficPercentage: 50,
-		},
-		Assessment: api.Assessment{
-			Summary: iter8v1alpha1.Summary{
-				AllSuccessCriteriaMet: true,
-				AbortExperiment:       false,
+func GetAbortExperimentResponse(instance *iter8v1alpha2.Experiment) analyticsv1alpha2.Response {
+	candidates := instance.Spec.Candidates
+	cas := make([]analyticsv1alpha2.CandidateAssessment, len(candidates))
+
+	for i := range cas {
+		ca := analyticsv1alpha2.CandidateAssessment{
+			VersionAssessment: analyticsv1alpha2.VersionAssessment{
+				ID:             instance.Spec.Candidates[i],
+				WinProbability: 0,
+				RequestCount:   10,
 			},
+			Rollback: true,
+		}
+		cas[i] = ca
+	}
+
+	strategy := instance.Spec.GetStrategy()
+	tsr := map[string]map[string]int32{
+		strategy: map[string]int32{
+			instance.Spec.Baseline: 100,
 		},
 	}
+
+	for _, name := range candidates {
+		tsr[strategy][name] = 0
+	}
+
+	res := analyticsv1alpha2.Response{
+		BaselineAssessment: analyticsv1alpha2.VersionAssessment{
+			ID:             instance.Spec.Baseline,
+			WinProbability: 100,
+			RequestCount:   10,
+		},
+		CandidateAssessments:       cas,
+		TrafficSplitRecommendation: tsr,
+	}
+	return res
 }
 
-func GetAbortExperimentResponse() api.Response {
-	return api.Response{
-		Assessment: api.Assessment{
-			Summary: iter8v1alpha1.Summary{
-				AbortExperiment: true,
-			},
-		},
-	}
-}
+func GetRollbackMockResponse(instance *iter8v1alpha2.Experiment) analyticsv1alpha2.Response {
+	candidates := instance.Spec.Candidates
+	cas := make([]analyticsv1alpha2.CandidateAssessment, len(candidates))
 
-func GetFailureMockResponse() api.Response {
-	return api.Response{
-		Baseline: api.MetricsTraffic{
-			TrafficPercentage: 50,
-		},
-		Candidate: api.MetricsTraffic{
-			TrafficPercentage: 50,
-		},
-		Assessment: api.Assessment{
-			Summary: iter8v1alpha1.Summary{
-				AllSuccessCriteriaMet: false,
+	for i := range cas {
+		ca := analyticsv1alpha2.CandidateAssessment{
+			VersionAssessment: analyticsv1alpha2.VersionAssessment{
+				ID:             instance.Spec.Candidates[i],
+				WinProbability: 0,
+				RequestCount:   10,
 			},
+			Rollback: false,
+		}
+		cas[i] = ca
+	}
+
+	strategy := instance.Spec.GetStrategy()
+	tsr := map[string]map[string]int32{
+		strategy: map[string]int32{
+			instance.Spec.Baseline: 100,
 		},
 	}
+
+	for _, name := range candidates {
+		tsr[strategy][name] = 0
+	}
+
+	res := analyticsv1alpha2.Response{
+		BaselineAssessment: analyticsv1alpha2.VersionAssessment{
+			ID:             instance.Spec.Baseline,
+			WinProbability: 100,
+			RequestCount:   10,
+		},
+		CandidateAssessments:       cas,
+		TrafficSplitRecommendation: tsr,
+	}
+	return res
 }

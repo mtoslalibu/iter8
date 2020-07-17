@@ -346,3 +346,10 @@ type VersionAssessment struct {
 	// +optional
 	Rollback bool `json:"rollback,omitempty"`
 }
+
+// TerminateExperiment terminates experiment
+func (s *ExperimentSpec) TerminateExperiment() {
+	s.ManualOverride = &ManualOverride{
+		Action: ActionTerminate,
+	}
+}

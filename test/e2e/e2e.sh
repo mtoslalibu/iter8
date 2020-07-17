@@ -67,6 +67,6 @@ echo "controller started $CONTROLLER_PID"
 sleep 4 # wait for controller to start
 
 # disable e2e tests for v1alpha2 temporatily
-# go test -run TestKubernetesExperiment -v -p 1 ./test/e2e/ -args -namespace ${NAMESPACE}
+go test -run TestExperiment -v -p 1 ./test/e2e/ -args -namespace ${NAMESPACE}
 
 cleanup

@@ -92,6 +92,7 @@ func MakeRequest(instance *iter8v1alpha2.Experiment) (*v1alpha2.Request, error) 
 	}
 
 	request := &v1alpha2.Request{
+		Name:        instance.Name,
 		StartTime:   instance.Status.StartTimestamp.Format(time.RFC3339),
 		ServiceName: instance.Spec.Service.Name,
 		Baseline: v1alpha2.Version{

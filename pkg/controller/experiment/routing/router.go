@@ -96,7 +96,7 @@ func (r *istioRoutingRules) isExternalReference() bool {
 	return vsok
 }
 
-func (r *Router) UpdateBaseline(instance *iter8v1alpha2.Experiment, targets *targets.Targets) (err error) {
+func (r *Router) UpdateBaseline(ctx context.Context, instance *iter8v1alpha2.Experiment, targets *targets.Targets) (err error) {
 	if r.rules.isProgressing() {
 		return nil
 	}
@@ -134,17 +134,12 @@ func (r *Router) UpdateBaseline(instance *iter8v1alpha2.Experiment, targets *tar
 		vsb = NewVirtualService(instance.Spec.Service.Name, instance.GetName(), instance.ServiceNamespace()).
 			WithInitLabel()
 	}
-	vsb = vsb.
-		WithExperimentRegistered(instance.Name)
+	vsb = vsb.WithExperimentRegistered(instance.Name).
+		ToProgressing(instance.Spec.Service.Name, len(targets.Candidates))
 
-	if r.rules.isExternalReference() {
-		vsb = vsb.ExternalToProgressing(instance.Spec.Service.Name, instance.ServiceNamespace(), len(targets.Candidates))
-	} else {
-		vsb = vsb.ToProgressing(instance.Spec.Service.Name, len(targets.Candidates))
-		trafficControl := instance.Spec.TrafficControl
-		if trafficControl != nil && trafficControl.Match != nil && len(trafficControl.Match.HTTP) > 0 {
-			vsb = vsb.WithHTTPMatch(trafficControl.Match.HTTP)
-		}
+	trafficControl := instance.Spec.TrafficControl
+	if trafficControl != nil && trafficControl.Match != nil && len(trafficControl.Match.HTTP) > 0 {
+		vsb = vsb.WithHTTPMatch(trafficControl.Match.HTTP)
 	}
 
 	vs := (*v1alpha3.VirtualService)(nil)
@@ -165,6 +160,7 @@ func (r *Router) UpdateBaseline(instance *iter8v1alpha2.Experiment, targets *tar
 	r.rules.destinationRule = dr.DeepCopy()
 
 	instance.Status.Assessment.Baseline.Weight = 100
+
 	return
 }
 
@@ -172,7 +168,7 @@ func candiateSubsetName(idx int) string {
 	return SubsetCandidate + "-" + strconv.Itoa(idx)
 }
 
-func (r *Router) UpdateCandidates(targets *targets.Targets) (err error) {
+func (r *Router) UpdateCandidates(context context.Context, targets *targets.Targets) (err error) {
 	if r.rules.isProgressing() {
 		return nil
 	}
@@ -261,23 +257,25 @@ func (r *Router) Cleanup(context context.Context, instance *iter8v1alpha2.Experi
 			}
 		}
 
+		dr := NewDestinationRuleBuilder(r.rules.destinationRule).
+			ProgressingToStable(toStableSubset).
+			WithStableLabel().
+			RemoveExperimentLabel().
+			Build()
 		if _, err = r.client.NetworkingV1alpha3().
 			DestinationRules(r.rules.destinationRule.Namespace).
-			Update(NewDestinationRuleBuilder(r.rules.destinationRule).
-				ProgressingToStable(toStableSubset).
-				WithStableLabel().
-				RemoveExperimentLabel().
-				Build()); err != nil {
+			Update(dr); err != nil {
 			return
 		}
 
+		vs := NewVirtualServiceBuilder(r.rules.virtualService).
+			ProgressingToStable(subsetWeight, instance.Spec.Service.Name, instance.ServiceNamespace()).
+			WithStableLabel().
+			RemoveExperimentLabel().
+			Build()
 		if _, err = r.client.NetworkingV1alpha3().
 			VirtualServices(r.rules.virtualService.Namespace).
-			Update(NewVirtualServiceBuilder(r.rules.virtualService).
-				ProgressingToStable(subsetWeight, instance.Spec.Service.Name, instance.ServiceNamespace()).
-				WithStableLabel().
-				RemoveExperimentLabel().
-				Build()); err != nil {
+			Update(vs); err != nil {
 			return
 		}
 	}
@@ -286,14 +284,26 @@ func (r *Router) Cleanup(context context.Context, instance *iter8v1alpha2.Experi
 
 // UpdateTrafficSplit updates virtualservice with latest traffic split
 func (r *Router) UpdateTrafficSplit(instance *iter8v1alpha2.Experiment) error {
-	subset2Weight := make(map[string]int32)
-	subset2Weight[SubsetBaseline] = instance.Status.Assessment.Baseline.Weight
+	httproute := r.rules.virtualService.Spec.GetHttp()
+	if len(httproute) == 0 {
+		return fmt.Errorf("EmptyRouteInVs")
+	}
+	rb := NewHTTPRoute(httproute[0]).ClearRoute()
+
+	// baseline route
+	rb = rb.WithDestination(NewHTTPRouteDestination().
+		WithHost(util.GetHost(instance)).
+		WithSubset(SubsetBaseline).
+		WithWeight(instance.Status.Assessment.Baseline.Weight).Build())
 	for i := range instance.Spec.Candidates {
-		subset2Weight[SubsetCandidate+"-"+strconv.Itoa(i)] = instance.Status.Assessment.Candidates[i].Weight
+		rb = rb.WithDestination(NewHTTPRouteDestination().
+			WithHost(util.GetHost(instance)).
+			WithSubset(candidateSubsetName(i)).
+			WithWeight(instance.Status.Assessment.Candidates[i].Weight).Build())
 	}
 
 	vs := NewVirtualServiceBuilder(r.rules.virtualService).
-		WithTrafficSplit(instance.Spec.Service.Name, subset2Weight).
+		WithHTTPRoute(rb.Build()).
 		Build()
 
 	if vs, err := r.client.NetworkingV1alpha3().VirtualServices(vs.Namespace).Update(vs); err != nil {
@@ -496,4 +506,8 @@ func validateVirtualService(instance *iter8v1alpha2.Experiment, vs *v1alpha3.Vir
 		}
 	}
 	return nil
+}
+
+func candidateSubsetName(idx int) string {
+	return SubsetCandidate + "-" + strconv.Itoa(idx)
 }
