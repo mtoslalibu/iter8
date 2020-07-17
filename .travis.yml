@@ -16,6 +16,7 @@ _end_to_end_script: &end_to_end_script
     - test/e2e/sanity-check.sh
     - test/e2e/install-istio.sh
     - test/e2e/install-iter8.sh
+    - test/e2e/e2e.sh
     - test/e2e/e2e-test.sh
 
 jobs:
