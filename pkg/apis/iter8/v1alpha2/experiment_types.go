@@ -77,10 +77,6 @@ type ExperimentSpec struct {
 	// +optional
 	Duration *Duration `json:"duration,omitempty"`
 
-	// RoutingReference provides references to routing rules set by users
-	// +optional
-	RoutingReference *corev1.ObjectReference `json:"routingReference,omitempty"`
-
 	// Cleanup indicates whether routing rules and deployment receiving no traffic should be deleted at the end of experiment
 	// +optional
 	Cleanup *bool `json:"cleanup,omitempty"`
@@ -104,6 +100,21 @@ type Service struct {
 
 	// List of names of candidate deployments
 	Candidates []string `json:"candidates"`
+
+	// List of hosts related to this service
+	Hosts []Host `json:"hosts,omitempty"`
+
+	// Port number exposed by internal services
+	Port *int32 `json:"port,omitempty"`
+}
+
+// Host holds the name of host and gateway associated with it
+type Host struct {
+	// Name of the Host
+	Name string `json:"name"`
+
+	// The gateway associated with the host
+	Gateway string `json:"gateway"`
 }
 
 // Criterion defines the criterion for assessing a target
@@ -345,11 +356,4 @@ type VersionAssessment struct {
 	// A flag indicates whether traffic to this target should be cutoff
 	// +optional
 	Rollback bool `json:"rollback,omitempty"`
-}
-
-// TerminateExperiment terminates experiment
-func (s *ExperimentSpec) TerminateExperiment() {
-	s.ManualOverride = &ManualOverride{
-		Action: ActionTerminate,
-	}
 }

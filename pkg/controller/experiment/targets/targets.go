@@ -42,20 +42,40 @@ type Targets struct {
 	Service    *corev1.Service
 	Baseline   *appsv1.Deployment
 	Candidates []*appsv1.Deployment
-	namespace  string
+	Port       *int32
+	Hosts      []string
+	Gateways   []string
 
-	client client.Client
+	namespace string
+	client    client.Client
 }
 
 // Init returns an initialized targets content for an expeirment
 func Init(instance *iter8v1alpha2.Experiment, client client.Client) *Targets {
-	return &Targets{
+	out := &Targets{
 		Service:    &corev1.Service{},
 		Baseline:   &appsv1.Deployment{},
 		Candidates: make([]*appsv1.Deployment, len(instance.Spec.Candidates)),
 		namespace:  instance.ServiceNamespace(),
 		client:     client,
 	}
+
+	mHosts, mGateways := make(map[string]bool), make(map[string]bool)
+	service := instance.Spec.Service
+	for _, host := range service.Hosts {
+		if _, ok := mHosts[host.Name]; !ok {
+			out.Hosts = append(out.Hosts, host.Name)
+			mHosts[host.Name] = true
+		}
+
+		if _, ok := mHosts[host.Gateway]; !ok {
+			out.Gateways = append(out.Gateways, host.Gateway)
+			mGateways[host.Gateway] = true
+		}
+	}
+
+	out.Port = instance.Spec.Service.Port
+	return out
 }
 
 // GetService substantializes service in the targets

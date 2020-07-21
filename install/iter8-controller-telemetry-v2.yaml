@@ -14,17 +14,18 @@ metadata:
   name: iter8config-metrics
   namespace: iter8
 data:
+  # by convention, metrics with names beginning with iter8_ are defined by iter8
+  # a counter metric is monotonically increasing or decreasing
   counter_metrics.yaml: |-
     - name: iter8_request_count
-      query_template: sum(increase(istio_requests_total{reporter='source'}[$interval])) by ($version_labels)
+      query_template: sum(increase(istio_requests_total{reporter='source',job='envoy-stats'}[$interval])) by ($version_labels)
     - name: iter8_total_latency
-      query_template: sum(increase(istio_request_duration_milliseconds_sum{reporter='source'}[$interval])) by ($version_labels)
-      units: ms # optional
-    - name: iter8_error_count
-      query_template: sum(increase(istio_requests_total{response_code=~'5..',reporter='source'}[$interval])) by ($version_labels)
+      query_template: sum(increase(istio_request_duration_milliseconds_sum{reporter='source',job='envoy-stats'}[$interval])) by ($version_labels)
+      units: msec # optional
       preferred_direction: lower
-    - name: conversion_count
-      query_template: sum(increase(newsletter_signups[$interval])) by ($version_labels)
+    - name: iter8_error_count
+      query_template: sum(increase(istio_requests_total{response_code=~'5..',reporter='source',job='envoy-stats'}[$interval])) by ($version_labels)
+      preferred_direction: lower
   # the value of a ratio metric equals value of numerator divided by denominator
   ratio_metrics.yaml: |-
     - name: iter8_mean_latency
@@ -35,11 +36,6 @@ data:
       numerator: iter8_error_count
       denominator: iter8_request_count
       preferred_direction: lower
-      zero_to_one: true
-    - name: conversion_rate
-      numerator: conversion_count
-      denominator: iter8_request_count
-      preferred_direction: higher
       zero_to_one: true
 
 ---
@@ -774,43 +770,6 @@ spec:
                     type: object
                   type: array
               type: object
-            routingReference:
-              description: RoutingReference provides references to routing rules set
-                by users
-              properties:
-                apiVersion:
-                  description: API version of the referent.
-                  type: string
-                fieldPath:
-                  description: 'If referring to a piece of an object instead of an
-                    entire object, this string should contain a valid JSON/Go field
-                    access statement, such as desiredState.manifest.containers[2].
-                    For example, if the object reference is to a container within
-                    a pod, this would take on a value like: "spec.containers{name}"
-                    (where "name" refers to the name of the container that triggered
-                    the event) or if no container name is specified "spec.containers[2]"
-                    (container with index 2 in this pod). This syntax is chosen only
-                    to have some well-defined way of referencing a part of an object.
-                    TODO: this design is not final and this field is subject to change
-                    in the future.'
-                  type: string
-                kind:
-                  description: 'Kind of the referent. More info: https://git.k8s.io/community/contributors/devel/sig-architecture/api-conventions.md#types-kinds'
-                  type: string
-                name:
-                  description: 'Name of the referent. More info: https://kubernetes.io/docs/concepts/overview/working-with-objects/names/#names'
-                  type: string
-                namespace:
-                  description: 'Namespace of the referent. More info: https://kubernetes.io/docs/concepts/overview/working-with-objects/namespaces/'
-                  type: string
-                resourceVersion:
-                  description: 'Specific resourceVersion to which this reference is
-                    made, if any. More info: https://git.k8s.io/community/contributors/devel/sig-architecture/api-conventions.md#concurrency-control-and-consistency'
-                  type: string
-                uid:
-                  description: 'UID of the referent. More info: https://kubernetes.io/docs/concepts/overview/working-with-objects/names/#uids'
-                  type: string
-              type: object
             service:
               description: Service is a reference to the service that this experiment
                 is targeting at
@@ -839,6 +798,23 @@ spec:
                     TODO: this design is not final and this field is subject to change
                     in the future.'
                   type: string
+                hosts:
+                  description: List of hosts related to this service
+                  items:
+                    description: Host holds the name of host and gateway associated
+                      with it
+                    properties:
+                      gateway:
+                        description: The gateway associated with the host
+                        type: string
+                      name:
+                        description: Name of the Host
+                        type: string
+                    required:
+                    - gateway
+                    - name
+                    type: object
+                  type: array
                 kind:
                   description: 'Kind of the referent. More info: https://git.k8s.io/community/contributors/devel/sig-architecture/api-conventions.md#types-kinds'
                   type: string
@@ -848,6 +824,10 @@ spec:
                 namespace:
                   description: 'Namespace of the referent. More info: https://kubernetes.io/docs/concepts/overview/working-with-objects/namespaces/'
                   type: string
+                port:
+                  description: Port number exposed by internal services
+                  format: int32
+                  type: integer
                 resourceVersion:
                   description: 'Specific resourceVersion to which this reference is
                     made, if any. More info: https://git.k8s.io/community/contributors/devel/sig-architecture/api-conventions.md#concurrency-control-and-consistency'

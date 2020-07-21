@@ -89,6 +89,15 @@ func (b *ExperimentBuilder) WithResumeAction() *ExperimentBuilder {
 	return b
 }
 
+func (b *ExperimentBuilder) WithHostInTargetService(host, gateway string) *ExperimentBuilder {
+	b.Spec.Service.Hosts = []v1alpha2.Host{{
+		Name:    host,
+		Gateway: gateway,
+	}}
+
+	return b
+}
+
 func CheckExperimentPause(obj runtime.Object) (bool, error) {
 	exp, ok := obj.(*v1alpha2.Experiment)
 	if !ok {

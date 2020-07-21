@@ -165,3 +165,10 @@ func (r *RatioMetric) IsZeroToOne() bool {
 	}
 	return *r.ZeroToOne
 }
+
+// TerminateExperiment terminates experiment
+func (s *ExperimentSpec) TerminateExperiment() {
+	s.ManualOverride = &ManualOverride{
+		Action: ActionTerminate,
+	}
+}

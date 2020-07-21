@@ -238,6 +238,48 @@ func (b *VirtualServiceBuilder) WithHTTPRoute(route *networkingv1alpha3.HTTPRout
 	return b
 }
 
+// WithPort adds port to each destination in iter8 route
+func (b *VirtualServiceBuilder) WithPort(num uint32) *VirtualServiceBuilder {
+	if b.Spec.Http == nil || len(b.Spec.Http) == 0 {
+		return b
+	}
+
+	for i, route := range b.Spec.Http[0].Route {
+		if route.Destination != nil {
+			b.Spec.Http[0].Route[i].Destination.Port = &networkingv1alpha3.PortSelector{
+				Number: num,
+			}
+		}
+	}
+
+	return b
+}
+
+func (b *VirtualServiceBuilder) InitGateways() *VirtualServiceBuilder {
+	b.Spec.Gateways = []string{}
+	return b
+}
+
+func (b *VirtualServiceBuilder) WithMeshGateway() *VirtualServiceBuilder {
+	b.Spec.Gateways = append(b.Spec.Gateways, "mesh")
+	return b
+}
+
+func (b *VirtualServiceBuilder) InitHosts() *VirtualServiceBuilder {
+	b.Spec.Hosts = []string{}
+	return b
+}
+
+func (b *VirtualServiceBuilder) WithGateways(gws []string) *VirtualServiceBuilder {
+	b.Spec.Gateways = append(b.Spec.Gateways, gws...)
+	return b
+}
+
+func (b *VirtualServiceBuilder) WithHosts(hosts []string) *VirtualServiceBuilder {
+	b.Spec.Hosts = append(b.Spec.Hosts, hosts...)
+	return b
+}
+
 // WithTrafficSplit will update http route with specified traffic split
 func (b *VirtualServiceBuilder) WithTrafficSplit(host string, trafficSplit map[string]int32) *VirtualServiceBuilder {
 	b.Spec.Http = make([]*networkingv1alpha3.HTTPRoute, 0)
@@ -286,7 +328,7 @@ func (b *VirtualServiceBuilder) ToProgressing(service string, candidateCount int
 		b.Spec.Http[0].Route[i+1] = &networkingv1alpha3.HTTPRouteDestination{
 			Destination: &networkingv1alpha3.Destination{
 				Host:   service,
-				Subset: candiateSubsetName(i),
+				Subset: candidateSubsetName(i),
 			},
 			Weight: 0,
 		}
@@ -324,25 +366,8 @@ func (b *VirtualServiceBuilder) WithHostRegistered(host string) *VirtualServiceB
 	return b
 }
 
-func (b *VirtualServiceBuilder) WithExternalLabel() *VirtualServiceBuilder {
-	if b.ObjectMeta.GetLabels() == nil {
-		b.ObjectMeta.SetLabels(map[string]string{})
-	}
-	b.ObjectMeta.Labels[ExternalReference] = "True"
-	return b
-}
-
 func (b *VirtualServiceBuilder) Build() *v1alpha3.VirtualService {
 	return (*v1alpha3.VirtualService)(b)
-}
-
-func getWeight(subset string, vs *v1alpha3.VirtualService) int32 {
-	for _, route := range vs.Spec.Http[0].Route {
-		if route.Destination.Subset == subset {
-			return route.Weight
-		}
-	}
-	return 0
 }
 
 func convertMatchToIstio(m *iter8v1alpha2.HTTPMatchRequest) *networkingv1alpha3.HTTPMatchRequest {

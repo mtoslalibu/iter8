@@ -43,8 +43,6 @@ const (
 	ExperimentRole  = "iter8-tools/role"
 	ExperimentLabel = "iter8-tools/experiment"
 	ExperimentHost  = "iter8-tools/host"
-
-	ExternalReference = "iter8-tools/external"
 )
 
 type istioRoutingRules struct {
@@ -90,12 +88,6 @@ func (r *istioRoutingRules) isVirtualServiceDefined() bool {
 	return "" != r.virtualService.Name
 }
 
-func (r *istioRoutingRules) isExternalReference() bool {
-	_, vsok := r.virtualService.GetLabels()[ExternalReference]
-
-	return vsok
-}
-
 func (r *Router) UpdateBaseline(ctx context.Context, instance *iter8v1alpha2.Experiment, targets *targets.Targets) (err error) {
 	if r.rules.isProgressing() {
 		return nil
@@ -134,8 +126,28 @@ func (r *Router) UpdateBaseline(ctx context.Context, instance *iter8v1alpha2.Exp
 		vsb = NewVirtualService(instance.Spec.Service.Name, instance.GetName(), instance.ServiceNamespace()).
 			WithInitLabel()
 	}
-	vsb = vsb.WithExperimentRegistered(instance.Name).
-		ToProgressing(instance.Spec.Service.Name, len(targets.Candidates))
+
+	vsb = vsb.
+		WithExperimentRegistered(instance.Name).
+		ToProgressing(instance.Spec.Service.Name, len(targets.Candidates)).
+		InitGateways().
+		InitHosts()
+
+	if targets.Service != nil {
+		vsb = vsb.WithHosts([]string{instance.Spec.Service.Name}).WithMeshGateway()
+	}
+
+	if targets.Port != nil {
+		vsb = vsb.WithPort(uint32(*targets.Port))
+	}
+
+	if len(targets.Hosts) > 0 {
+		vsb = vsb.WithHosts(targets.Hosts)
+	}
+
+	if len(targets.Gateways) > 0 {
+		vsb = vsb.WithGateways(targets.Gateways)
+	}
 
 	trafficControl := instance.Spec.TrafficControl
 	if trafficControl != nil && trafficControl.Match != nil && len(trafficControl.Match.HTTP) > 0 {
@@ -164,10 +176,6 @@ func (r *Router) UpdateBaseline(ctx context.Context, instance *iter8v1alpha2.Exp
 	return
 }
 
-func candiateSubsetName(idx int) string {
-	return SubsetCandidate + "-" + strconv.Itoa(idx)
-}
-
 func (r *Router) UpdateCandidates(context context.Context, targets *targets.Targets) (err error) {
 	if r.rules.isProgressing() {
 		return nil
@@ -175,7 +183,7 @@ func (r *Router) UpdateCandidates(context context.Context, targets *targets.Targ
 
 	drb := NewDestinationRuleBuilder(r.rules.destinationRule)
 	for i, candidate := range targets.Candidates {
-		drb = drb.WithSubset(candidate, candiateSubsetName(i), i+1)
+		drb = drb.WithSubset(candidate, candidateSubsetName(i), i+1)
 	}
 	drb = drb.WithProgressingLabel()
 
@@ -222,7 +230,7 @@ func (r *Router) Cleanup(context context.Context, instance *iter8v1alpha2.Experi
 				// change winner version to stable
 				for i, candidate := range instance.Spec.Candidates {
 					if candidate == *assessment.Winner.Winner {
-						toStableSubset[candiateSubsetName(i)] = SubsetStable
+						toStableSubset[candidateSubsetName(i)] = SubsetStable
 						subsetWeight[SubsetStable] = 100
 						break
 					}
@@ -249,7 +257,7 @@ func (r *Router) Cleanup(context context.Context, instance *iter8v1alpha2.Experi
 				for i, candidate := range assessment.Candidates {
 					if candidate.Weight > 0 {
 						stableSubset := SubsetStable + "-" + strconv.Itoa(stableCnt)
-						toStableSubset[candiateSubsetName(i)] = stableSubset
+						toStableSubset[candidateSubsetName(i)] = stableSubset
 						subsetWeight[stableSubset] = candidate.Weight
 						stableCnt++
 					}
@@ -268,14 +276,17 @@ func (r *Router) Cleanup(context context.Context, instance *iter8v1alpha2.Experi
 			return
 		}
 
-		vs := NewVirtualServiceBuilder(r.rules.virtualService).
+		vsb := NewVirtualServiceBuilder(r.rules.virtualService).
 			ProgressingToStable(subsetWeight, instance.Spec.Service.Name, instance.ServiceNamespace()).
 			WithStableLabel().
-			RemoveExperimentLabel().
-			Build()
+			RemoveExperimentLabel()
+		if instance.Spec.Service.Port != nil {
+			vsb = vsb.WithPort(uint32(*instance.Spec.Service.Port))
+		}
+
 		if _, err = r.client.NetworkingV1alpha3().
 			VirtualServices(r.rules.virtualService.Namespace).
-			Update(vs); err != nil {
+			Update(vsb.Build()); err != nil {
 			return
 		}
 	}
@@ -302,11 +313,14 @@ func (r *Router) UpdateTrafficSplit(instance *iter8v1alpha2.Experiment) error {
 			WithWeight(instance.Status.Assessment.Candidates[i].Weight).Build())
 	}
 
-	vs := NewVirtualServiceBuilder(r.rules.virtualService).
-		WithHTTPRoute(rb.Build()).
-		Build()
+	vsb := NewVirtualServiceBuilder(r.rules.virtualService).
+		WithHTTPRoute(rb.Build())
 
-	if vs, err := r.client.NetworkingV1alpha3().VirtualServices(vs.Namespace).Update(vs); err != nil {
+	if instance.Spec.Service.Port != nil {
+		vsb = vsb.WithPort(uint32(*instance.Spec.Service.Port))
+	}
+
+	if vs, err := r.client.NetworkingV1alpha3().VirtualServices(vsb.Namespace).Update(vsb.Build()); err != nil {
 		return err
 	} else {
 		r.rules.virtualService = vs.DeepCopy()
@@ -405,106 +419,25 @@ func (r *Router) InitRoutingRules(instance *iter8v1alpha2.Experiment) error {
 	serviceName := instance.Spec.Service.Name
 	serviceNamespace := instance.ServiceNamespace()
 
-	if instance.Spec.RoutingReference != nil {
-		if err := r.detectRoutingReferences(instance); err != nil {
-			return err
-		}
-	} else {
-		dr, err := r.client.NetworkingV1alpha3().DestinationRules(serviceNamespace).Create(
-			NewDestinationRule(serviceName, instance.GetName(), serviceNamespace).
-				WithInitLabel().
-				Build())
-		if err != nil {
-			return err
-		}
-
-		vs, err := r.client.NetworkingV1alpha3().VirtualServices(serviceNamespace).Create(
-			NewVirtualService(serviceName, instance.GetName(), serviceNamespace).
-				WithInitLabel().
-				Build())
-		if err != nil {
-			return err
-		}
-
-		r.rules.destinationRule = dr.DeepCopy()
-		r.rules.virtualService = vs.DeepCopy()
+	dr, err := r.client.NetworkingV1alpha3().DestinationRules(serviceNamespace).Create(
+		NewDestinationRule(serviceName, instance.GetName(), serviceNamespace).
+			WithInitLabel().
+			Build())
+	if err != nil {
+		return err
 	}
 
-	return nil
-}
-
-func (r *Router) detectRoutingReferences(instance *iter8v1alpha2.Experiment) error {
-	reference := instance.Spec.RoutingReference
-	if reference.APIVersion == v1alpha3.SchemeGroupVersion.String() && reference.Kind == "VirtualService" {
-		ruleNamespace := reference.Namespace
-		if ruleNamespace == "" {
-			ruleNamespace = instance.Namespace
-		}
-
-		vs, err := r.client.NetworkingV1alpha3().VirtualServices(ruleNamespace).Get(reference.Name, metav1.GetOptions{})
-		if err != nil {
-			return fmt.Errorf("Fail to read referenced rule: %s", err.Error())
-		}
-
-		if err := validateVirtualService(instance, vs); err != nil {
-			return err
-		}
-
-		vs, err = r.client.NetworkingV1alpha3().VirtualServices(ruleNamespace).Update(
-			NewVirtualServiceBuilder(vs).
-				WithExperimentRegistered(instance.Name).
-				WithHostRegistered(instance.Spec.Service.Name).
-				WithExternalLabel().
-				Build())
-		if err != nil {
-			return err
-		}
-
-		dr, err := r.client.NetworkingV1alpha3().DestinationRules(ruleNamespace).Create(
-			NewDestinationRule(instance.Spec.Service.Name, instance.GetName(), ruleNamespace).
-				WithStableLabel().
-				Build())
-		if err != nil {
-			return err
-		}
-
-		r.rules.destinationRule = dr.DeepCopy()
-		r.rules.virtualService = vs.DeepCopy()
-		return nil
-	}
-	return fmt.Errorf("Referenced rule not supported")
-}
-
-func validateVirtualService(instance *iter8v1alpha2.Experiment, vs *v1alpha3.VirtualService) error {
-	// Look for an entry with destination host the same as target service
-	if vs.Spec.Http == nil || len(vs.Spec.Http) == 0 {
-		return fmt.Errorf("Empty HttpRoute")
+	vs, err := r.client.NetworkingV1alpha3().VirtualServices(serviceNamespace).Create(
+		NewVirtualService(serviceName, instance.GetName(), serviceNamespace).
+			WithInitLabel().
+			Build())
+	if err != nil {
+		return err
 	}
 
-	vsNamespace, svcNamespace := vs.Namespace, instance.ServiceNamespace()
-	if vsNamespace == "" {
-		vsNamespace = instance.Namespace
-	}
+	r.rules.destinationRule = dr.DeepCopy()
+	r.rules.virtualService = vs.DeepCopy()
 
-	// The first valid entry in http route is used as stable version
-	for i, http := range vs.Spec.Http {
-		matchIndex := -1
-		for j, route := range http.Route {
-			if util.EqualHost(route.Destination.Host, vsNamespace, instance.Spec.Service.Name, svcNamespace) {
-				// Only one entry of destination is allowed in an HTTP route
-				if matchIndex < 0 {
-					matchIndex = j
-				} else {
-					return fmt.Errorf("Multiple host-matching routes found")
-				}
-			}
-		}
-		// Set 100% weight to this host
-		if matchIndex >= 0 {
-			vs.Spec.Http[i].Route[matchIndex].Weight = 100
-			return nil
-		}
-	}
 	return nil
 }
 

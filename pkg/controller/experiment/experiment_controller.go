@@ -295,7 +295,6 @@ func (r *ReconcileExperiment) Reconcile(request reconcile.Request) (reconcile.Re
 
 	log := log.WithValues("namespace", instance.Namespace, "name", instance.Name)
 	ctx = context.WithValue(ctx, util.LoggerKey, log)
-	log.Info("reconciling", "experiment", instance)
 
 	// Init metadata of experiment instance
 	if instance.Status.InitTimestamp == nil {
@@ -408,7 +407,6 @@ func (r *ReconcileExperiment) finalize(context context.Context, instance *iter8v
 func (r *ReconcileExperiment) syncExperiment(context context.Context, instance *iter8v1alpha2.Experiment) {
 	eas := experimentAbstract(context)
 	// Abort Experiment by setting action flag
-	util.Logger(context).Info("phase", "before", instance.Status.Phase)
 	if instance.Spec.Terminate() {
 		// map traffic split to assessment
 		overrideAssessment(instance)
@@ -417,7 +415,6 @@ func (r *ReconcileExperiment) syncExperiment(context context.Context, instance *
 			onDeletedTarget(instance, eas.GetDeletedRole())
 			overrideAssessment(instance)
 			r.markTargetsError(context, instance, "%s", eas.GetTerminateStatus())
-			util.Logger(context).Info("phase", "after", instance.Status.Phase)
 		}
 	} else if eas.Resume() {
 		instance.Status.Phase = iter8v1alpha2.PhaseProgressing
@@ -430,10 +427,6 @@ func (r *ReconcileExperiment) syncExperiment(context context.Context, instance *
 
 func (r *ReconcileExperiment) proceed(context context.Context, instance *iter8v1alpha2.Experiment) (err error) {
 	// Pause action rejects all other resume mechanisms except resume action
-	util.Logger(context).Info("Action", "pause", instance.Spec.Pause())
-	if instance.Spec.ManualOverride != nil {
-		util.Logger(context).Info("MO", "value", instance.Spec.ManualOverride)
-	}
 	if instance.Spec.Pause() {
 		r.markActionPause(context, instance, "")
 		if r.needStatusUpdate() {

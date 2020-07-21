@@ -182,6 +182,28 @@ func TestExperiment(t *testing.T) {
 				postHook: test.CheckObjectDeleted(getReviewsDeployment("v2"), getReviewsDeployment("v3")),
 			}
 		}("cleanupdelete", getCleanUpDeleteExperiment("cleanupdelete", "reviews", "reviews-v1", []string{"reviews-v2", "reviews-v3"})),
+		"attach-gateway": func(name string, exp *iter8v1alpha2.Experiment) testCase {
+			return testCase{
+				mocks: map[string]analtyicsapi.Response{
+					name: test.GetRollToWinnerMockResponse(exp, 0),
+				},
+				initObjects: []runtime.Object{
+					getReviewsService(),
+					getReviewsDeployment("v1"),
+					getReviewsDeployment("v2"),
+					getReviewsDeployment("v3"),
+				},
+				object: exp,
+				wantState: test.WantAllStates(
+					test.CheckExperimentCompleted,
+				),
+				wantResults: []runtime.Object{
+					getStableDestinationRule("reviews", name, getReviewsDeployment("v2")),
+					getStableVirtualServiceWithGateway("reviews", name, "reviews.com", "gateway-testing"),
+				},
+			}
+		}("attach-gateway", getExperimentWithGateway("attach-gateway", "reviews", "reviews-v1", service.GetURL(),
+			[]string{"reviews-v2", "reviews-v3"}, "reviews.com", "gateway-testing")),
 		// "pauseresume": func(name string, exp *iter8v1alpha2.Experiment) testCase {
 		// 	return testCase{
 		// 		mocks: map[string]analtyicsapi.Response{
@@ -336,6 +358,24 @@ func getFastKubernetesExperiment(name, serviceName, baseline, analyticsHost stri
 	return experiment
 }
 
+func getExperimentWithGateway(name, serviceName, baseline, analyticsHost string, candidates []string, host, gw string) *iter8v1alpha2.Experiment {
+	experiment := test.NewExperiment(name, Flags.Namespace).
+		WithKubernetesTargetService(serviceName, baseline, candidates).
+		WithHostInTargetService(host, gw).
+		WithAnalyticsEndpoint(analyticsHost).
+		WithDummyCriterion().
+		Build()
+
+	onesec := "1s"
+	one := int32(1)
+	experiment.Spec.Duration = &iter8v1alpha2.Duration{
+		Interval:      &onesec,
+		MaxIterations: &one,
+	}
+
+	return experiment
+}
+
 func getSlowKubernetesExperiment(name, serviceName, baseline, analyticsHost string, candidates []string) *iter8v1alpha2.Experiment {
 	experiment := test.NewExperiment(name, Flags.Namespace).
 		WithKubernetesTargetService(serviceName, baseline, candidates).
@@ -365,6 +405,18 @@ func getStableDestinationRule(serviceName, name string, deploy runtime.Object) r
 
 func getStableVirtualService(serviceName, name string) runtime.Object {
 	return routing.NewVirtualService(serviceName, name, Flags.Namespace).
+		WithMeshGateway().
+		ProgressingToStable(map[string]int32{routing.SubsetStable: 100}, serviceName, Flags.Namespace).
+		WithStableLabel().
+		Build()
+}
+
+func getStableVirtualServiceWithGateway(serviceName, name, host, gw string) runtime.Object {
+	return routing.NewVirtualService(serviceName, name, Flags.Namespace).
+		WithHosts([]string{host}).
+		InitGateways().
+		WithMeshGateway().
+		WithGateways([]string{gw}).
 		ProgressingToStable(map[string]int32{routing.SubsetStable: 100}, serviceName, Flags.Namespace).
 		WithStableLabel().
 		Build()
