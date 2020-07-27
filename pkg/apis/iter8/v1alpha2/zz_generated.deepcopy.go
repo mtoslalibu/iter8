@@ -38,7 +38,7 @@ func (in *Assessment) DeepCopyInto(out *Assessment) {
 	if in.Winner != nil {
 		in, out := &in.Winner, &out.Winner
 		*out = new(apiv1alpha2.WinnerAssessment)
-		(*in).DeepCopyInto(*out)
+		**out = **in
 	}
 	return
 }

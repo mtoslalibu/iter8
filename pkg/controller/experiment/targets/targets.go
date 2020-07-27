@@ -124,7 +124,7 @@ func (t *Targets) Cleanup(context context.Context, instance *iter8v1alpha2.Exper
 		switch instance.Spec.GetOnTermination() {
 		case iter8v1alpha2.OnTerminationToWinner:
 			if assessment != nil && assessment.Winner != nil && assessment.Winner.WinnerFound {
-				toKeep[*assessment.Winner.Winner] = true
+				toKeep[assessment.Winner.Winner] = true
 			} else {
 				toKeep[instance.Spec.Baseline] = true
 			}

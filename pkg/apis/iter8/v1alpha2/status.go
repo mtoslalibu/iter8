@@ -269,14 +269,13 @@ func (s *ExperimentStatus) MarkIterationUpdate(messageFormat string, messageA ..
 	message := composeMessage(reason, messageFormat, messageA...)
 	s.Phase = PhaseProgressing
 	s.Message = &message
-	s.GetCondition(ExperimentConditionExperimentCompleted).
-		markCondition(corev1.ConditionFalse, reason, messageFormat, messageA...)
-	return true, reason
+	return s.GetCondition(ExperimentConditionExperimentCompleted).
+		markCondition(corev1.ConditionFalse, reason, messageFormat, messageA...), reason
 }
 
-// MarkTrafficUpdate sets the condition that traffic for target service updated
-func (s *ExperimentStatus) MarkTrafficUpdate(messageFormat string, messageA ...interface{}) (bool, string) {
-	reason := ReasonTrafficUpdate
+// MarkAssessmentUpdate sets the condition that assessment for experiment updated
+func (s *ExperimentStatus) MarkAssessmentUpdate(messageFormat string, messageA ...interface{}) (bool, string) {
+	reason := ReasonAssessmentUpdate
 	message := composeMessage(reason, messageFormat, messageA...)
 	s.Phase = PhaseProgressing
 	s.Message = &message

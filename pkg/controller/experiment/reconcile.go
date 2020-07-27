@@ -126,6 +126,7 @@ func (r *ReconcileExperiment) detectTargets(context context.Context, instance *i
 func (r *ReconcileExperiment) updateIteration(context context.Context, instance *iter8v1alpha2.Experiment) error {
 	log := util.Logger(context)
 	trafficUpdated := false
+	trafficSplit := make(map[string]int32)
 	// mark experiment begin
 	if instance.Status.StartTimestamp == nil {
 		startTime := metav1.Now()
@@ -141,8 +142,10 @@ func (r *ReconcileExperiment) updateIteration(context context.Context, instance 
 		diff := instance.Spec.GetMaxIncrements() * int32(len(instance.Spec.Candidates))
 		if basetraffic-diff >= 0 {
 			instance.Status.Assessment.Baseline.Weight = basetraffic - diff
+			trafficSplit[instance.Spec.Service.Baseline] = instance.Status.Assessment.Baseline.Weight
 			for i := range instance.Status.Assessment.Candidates {
 				instance.Status.Assessment.Candidates[i].Weight += instance.Spec.GetMaxIncrements()
+				trafficSplit[instance.Spec.Service.Candidates[i]] = instance.Status.Assessment.Candidates[i].Weight
 			}
 			trafficUpdated = true
 		}
@@ -189,16 +192,16 @@ func (r *ReconcileExperiment) updateIteration(context context.Context, instance 
 		}
 
 		instance.Status.Assessment.Winner = &response.WinnerAssessment
-		log.Info("updateIteration winner:", "winner assessment", instance.Status.Assessment.Winner)
+		r.markAssessmentUpdate(context, instance, "Winner assessment: %+v", response.WinnerAssessment)
 
 		strategy := instance.Spec.GetStrategy()
-		trafficSplit, ok := response.TrafficSplitRecommendation[strategy]
+		_, ok := response.TrafficSplitRecommendation[strategy]
 		if !ok {
-			err := fmt.Errorf("Missing trafficSplitRecommendation for strategy %s", strategy)
+			err := fmt.Errorf("Missing traffic split recommendation for strategy %s", strategy)
 			r.markAnalyticsServiceError(context, instance, "%v", err)
 			return err
 		}
-		log.Info("updateIteration recommended traffic split:", "strategy", strategy, "recommendation", trafficSplit)
+		trafficSplit = response.TrafficSplitRecommendation[strategy]
 
 		if baselineWeight, ok := trafficSplit[instance.Spec.Baseline]; ok {
 			if instance.Status.Assessment.Baseline.Weight != baselineWeight {
@@ -206,7 +209,7 @@ func (r *ReconcileExperiment) updateIteration(context context.Context, instance 
 			}
 			instance.Status.Assessment.Baseline.Weight = baselineWeight
 		} else {
-			err := fmt.Errorf("trafficSplitRecommendation for baseline not found")
+			err := fmt.Errorf("traffic split recommendation for baseline not found")
 			r.markAnalyticsServiceError(context, instance, "%v", err)
 			return err
 		}
@@ -221,7 +224,7 @@ func (r *ReconcileExperiment) updateIteration(context context.Context, instance 
 				}
 				instance.Status.Assessment.Candidates[i].Weight = weight
 			} else {
-				err := fmt.Errorf("trafficSplitRecommendation for candidate %s not found", candidate.Name)
+				err := fmt.Errorf("traffic split recommendation for candidate %s not found", candidate.Name)
 				r.markAnalyticsServiceError(context, instance, "%v", err)
 				return err
 			}
@@ -235,6 +238,7 @@ func (r *ReconcileExperiment) updateIteration(context context.Context, instance 
 			r.markRoutingRulesError(context, instance, "%v", err)
 			return err
 		}
+		r.markAssessmentUpdate(context, instance, "New Traffic: %v", trafficSplit)
 	}
 
 	r.markIterationUpdate(context, instance, "Iteration %d completed", *instance.Status.CurrentIteration)

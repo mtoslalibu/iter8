@@ -147,7 +147,7 @@ func GetRollToWinnerMockResponse(instance *iter8v1alpha2.Experiment, winIdx int)
 		CandidateAssessments: cas,
 		WinnerAssessment: analyticsv1alpha2.WinnerAssessment{
 			WinnerFound: true,
-			Winner:      &candidates[winIdx],
+			Winner:      candidates[winIdx],
 		},
 		TrafficSplitRecommendation: tsr,
 	}

@@ -229,7 +229,7 @@ func (r *Router) Cleanup(context context.Context, instance *iter8v1alpha2.Experi
 			if assessment != nil && assessment.Winner != nil && assessment.Winner.WinnerFound {
 				// change winner version to stable
 				for i, candidate := range instance.Spec.Candidates {
-					if candidate == *assessment.Winner.Winner {
+					if candidate == assessment.Winner.Winner {
 						toStableSubset[candidateSubsetName(i)] = SubsetStable
 						subsetWeight[SubsetStable] = 100
 						break
