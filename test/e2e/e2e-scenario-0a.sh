@@ -70,7 +70,7 @@ kubectl get experiments.iter8.tools -n $NAMESPACE
 
 header "Test results"
 kubectl -n $NAMESPACE get experiments.iter8.tools reviews-v3-rollout -o yaml
-test_experiment_status $EXPERIMENT "ExperimentCompleted: Last Iteration Was Completed"
+test_experiment_status $EXPERIMENT "ExperimentCompleted: Traffic To Winner"
 
 echo "Experiment succeeded as expected!"
 

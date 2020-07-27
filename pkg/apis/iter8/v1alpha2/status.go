@@ -307,6 +307,11 @@ func (s *ExperimentStatus) MarkExperimentResume(messageFormat string, messageA .
 	return true, reason
 }
 
+// IsWinnerFound tells whether winner has been found by analytics
+func (s *ExperimentStatus) IsWinnerFound() bool {
+	return s.Assessment != nil && s.Assessment.Winner != nil && s.Assessment.Winner.WinnerFound
+}
+
 func composeMessage(reason, messageFormat string, messageA ...interface{}) string {
 	out := reason
 	msg := fmt.Sprintf(messageFormat, messageA...)
