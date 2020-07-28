@@ -315,7 +315,8 @@ func (s *ExperimentStatus) IsWinnerFound() bool {
 // WinnerToString outputs winner assessment in human-readable format
 func (s *ExperimentStatus) WinnerToString() string {
 	if !s.IsWinnerFound() {
-		return "Winner Has Not Yet Been Found"
+		return fmt.Sprintf("Winner has not been found yet. Current best version (%s) has winning probability of %f", s.Assessment.Winner.Winner,
+			s.Assessment.Winner.Probability)
 	}
 	return fmt.Sprintf("Current winner (%s) has winning probability of %f", s.Assessment.Winner.Winner,
 		s.Assessment.Winner.Probability)
