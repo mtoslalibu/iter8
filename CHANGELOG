@@ -1,3 +1,7 @@
+v1.0.0
+- Updated Experiment model
+- New analytics
+===============================
 v0.2.1
 - Support for canary where baseline and candidate are the same
 ==========================
