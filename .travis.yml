@@ -42,7 +42,7 @@ jobs:
     - stage: "release"
       script: skip
       # only do release for tagged releases
-      if: (type = push) AND (branch =~ /^v[0-9]+\.[0-9]+\.[0-9]+$/)
+      if: (type = push) AND (branch =~ /^v[0-9]+\.[0-9]+\.[0-9]+.*$/)
       before_deploy:
         - make ver=${TRAVIS_BRANCH} changelog > release.note
         - tar cvzf iter8-controller.tgz install/helm/iter8-controller/
