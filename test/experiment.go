@@ -22,7 +22,7 @@ import (
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/apimachinery/pkg/runtime"
 
-	"github.com/iter8-tools/iter8-controller/pkg/apis/iter8/v1alpha2"
+	"github.com/iter8-tools/iter8/pkg/apis/iter8/v1alpha2"
 )
 
 // ExperimentBuilder builds experiment object
@@ -142,8 +142,8 @@ func DeleteExperiment(name string, namespace string) Hook {
 }
 
 func ResumeExperiment(exp *v1alpha2.Experiment) Hook {
-	exp = (*ExperimentBuilder)(exp).
+	newexp := exp.DeepCopy()
+	return UpdateObject((*ExperimentBuilder)(newexp).
 		WithResumeAction().
-		Build()
-	return UpdateObject(exp)
+		Build())
 }
