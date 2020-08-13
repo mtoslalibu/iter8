@@ -33,14 +33,15 @@ func (h deploymentHandler) validateAndInit(drl *v1alpha3.DestinationRuleList, vs
 	out := &istioRoutingRules{}
 
 	svcNamespace := instance.ServiceNamespace()
-	host := util.GetHost(instance)
 	expFullName := util.FullExperimentName(instance)
 	if len(drl.Items) == 0 && len(vsl.Items) == 0 {
 		// init rule
-		out.destinationRule = NewDestinationRule(host, expFullName, svcNamespace).
+		name := GetRoutingRuleName(getRouterID(instance))
+		host := util.GetHost(instance)
+		out.destinationRule = NewDestinationRule(name, host, expFullName, svcNamespace).
 			WithInitLabel().
 			Build()
-		out.virtualService = NewVirtualService(host, expFullName, svcNamespace).
+		out.virtualService = NewVirtualService(name, expFullName, svcNamespace).
 			WithInitLabel().
 			Build()
 	} else if len(drl.Items) == 1 && len(vsl.Items) == 1 {
@@ -73,8 +74,9 @@ func (h deploymentHandler) validateAndInit(drl *v1alpha3.DestinationRuleList, vs
 		vsrole, vsok := vsl.Items[0].GetLabels()[experimentRole]
 		if vsok && vsrole == roleStable {
 			// Valid stable rules detected
+			name := GetRoutingRuleName(getRouterID(instance))
 			out.virtualService = vsl.Items[0].DeepCopy()
-			out.destinationRule = NewDestinationRule(host, expFullName, svcNamespace).
+			out.destinationRule = NewDestinationRule(name, util.GetHost(instance), expFullName, svcNamespace).
 				WithInitLabel().
 				Build()
 		} else {
