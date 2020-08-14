@@ -203,15 +203,20 @@ func (r *ReconcileExperiment) processIteration(context context.Context, instance
 			WinnerAssessment: &response.WinnerAssessment,
 		}
 		if response.WinnerAssessment.WinnerFound {
-			for _, candidate := range instance.Status.Assessment.Candidates {
-				if candidate.VersionAssessment.ID == response.WinnerAssessment.Winner {
-					instance.Status.Assessment.Winner.Name = &candidate.Name
-					break
+			if instance.Status.Assessment.Baseline.ID == response.WinnerAssessment.Winner {
+				instance.Status.Assessment.Winner.Name = &instance.Status.Assessment.Baseline.Name
+			} else {
+				for _, candidate := range instance.Status.Assessment.Candidates {
+					if candidate.ID == response.WinnerAssessment.Winner {
+						instance.Status.Assessment.Winner.Name = &candidate.Name
+						break
+					}
 				}
 			}
 		}
 		r.markAssessmentUpdate(context, instance, "Winner assessment: %s", instance.Status.WinnerToString())
 
+		// check traffic split update
 		strategy := instance.Spec.GetStrategy()
 		_, ok := response.TrafficSplitRecommendation[strategy]
 		if !ok {
@@ -260,8 +265,6 @@ func (r *ReconcileExperiment) processIteration(context context.Context, instance
 	}
 
 	r.markIterationUpdate(context, instance, "Iteration %d/%d completed", *instance.Status.CurrentIteration, instance.Spec.GetMaxIterations())
-	now := metav1.Now()
-	instance.Status.LastUpdateTime = &now
 	return nil
 }
 

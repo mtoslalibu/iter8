@@ -276,6 +276,8 @@ func (s *ExperimentStatus) MarkIterationUpdate(messageFormat string, messageA ..
 	message := composeMessage(reason, messageFormat, messageA...)
 	s.Phase = PhaseProgressing
 	s.Message = &message
+	now := metav1.Now()
+	s.LastUpdateTime = &now
 	return s.GetCondition(ExperimentConditionExperimentCompleted).
 		markCondition(corev1.ConditionFalse, reason, messageFormat, messageA...), reason
 }
