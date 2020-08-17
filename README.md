@@ -20,7 +20,7 @@ Iter8’s expressive model of cloud experimentation supports a variety of CI/CD 
 1. Run a performance test with a single version of a microservice.
 2. Perform a canary release with two versions, a baseline and a candidate. Iter8 will shift application traffic safely and gradually to the candidate, if it meets the criteria you specify in the experiment.
 3. Perform an A/B test with two versions – a baseline and a candidate. Iter8 will identify and shift application traffic safely and gradually to the winner, where the winning version is defined by the criteria you specify in the experiment.
-4. Perform an A/B/N test with multiple versions – a baseline and multiple candidates. Iter8 will identify and shift application traffic safely and gradually to the winner.
+4. Perform an A/B/n test with multiple versions – a baseline and multiple candidates. Iter8 will identify and shift application traffic safely and gradually to the winner.
 
 Under the hood, iter8 uses advanced Bayesian learning techniques coupled with multi-armed bandit approaches to compute a variety of statistical assessments for your microservice versions, and uses them to make robust traffic control and rollout decisions.
 
@@ -34,4 +34,4 @@ The components of iter8 are divided across a few github repositories.
 
 In addition,
 - iter8's extensions to Kiali is contained in [kiali](https://github.com/kiali/kiali), [kiali-ui](https://github.com/kiali/kiali-ui), and [k-charted](https://github.com/kiali/k-charted). 
-- iter8's extensions to KUI is contained in [kui](https://github.com/IBM/kui).
+- iter8's extensions to Kui is contained in [kui](https://github.com/IBM/kui).
