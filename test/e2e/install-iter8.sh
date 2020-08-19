@@ -28,9 +28,6 @@ fi
 echo "Istio version: $ISTIO_VERSION"
 echo "Istio mixer disabled: $MIXER_DISABLED"
 
-# Install Helm
-header "install helm"
-curl -fsSL https://get.helm.sh/helm-v2.16.7-linux-amd64.tar.gz | tar xvzf - && sudo mv linux-amd64/helm /usr/local/bin
 
 if [ "$MIXER_DISABLED" = "false" ]; then
   # Create new Helm template based on the new image
@@ -74,7 +71,7 @@ kubectl apply -f install/iter8-controller.yaml
 
 # Install Iter8 analytics
 header "install iter8-analytics"
-kubectl apply -f https://raw.githubusercontent.com/iter8-tools/iter8-analytics/v1.0.0-preview/install/kubernetes/iter8-analytics.yaml
+kubectl apply -f https://raw.githubusercontent.com/iter8-tools/iter8-analytics/v1.0.0-rc1/install/kubernetes/iter8-analytics.yaml
 
 # Check if Iter8 pods are all up and running. However, sometimes
 # `kubectl apply` doesn't register for `kubectl wait` before, so
