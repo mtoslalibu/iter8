@@ -167,7 +167,7 @@ type Duration struct {
 type TrafficControl struct {
 	// Strategy used to shift traffic
 	// default is progressive
-	// +kubebuilder:validation:Enum={progressive, top_2, uniform}
+	// +kubebuilder:validation:Enum={progressive, top_2, uniform, top_1_lts, top_2_lts}
 	// +optional
 	Strategy *StrategyType `json:"strategy,omitempty"`
 

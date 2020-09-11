@@ -38,6 +38,12 @@ const (
 
 	// StrategyUniform is the uniform strategy
 	StrategyUniform StrategyType = "uniform"
+
+        // StrategyTop1LTS is the logistic top_1
+        StrategyTop1LTS StrategyType = "top_1_lts"
+
+        // StrategyTop2LTS is the logistic top_2
+        StrategyTop2LTS StrategyType = "top_2_lts"
 )
 
 // ActionType provides options for override actions
