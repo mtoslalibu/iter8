@@ -44,6 +44,9 @@ const (
 
         // StrategyTop2LTS is the logistic top_2
         StrategyTop2LTS StrategyType = "top_2_lts"
+
+        // StrategyExp3 is the exp3
+        StrategyExp3 StrategyType = "exp3"
 )
 
 // ActionType provides options for override actions

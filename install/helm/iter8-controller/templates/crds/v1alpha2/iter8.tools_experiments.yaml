@@ -430,6 +430,8 @@ spec:
                   - progressive
                   - top_2
                   - uniform
+                  - top_1_lts
+                  - top_2_lts
                   type: string
               type: object
           required:
