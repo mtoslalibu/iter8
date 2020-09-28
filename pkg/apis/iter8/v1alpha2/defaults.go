@@ -39,6 +39,12 @@ const (
 	// DefaultMaxIncrement is the default maxIncrement for traffic update, which is 2
 	DefaultMaxIncrement int32 = 2
 
+        // DefaultGamma is the default gamma for exp3, which is 1
+        DefaultGamma float32 = 1
+
+        // DefaultAmplification is the default amp for logistic, which is 10
+        DefaultAmplification float32 = 10
+
 	// DefaultDuration is the default duration for an interval, which is 30 seconds
 	DefaultDuration time.Duration = time.Second * 30
 
@@ -152,6 +158,22 @@ func (s *ExperimentSpec) GetMaxIncrements() int32 {
 		return DefaultMaxIncrement
 	}
 	return *s.TrafficControl.MaxIncrement
+}
+
+// GetGamma returns specified(or default) gamma for exp3
+func (s *ExperimentSpec) GetGamma() float32 {
+        if s.TrafficControl == nil || s.TrafficControl.Gamma == nil {
+                return DefaultGamma
+        }
+        return *s.TrafficControl.Gamma
+}
+
+// GetAmplification returns specified(or default) amp for LTS
+func (s *ExperimentSpec) GetAmplification() float32 {
+        if s.TrafficControl == nil || s.TrafficControl.Amplification == nil {
+                return DefaultAmplification
+        }
+        return *s.TrafficControl.Amplification
 }
 
 // GetAnalyticsEndpoint returns specified(or default) analytics endpoint

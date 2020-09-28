@@ -129,6 +129,8 @@ func MakeRequest(instance *iter8v1alpha2.Experiment) (*v1alpha2.Request, error) 
 		Criteria:  criteria,
 		TrafficControl: &v1alpha2.TrafficControl{
 			MaxIncrement: float32(instance.Spec.GetMaxIncrements()),
+                        Gamma: float32(instance.Spec.GetGamma()),
+                        Amplification: float32(instance.Spec.GetAmplification()),
 			Strategy:     instance.Spec.GetStrategy(),
 		},
 		IterationNumber: instance.Status.CurrentIteration,

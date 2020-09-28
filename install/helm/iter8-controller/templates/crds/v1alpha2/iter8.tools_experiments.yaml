@@ -304,6 +304,16 @@ spec:
               description: TrafficControl provides instructions on traffic management
                 for an experiment
               properties:
+                amplification:
+                  description: Amplification is the hyperparameter for LTS algorithms
+                    default is 10
+                  format: float64
+                  type: number
+                gamma:
+                  description: Gamma is the hyperparameter for exp3 algorithm default
+                    is 1
+                  format: float64
+                  type: number
                 match:
                   description: Only requests fulfill the match section would be used
                     in experiment Istio matching rules are used
@@ -432,6 +442,7 @@ spec:
                   - uniform
                   - top_1_lts
                   - top_2_lts
+                  - exp3
                   type: string
               type: object
           required:

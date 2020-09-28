@@ -191,6 +191,16 @@ type TrafficControl struct {
 	// +optional
 	MaxIncrement *int32 `json:"maxIncrement,omitempty"`
 
+        // Gamma is the hyperparameter for exp3 algorithm
+        // default is 1
+        // +optional
+        Gamma *float32 `json:"gamma,omitempty"`
+
+        // Amplification is the hyperparameter for LTS algorithms
+        // default is 10
+        // +optional
+        Amplification *float32 `json:"amplification,omitempty"`
+
 	// RouterID refers to the id of router used to handle traffic for the experiment
 	// If it's not specified, the first entry of effictive host will be used as the id
 	// +optional

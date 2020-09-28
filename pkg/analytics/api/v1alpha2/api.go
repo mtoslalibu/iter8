@@ -119,6 +119,12 @@ type TrafficControl struct {
 	// Maximum possible increment in a candidate's traffic during the initial phase of the experiment
 	MaxIncrement float32 `json:"max_increment"`
 
+        // Gamma for exp3
+        Gamma float32 `json:"gamma"`
+
+        // Amplification for LTS
+        Amplification float32 `json:"amplification"`
+
 	// Traffic split algorithm to use during the experiment
 	Strategy string `json:"strategy"`
 }
